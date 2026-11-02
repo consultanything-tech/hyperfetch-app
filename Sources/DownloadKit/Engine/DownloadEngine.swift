@@ -6,6 +6,7 @@ public actor DownloadEngine {
     private let probe: any HTTPProbing
     private let downloader: any ChunkDownloading
     private let fileWriterFactory: @Sendable (URL) -> any FileWriting
+    private let statePersister: (any StatePersisting)?
     private let defaultChunkCount: Int
     private let minChunkSize: Int64
 
@@ -17,6 +18,7 @@ public actor DownloadEngine {
         probe: (any HTTPProbing)? = nil,
         downloader: (any ChunkDownloading)? = nil,
         fileWriterFactory: (@Sendable (URL) -> any FileWriting)? = nil,
+        statePersister: (any StatePersisting)? = nil,
         defaultChunkCount: Int = 4,
         minChunkSize: Int64 = 256 * 1024
     ) {
@@ -24,6 +26,7 @@ public actor DownloadEngine {
         self.probe = probe ?? HTTPRangeProbe(session: session)
         self.downloader = downloader ?? ChunkDownloader(session: session)
         self.fileWriterFactory = fileWriterFactory ?? { FileWriter(destinationURL: $0) }
+        self.statePersister = statePersister
         self.defaultChunkCount = defaultChunkCount
         self.minChunkSize = minChunkSize
     }
@@ -33,9 +36,29 @@ public actor DownloadEngine {
         taskStore[id]
     }
 
-    /// Pauses an active download task.
-    public func pauseDownload(id: UUID) {
+    /// Returns all tasks currently tracked by the engine.
+    public func allTasks() -> [DownloadTaskModel] {
+        Array(taskStore.values)
+    }
+
+    /// Restores previously persisted tasks into the engine's memory store.
+    @discardableResult
+    public func restoreTasks() async throws -> [DownloadTaskModel] {
+        guard let statePersister else { return [] }
+        let restoredTasks = try await statePersister.load()
+        for task in restoredTasks {
+            taskStore[task.id] = task
+        }
+        return restoredTasks
+    }
+
+    /// Pauses an active download task and persists its updated state.
+    public func pauseDownload(id: UUID) async {
         taskStore[id]?.status = .paused
+        taskStore[id]?.bytesPerSecond = 0.0
+        if let task = taskStore[id] {
+            try? await statePersister?.saveTask(task)
+        }
     }
 
     /// Starts or resumes a download task.
@@ -44,11 +67,15 @@ public actor DownloadEngine {
         progressHandler: (@Sendable (DownloadTaskModel) -> Void)? = nil
     ) async throws -> DownloadTaskModel {
         var currentTask = taskStore[task.id] ?? task
+        if let existing = taskStore[task.id], (existing.status == .paused || existing.status == .idle) {
+            currentTask = task
+        }
         taskStore[currentTask.id] = currentTask
 
         if Task.isCancelled {
             currentTask.status = .paused
             taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)
             throw CancellationError()
         }
@@ -58,6 +85,7 @@ public actor DownloadEngine {
             currentTask.status = .probing
             taskStore[currentTask.id] = currentTask
             progressHandler?(currentTask)
+            try? await statePersister?.saveTask(currentTask)
 
             let probeResult: ProbeResult
             do {
@@ -65,11 +93,13 @@ public actor DownloadEngine {
             } catch is CancellationError {
                 currentTask.status = .paused
                 taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
                 throw CancellationError()
             } catch {
                 currentTask.status = .failed(reason: error.localizedDescription)
                 taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
                 throw error
             }
@@ -82,6 +112,8 @@ public actor DownloadEngine {
                 let parentDir = currentTask.destinationURL.deletingLastPathComponent()
                 currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
             }
+            taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
         }
 
         // Step 2: Chunk setup and partitioning
@@ -106,6 +138,8 @@ public actor DownloadEngine {
                 // Non-range or indeterminate stream
                 currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: -1)]
             }
+            taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
         }
 
         // Pre-allocate destination file if range supported and totalBytes > 0
@@ -116,6 +150,7 @@ public actor DownloadEngine {
             } catch {
                 currentTask.status = .failed(reason: error.localizedDescription)
                 taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
                 throw error
             }
@@ -124,6 +159,7 @@ public actor DownloadEngine {
         currentTask.status = .downloading
         taskStore[currentTask.id] = currentTask
         progressHandler?(currentTask)
+        try? await statePersister?.saveTask(currentTask)
 
         speedTrackers[currentTask.id] = SpeedTracker()
 
@@ -168,6 +204,8 @@ public actor DownloadEngine {
                 for try await completedChunk in group {
                     if let idx = currentTask.chunks.firstIndex(where: { $0.index == completedChunk.index }) {
                         currentTask.chunks[idx] = completedChunk
+                        taskStore[currentTask.id] = currentTask
+                        try? await statePersister?.saveTask(currentTask)
                     }
                 }
             }
@@ -195,6 +233,7 @@ public actor DownloadEngine {
             currentTask.bytesPerSecond = 0.0
 
             taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)
             return currentTask
 
@@ -210,6 +249,7 @@ public actor DownloadEngine {
             currentTask.status = .paused
             currentTask.bytesPerSecond = 0.0
             taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)
             throw CancellationError()
         } catch {
@@ -221,6 +261,7 @@ public actor DownloadEngine {
             currentTask.status = .failed(reason: error.localizedDescription)
             currentTask.bytesPerSecond = 0.0
             taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)
             throw error
         }
