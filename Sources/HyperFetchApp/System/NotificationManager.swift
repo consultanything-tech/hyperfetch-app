@@ -50,13 +50,22 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         }
     }
 
+    /// Retrieves current notification authorization status.
+    public func getAuthorizationStatus() async -> UNAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
+        }
+    }
+
     /// Schedules a notification when a download completes.
-    public func sendDownloadCompletedNotification(task: DownloadTaskModel) {
+    public func sendDownloadCompletedNotification(task: DownloadTaskModel, playSound: Bool = true) {
         let content = UNMutableNotificationContent()
         content.title = "Download Complete"
         content.subtitle = task.filename
         content.body = "Successfully downloaded to \(task.destinationURL.lastPathComponent)"
-        content.sound = .default
+        content.sound = playSound ? .default : nil
         content.categoryIdentifier = Self.categoryDownloadCompleted
         content.userInfo = ["destinationPath": task.destinationURL.path]
 

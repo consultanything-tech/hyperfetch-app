@@ -41,12 +41,26 @@ struct HyperFetchApp: App {
                 .environmentObject(appState)
                 .frame(minWidth: 850, minHeight: 550)
                 .onOpenURL { url in
+                    appState.bringToFront()
                     appState.handleIncomingURLScheme(url)
                 }
         }
         .defaultSize(width: 950, height: 600)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    appState.selectedSettingsTab = .general
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+
+                Button("Browser Integration Guide...") {
+                    appState.selectedSettingsTab = .browser
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button("New Download...") {
                     appState.isAddSheetPresented = true
@@ -84,13 +98,31 @@ struct HyperFetchApp: App {
 
                 Toggle("Auto-Capture Clipboard Links", isOn: $appState.autoCaptureClipboard)
                 Toggle("Auto-Start Captured Downloads (Bypass HUD)", isOn: $appState.autoStartCapturedDownloads)
+                Toggle("Bring App to Front on Capture", isOn: $appState.bringToFrontOnCapture)
 
                 Divider()
+
+                Button("Browser Integration Guide...") {
+                    appState.selectedSettingsTab = .browser
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
 
                 Button("Load Sample Demo Downloads") {
                     appState.loadDemoSampleTasks()
                 }
             }
+
+            CommandGroup(replacing: .help) {
+                Button("Browser Integration Guide...") {
+                    appState.selectedSettingsTab = .browser
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+            }
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(appState)
         }
 
         // Live status bar / menu bar companion
@@ -117,6 +149,21 @@ struct HyperFetchApp: App {
                 appState.resumeAll()
             }
             .disabled(appState.pausedDownloadCount == 0)
+
+            Divider()
+
+            Button("Settings...") {
+                appState.selectedSettingsTab = .general
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+
+            Button("Browser Integration Guide...") {
+                appState.selectedSettingsTab = .browser
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
 
             Divider()
 

@@ -59,15 +59,15 @@ public final class FloatingHUDController: NSObject {
             filename: filename,
             onDownloadNow: { [weak self] in
                 self?.dismiss()
+                if appState.bringToFrontOnCapture {
+                    appState.bringToFront()
+                }
                 appState.addTask(url: url, filename: filename, autoStart: true)
             },
             onCustomize: { [weak self] in
                 self?.dismiss()
                 appState.presentAddSheet(url: url.absoluteString, filename: filename)
-                NSApp.activate(ignoringOtherApps: true)
-                for window in NSApp.windows where window.canBecomeMain {
-                    window.makeKeyAndOrderFront(nil)
-                }
+                appState.bringToFront()
             },
             onDismiss: { [weak self] in
                 self?.dismiss()

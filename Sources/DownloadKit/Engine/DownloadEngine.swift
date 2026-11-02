@@ -132,7 +132,8 @@ public actor DownloadEngine {
         // Step 2: Chunk setup and partitioning
         if currentTask.chunks.isEmpty {
             if currentTask.supportsRange && currentTask.totalBytes > minChunkSize {
-                let chunkCount = min(defaultChunkCount, max(1, Int(currentTask.totalBytes / minChunkSize)))
+                let targetCount = currentTask.preferredChunkCount ?? defaultChunkCount
+                let chunkCount = min(targetCount, max(1, Int(currentTask.totalBytes / minChunkSize)))
                 let baseChunkSize = currentTask.totalBytes / Int64(chunkCount)
                 var chunks: [Chunk] = []
                 var startOffset: Int64 = 0

@@ -22,9 +22,19 @@ public struct AddDownloadSheet: View {
     private let chunkCountOptions = [1, 2, 4, 8, 16]
 
     public init() {
-        let defaultDownloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+        let savedPath = UserDefaults.standard.string(forKey: "com.hyperfetch.defaultDownloadDirectory")
+        let defaultDownloads: URL
+        if let savedPath, !savedPath.isEmpty {
+            defaultDownloads = URL(fileURLWithPath: savedPath)
+        } else {
+            defaultDownloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+        }
+        let savedChunks = UserDefaults.standard.integer(forKey: "com.hyperfetch.defaultChunkCount")
+        let initialChunks = savedChunks > 0 ? savedChunks : 4
+
         _destinationFolderURL = ViewState(wrappedValue: defaultDownloads)
+        _chunkCount = ViewState(wrappedValue: initialChunks)
     }
 
     public var body: some View {
@@ -216,6 +226,8 @@ public struct AddDownloadSheet: View {
         .padding(22)
         .frame(width: 520, height: 490)
         .onAppear {
+            chunkCount = appState.defaultChunkCount
+            destinationFolderURL = appState.defaultDownloadDirectoryURL
             if !appState.prefilledURL.isEmpty {
                 urlString = appState.prefilledURL
                 appState.prefilledURL = ""
@@ -308,10 +320,14 @@ public struct AddDownloadSheet: View {
             destinationFile = destinationFolderURL.appendingPathComponent(url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent)
         }
 
+        appState.defaultChunkCount = chunkCount
+        appState.defaultDownloadDirectoryURL = destinationFolderURL
+
         appState.addTask(
             url: url,
             destinationURL: destinationFile,
             filename: finalFilename,
+            chunkCount: chunkCount,
             autoStart: autoStart
         )
 

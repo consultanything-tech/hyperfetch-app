@@ -546,4 +546,96 @@ struct DownloadEngineTests {
         let diskData = try Data(contentsOf: destinationURL)
         #expect(diskData.subdata(in: 200..<600) == expectedData.subdata(in: 200..<600))
     }
+
+    // MARK: - Test 7: Preferred Chunk Count Acceleration
+
+    @Test("DownloadEngine respects preferredChunkCount of 8 over defaultChunkCount of 4")
+    func testPreferredChunkCountEight() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/turbo.bin")!
+        let totalSize = 512 * 1024 // 512 KB
+        let expectedData = Data((0..<totalSize).map { UInt8(($0 * 17 + 3) & 0xFF) })
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"turbo.bin\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                if let rangeHeader = request.value(forHTTPHeaderField: "Range") {
+                    let cleaned = rangeHeader.replacingOccurrences(of: "bytes=", with: "")
+                    let parts = cleaned.split(separator: "-").map { String($0) }
+                    guard parts.count == 2,
+                          let start = Int(parts[0]),
+                          let end = Int(parts[1]),
+                          start <= end,
+                          end < totalSize else {
+                        let resp = HTTPURLResponse(url: testURL, statusCode: 416, httpVersion: "HTTP/1.1", headerFields: nil)!
+                        return (resp, nil)
+                    }
+
+                    let chunkData = expectedData.subdata(in: start..<(end + 1))
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 206,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [
+                            "Content-Range": "bytes \(start)-\(end)/\(totalSize)",
+                            "Content-Length": "\(chunkData.count)",
+                            "Content-Type": "application/octet-stream"
+                        ]
+                    )!
+                    return (response, chunkData)
+                } else {
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 200,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: ["Content-Length": "\(totalSize)"]
+                    )!
+                    return (response, expectedData)
+                }
+            }
+            fatalError("Unexpected HTTP method \(request.httpMethod ?? "")")
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("turbo.bin")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL,
+            preferredChunkCount: 8
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 4,
+            minChunkSize: 64 * 1024 // 512 KB / 64 KB = 8 chunks capacity
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.chunks.count == 8)
+        #expect(completedTask.downloadedBytes == Int64(totalSize))
+
+        for chunk in completedTask.chunks {
+            #expect(chunk.status == .completed)
+            #expect(chunk.bytesDownloaded == chunk.expectedLength)
+        }
+
+        let diskData = try Data(contentsOf: destinationURL)
+        #expect(diskData == expectedData)
+    }
 }

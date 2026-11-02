@@ -80,6 +80,7 @@ public actor QueueManager {
         destinationURL: URL? = nil,
         filename: String? = nil,
         headers: [String: String] = [:],
+        preferredChunkCount: Int? = nil,
         autoStart: Bool = true
     ) async throws -> DownloadTaskModel {
         let task = DownloadTaskModel(
@@ -87,7 +88,8 @@ public actor QueueManager {
             filename: filename,
             destinationURL: destinationURL,
             status: autoStart ? .idle : .paused,
-            headers: headers
+            headers: headers,
+            preferredChunkCount: preferredChunkCount
         )
         return try await addTask(task, autoStart: autoStart)
     }

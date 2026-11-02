@@ -102,6 +102,63 @@ public struct MainWindow: View {
             }
             .help("Bandwidth Throttling / Speed Limiter")
 
+            // Sort Menu
+            Menu {
+                ForEach(SortOption.allCases) { option in
+                    Button {
+                        appState.sortOption = option
+                    } label: {
+                        HStack {
+                            Text(option.rawValue)
+                            if appState.sortOption == option {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+            }
+            .help("Sort Downloads By (\(appState.sortOption.rawValue))")
+
+            // Batch Actions for Selected Items
+            if !appState.selectedTaskIDs.isEmpty {
+                Menu {
+                    Button("Pause Selected (\(appState.selectedTasks.count))") {
+                        appState.pauseSelected()
+                    }
+                    .disabled(!appState.hasActiveSelectedTasks)
+
+                    Button("Resume Selected (\(appState.selectedTasks.count))") {
+                        appState.resumeSelected()
+                    }
+                    .disabled(!appState.hasResumableSelectedTasks)
+
+                    Divider()
+
+                    Button("Show in Finder") {
+                        appState.revealSelectedInFinder()
+                    }
+
+                    Button("Remove Selected from List", role: .destructive) {
+                        appState.removeSelected(deleteFile: false)
+                    }
+
+                    Button("Delete Selected Files from Disk...", role: .destructive) {
+                        appState.promptDeleteSelected()
+                    }
+
+                    Divider()
+
+                    Button("Deselect All") {
+                        appState.deselectAll()
+                    }
+                } label: {
+                    Label("Selected (\(appState.selectedTasks.count))", systemImage: "checklist")
+                }
+                .help("Batch Actions for \(appState.selectedTasks.count) Selected Downloads")
+            }
+
             // Inspector toggle button
             Button {
                 toggleDetailPane()
@@ -117,13 +174,23 @@ public struct MainWindow: View {
     @ViewBuilder
     private var keyboardShortcutTriggers: some View {
         Group {
+            Button("Select All") {
+                appState.selectAll()
+            }
+            .keyboardShortcut("a", modifiers: .command)
+
+            Button("Deselect All") {
+                appState.deselectAll()
+            }
+            .keyboardShortcut(.escape, modifiers: [])
+
             Button("Toggle Pause") {
                 appState.togglePauseSelected()
             }
             .keyboardShortcut(.space, modifiers: [])
 
             Button("Delete Selected") {
-                appState.promptDelete()
+                appState.promptDeleteSelected()
             }
             .keyboardShortcut(.delete, modifiers: [])
 
@@ -215,11 +282,18 @@ public struct MainWindow: View {
                         Label("Pause", systemImage: "pause.fill")
                     }
 
-                case .paused, .idle, .failed:
+                case .paused, .idle:
                     Button {
                         appState.resume(id: task.id)
                     } label: {
                         Label("Resume", systemImage: "play.fill")
+                    }
+
+                case .failed:
+                    Button {
+                        appState.resume(id: task.id)
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
                     }
 
                 case .completed:
@@ -240,7 +314,12 @@ public struct MainWindow: View {
     }
 
     private func taskMetadataCard(for task: DownloadTaskModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Error Diagnostics section if task has failed
+            if case .failed(let reason) = task.status {
+                errorDiagnosticsCard(reason: reason, task: task)
+            }
+
             Text("File Information")
                 .font(.headline)
 
@@ -306,6 +385,54 @@ public struct MainWindow: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func errorDiagnosticsCard(reason: String, task: DownloadTaskModel) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.red)
+
+                Text("Error Diagnostics")
+                    .font(.headline)
+                    .foregroundStyle(.red)
+
+                Spacer()
+            }
+
+            Text(reason)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+
+            HStack(spacing: 10) {
+                Button {
+                    appState.resume(id: task.id)
+                } label: {
+                    Label("Retry Download", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(reason, forType: .string)
+                } label: {
+                    Label("Copy Error", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.red.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private var noTaskSelectedView: some View {

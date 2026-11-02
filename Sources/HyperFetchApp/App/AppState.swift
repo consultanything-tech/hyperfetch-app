@@ -72,6 +72,29 @@ public enum SpeedLimitPreset: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Sorting option for the download list.
+public enum SortOption: String, CaseIterable, Identifiable, Sendable {
+    case dateNewest = "Date Added (Newest)"
+    case dateOldest = "Date Added (Oldest)"
+    case nameAZ = "Name (A to Z)"
+    case nameZA = "Name (Z to A)"
+    case sizeLargest = "File Size (Largest)"
+    case sizeSmallest = "File Size (Smallest)"
+    case progress = "Progress"
+    case speed = "Transfer Speed"
+
+    public var id: String { rawValue }
+}
+
+/// Active tab in the native Settings window.
+public enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case general = "General"
+    case automation = "Automation"
+    case browser = "Browser"
+
+    public var id: String { rawValue }
+}
+
 /// Central application state managing download tasks, user selections, and system integrations.
 @MainActor
 public final class AppState: ObservableObject {
@@ -79,10 +102,31 @@ public final class AppState: ObservableObject {
     @Published public var sidebarSelection: SidebarItem? = .status(.all)
     @Published public var searchText: String = ""
     @Published public var speedLimitPreset: SpeedLimitPreset = .unlimited
+    @Published public var selectedSettingsTab: SettingsTab = .general
+    @Published public var isBridgeRunning: Bool = false
+    @Published public var bridgeListeningPort: UInt16 = 31415
     @Published public var isAddSheetPresented: Bool = false
-    @Published public var selectedTaskId: UUID? = nil
+    @Published public var selectedTaskIDs: Set<UUID> = []
     @Published public var taskPendingDeletion: DownloadTaskModel? = nil
+    @Published public var tasksPendingDeletion: [DownloadTaskModel] = []
     @Published public var showDeleteConfirmation: Bool = false
+    @Published public var sortOption: SortOption {
+        didSet {
+            UserDefaults.standard.set(sortOption.rawValue, forKey: Self.sortOptionKey)
+        }
+    }
+
+    /// Backward compatibility accessor for single-task selection.
+    public var selectedTaskId: UUID? {
+        get { selectedTaskIDs.first }
+        set {
+            if let newValue {
+                selectedTaskIDs = [newValue]
+            } else {
+                selectedTaskIDs = []
+            }
+        }
+    }
 
     /// Backward compatibility accessors for statusFilter and selectedCategory
     public var statusFilter: StatusFilter {
@@ -113,9 +157,42 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Whether HyperFetch automatically monitors the macOS pasteboard for copied file links.
-    @Published public var autoCaptureClipboard: Bool = true {
+    /// Prefilled URL when presenting AddDownloadSheet via HUD customize or external call.
+    @Published public var prefilledURL: String = ""
+
+    /// Prefilled filename when presenting AddDownloadSheet.
+    @Published public var prefilledFilename: String = ""
+
+    private static let defaultDownloadDirectoryKey = "com.hyperfetch.defaultDownloadDirectory"
+    private static let defaultChunkCountKey = "com.hyperfetch.defaultChunkCount"
+    private static let sortOptionKey = "com.hyperfetch.sortOption"
+    private static let maxConcurrentDownloadsKey = "com.hyperfetch.maxConcurrentDownloads"
+    private static let speedLimitPresetKey = "com.hyperfetch.speedLimitPreset"
+    private static let autoCaptureClipboardKey = "com.hyperfetch.autoCaptureClipboard"
+    private static let autoStartCapturedDownloadsKey = "com.hyperfetch.autoStartCapturedDownloads"
+    private static let bringToFrontOnCaptureKey = "com.hyperfetch.bringToFrontOnCapture"
+    private static let playCompletionSoundKey = "com.hyperfetch.playCompletionSound"
+    private static let showCompletionNotificationKey = "com.hyperfetch.showCompletionNotification"
+
+    /// Maximum concurrent downloads allowed simultaneously (1 to 8).
+    @Published public var maxConcurrentDownloads: Int {
         didSet {
+            let clamped = max(1, min(8, maxConcurrentDownloads))
+            if clamped != maxConcurrentDownloads {
+                maxConcurrentDownloads = clamped
+                return
+            }
+            UserDefaults.standard.set(maxConcurrentDownloads, forKey: Self.maxConcurrentDownloadsKey)
+            Task {
+                await queueManager.setMaxConcurrentDownloads(maxConcurrentDownloads)
+            }
+        }
+    }
+
+    /// Whether HyperFetch automatically monitors the macOS pasteboard for copied file links.
+    @Published public var autoCaptureClipboard: Bool {
+        didSet {
+            UserDefaults.standard.set(autoCaptureClipboard, forKey: Self.autoCaptureClipboardKey)
             if autoCaptureClipboard {
                 clipboardMonitor.start()
             } else {
@@ -125,13 +202,100 @@ public final class AppState: ObservableObject {
     }
 
     /// When true, captured downloads start immediately without showing the Floating Quick-Add HUD.
-    @Published public var autoStartCapturedDownloads: Bool = false
+    @Published public var autoStartCapturedDownloads: Bool {
+        didSet {
+            UserDefaults.standard.set(autoStartCapturedDownloads, forKey: Self.autoStartCapturedDownloadsKey)
+        }
+    }
 
-    /// Prefilled URL when presenting AddDownloadSheet via HUD customize or external call.
-    @Published public var prefilledURL: String = ""
+    /// Whether HyperFetch automatically activates and brings itself to the foreground when a download is captured.
+    @Published public var bringToFrontOnCapture: Bool = true {
+        didSet {
+            UserDefaults.standard.set(bringToFrontOnCapture, forKey: Self.bringToFrontOnCaptureKey)
+        }
+    }
 
-    /// Prefilled filename when presenting AddDownloadSheet.
-    @Published public var prefilledFilename: String = ""
+    /// Whether to play a sound effect upon download completion.
+    @Published public var playCompletionSound: Bool {
+        didSet {
+            UserDefaults.standard.set(playCompletionSound, forKey: Self.playCompletionSoundKey)
+        }
+    }
+
+    /// Whether to show a system banner notification upon download completion.
+    @Published public var showCompletionNotification: Bool {
+        didSet {
+            UserDefaults.standard.set(showCompletionNotification, forKey: Self.showCompletionNotificationKey)
+        }
+    }
+
+    /// Locates the absolute URL of the extensions/chrome directory on disk.
+    public var extensionDirectoryURL: URL {
+        let fileManager = FileManager.default
+
+        // 1. Check relative to source repo via #filePath (development / debug builds)
+        let sourceBase = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // App
+            .deletingLastPathComponent() // HyperFetchApp
+            .deletingLastPathComponent() // Sources
+            .deletingLastPathComponent() // Project root
+            .appendingPathComponent("extensions/chrome")
+        if fileManager.fileExists(atPath: sourceBase.path) {
+            return sourceBase
+        }
+
+        // 2. Check current working directory
+        let cwdPath = URL(fileURLWithPath: fileManager.currentDirectoryPath).appendingPathComponent("extensions/chrome")
+        if fileManager.fileExists(atPath: cwdPath.path) {
+            return cwdPath
+        }
+
+        // 3. Check App Bundle Resources
+        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("extensions/chrome"),
+           fileManager.fileExists(atPath: resourceURL.path) {
+            return resourceURL
+        }
+
+        // 4. Check sibling to App bundle
+        let bundleSibling = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("extensions/chrome")
+        if fileManager.fileExists(atPath: bundleSibling.path) {
+            return bundleSibling
+        }
+
+        return sourceBase
+    }
+
+    /// Absolute string path to the Chrome extension directory.
+    public var extensionDirectoryPath: String {
+        extensionDirectoryURL.path
+    }
+
+    /// Default download folder preference persisted via UserDefaults.
+    public var defaultDownloadDirectoryURL: URL {
+        get {
+            if let savedPath = UserDefaults.standard.string(forKey: Self.defaultDownloadDirectoryKey), !savedPath.isEmpty {
+                return URL(fileURLWithPath: savedPath)
+            }
+            return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+        }
+        set {
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue.path, forKey: Self.defaultDownloadDirectoryKey)
+        }
+    }
+
+    /// Default acceleration chunk count persisted via UserDefaults.
+    public var defaultChunkCount: Int {
+        get {
+            let saved = UserDefaults.standard.integer(forKey: Self.defaultChunkCountKey)
+            return saved > 0 ? saved : 4
+        }
+        set {
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue, forKey: Self.defaultChunkCountKey)
+        }
+    }
 
     public let queueManager: QueueManager
     public let notificationManager = NotificationManager.shared
@@ -146,14 +310,68 @@ public final class AppState: ObservableObject {
         localhostBridge: LocalhostBridge? = nil,
         clipboardMonitor: ClipboardMonitor? = nil
     ) {
+        let savedMax = UserDefaults.standard.integer(forKey: Self.maxConcurrentDownloadsKey)
+        let effectiveMax = savedMax > 0 ? max(1, min(8, savedMax)) : 4
+        self.maxConcurrentDownloads = effectiveMax
+
+        let initialSpeed: SpeedLimitPreset
+        if let savedSpeed = UserDefaults.standard.string(forKey: Self.speedLimitPresetKey),
+           let preset = SpeedLimitPreset(rawValue: savedSpeed) {
+            initialSpeed = preset
+        } else {
+            initialSpeed = .unlimited
+        }
+        self.speedLimitPreset = initialSpeed
+
+        if UserDefaults.standard.object(forKey: Self.playCompletionSoundKey) == nil {
+            self.playCompletionSound = true
+        } else {
+            self.playCompletionSound = UserDefaults.standard.bool(forKey: Self.playCompletionSoundKey)
+        }
+
+        if UserDefaults.standard.object(forKey: Self.showCompletionNotificationKey) == nil {
+            self.showCompletionNotification = true
+        } else {
+            self.showCompletionNotification = UserDefaults.standard.bool(forKey: Self.showCompletionNotificationKey)
+        }
+
+        if UserDefaults.standard.object(forKey: Self.autoCaptureClipboardKey) == nil {
+            self.autoCaptureClipboard = true
+        } else {
+            self.autoCaptureClipboard = UserDefaults.standard.bool(forKey: Self.autoCaptureClipboardKey)
+        }
+
+        self.autoStartCapturedDownloads = UserDefaults.standard.bool(forKey: Self.autoStartCapturedDownloadsKey)
+
+        if UserDefaults.standard.object(forKey: Self.bringToFrontOnCaptureKey) == nil {
+            self.bringToFrontOnCapture = true
+        } else {
+            self.bringToFrontOnCapture = UserDefaults.standard.bool(forKey: Self.bringToFrontOnCaptureKey)
+        }
+
+        if let savedSort = UserDefaults.standard.string(forKey: Self.sortOptionKey),
+           let option = SortOption(rawValue: savedSort) {
+            self.sortOption = option
+        } else {
+            self.sortOption = .dateNewest
+        }
+
+        let speedBytes = initialSpeed.bytesPerSecond
         let qm = queueManager ?? QueueManager(
             statePersister: JSONStatePersister(),
-            rateLimiter: TokenBucketRateLimiter(bytesPerSecond: 0),
-            maxConcurrentDownloads: 4
+            rateLimiter: TokenBucketRateLimiter(bytesPerSecond: speedBytes),
+            maxConcurrentDownloads: effectiveMax
         )
         self.queueManager = qm
         self.localhostBridge = localhostBridge ?? LocalhostBridge()
         self.clipboardMonitor = clipboardMonitor ?? ClipboardMonitor.shared
+
+        if queueManager != nil {
+            Task { [qm] in
+                await qm.setMaxConcurrentDownloads(effectiveMax)
+                await qm.setSpeedLimit(speedBytes)
+            }
+        }
 
         notificationManager.requestAuthorization()
 
@@ -182,9 +400,71 @@ public final class AppState: ObservableObject {
         return tasks.first(where: { $0.id == selectedTaskId })
     }
 
-    /// Tasks filtered by the current sidebar selection (status filter or category) and search query.
+    /// Retrieves all currently selected tasks.
+    public var selectedTasks: [DownloadTaskModel] {
+        tasks.filter { selectedTaskIDs.contains($0.id) }
+    }
+
+    // MARK: - Selection Management
+
+    /// Whether any of the selected tasks are currently active (downloading or probing).
+    public var hasActiveSelectedTasks: Bool {
+        selectedTasks.contains { $0.status == .downloading || $0.status == .probing }
+    }
+
+    /// Whether any of the selected tasks can be resumed (paused, idle, or failed).
+    public var hasResumableSelectedTasks: Bool {
+        selectedTasks.contains { task in
+            switch task.status {
+            case .paused, .idle, .failed:
+                return true
+            case .downloading, .probing, .completed:
+                return false
+            }
+        }
+    }
+
+    /// Indicates whether all currently filtered tasks are selected.
+    public var isAllSelected: Bool {
+        !filteredTasks.isEmpty && filteredTasks.allSatisfy { selectedTaskIDs.contains($0.id) }
+    }
+
+    /// Indicates whether some, but not all, currently filtered tasks are selected.
+    public var isPartiallySelected: Bool {
+        !isAllSelected && filteredTasks.contains { selectedTaskIDs.contains($0.id) }
+    }
+
+    /// Selects all tasks currently visible under active filters.
+    public func selectAll() {
+        selectedTaskIDs = Set(filteredTasks.map(\.id))
+    }
+
+    /// Deselects all tasks.
+    public func deselectAll() {
+        selectedTaskIDs = []
+    }
+
+    /// Toggles the selection state for a specific task ID.
+    public func toggleSelection(id: UUID) {
+        if selectedTaskIDs.contains(id) {
+            selectedTaskIDs.remove(id)
+        } else {
+            selectedTaskIDs.insert(id)
+        }
+    }
+
+    /// Toggles selection between all filtered tasks and none.
+    public func toggleSelectAll() {
+        if isAllSelected {
+            deselectAll()
+        } else {
+            selectAll()
+        }
+    }
+
+    /// Tasks filtered by the current sidebar selection (status filter or category), search query, and sort option.
     public var filteredTasks: [DownloadTaskModel] {
-        tasks.filter { task in
+        let filtered = tasks.filter { task in
             // 1. Sidebar Selection (Status or Category)
             switch sidebarSelection {
             case .status(let filter):
@@ -225,6 +505,45 @@ public final class AppState: ObservableObject {
             }
 
             return true
+        }
+
+        return filtered.sorted { a, b in
+            switch sortOption {
+            case .dateNewest:
+                if a.createdAt != b.createdAt {
+                    return a.createdAt > b.createdAt
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .dateOldest:
+                if a.createdAt != b.createdAt {
+                    return a.createdAt < b.createdAt
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .nameAZ:
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .nameZA:
+                return a.filename.localizedStandardCompare(b.filename) == .orderedDescending
+            case .sizeLargest:
+                if a.totalBytes != b.totalBytes {
+                    return a.totalBytes > b.totalBytes
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .sizeSmallest:
+                if a.totalBytes != b.totalBytes {
+                    return a.totalBytes < b.totalBytes
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .progress:
+                if a.progress != b.progress {
+                    return a.progress > b.progress
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            case .speed:
+                if a.bytesPerSecond != b.bytesPerSecond {
+                    return a.bytesPerSecond > b.bytesPerSecond
+                }
+                return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+            }
         }
     }
 
@@ -290,8 +609,12 @@ public final class AppState: ObservableObject {
         destinationURL: URL? = nil,
         filename: String? = nil,
         headers: [String: String] = [:],
+        chunkCount: Int? = nil,
         autoStart: Bool = true
     ) {
+        if sidebarSelection != .status(.all) && sidebarSelection != .status(.active) {
+            sidebarSelection = .status(.active)
+        }
         Task {
             do {
                 let newTask = try await queueManager.addTask(
@@ -299,9 +622,13 @@ public final class AppState: ObservableObject {
                     destinationURL: destinationURL,
                     filename: filename,
                     headers: headers,
+                    preferredChunkCount: chunkCount,
                     autoStart: autoStart
                 )
                 self.selectedTaskId = newTask.id
+                if self.sidebarSelection != .status(.all) && self.sidebarSelection != .status(.active) {
+                    self.sidebarSelection = .status(.active)
+                }
             } catch {
                 print("Failed to add task: \(error.localizedDescription)")
             }
@@ -331,8 +658,9 @@ public final class AppState: ObservableObject {
 
     /// Removes a task from the list and optionally deletes its file from disk.
     public func remove(id: UUID, deleteFile: Bool = false) {
-        if selectedTaskId == id {
-            selectedTaskId = tasks.first(where: { $0.id != id })?.id
+        selectedTaskIDs.remove(id)
+        if selectedTaskIDs.isEmpty, let next = tasks.first(where: { $0.id != id })?.id {
+            selectedTaskIDs = [next]
         }
         self.tasks.removeAll(where: { $0.id == id })
         Task {
@@ -340,43 +668,116 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Removes all selected tasks from the queue and resets selection.
+    public func removeSelected(deleteFile: Bool = false) {
+        let targets = selectedTasks
+        let targetIDs = Set(targets.map(\.id))
+        selectedTaskIDs.removeAll()
+        self.tasks.removeAll(where: { targetIDs.contains($0.id) })
+        if let first = self.tasks.first?.id {
+            self.selectedTaskIDs = [first]
+        }
+        Task {
+            for task in targets {
+                try? await queueManager.removeTask(id: task.id, deleteFile: deleteFile)
+            }
+        }
+    }
+
+    /// Pauses all active/probing/idle tasks among the currently selected tasks.
+    public func pauseSelected() {
+        for task in selectedTasks {
+            switch task.status {
+            case .downloading, .probing, .idle:
+                pause(id: task.id)
+            case .paused, .completed, .failed:
+                break
+            }
+        }
+    }
+
+    /// Resumes all paused/failed/idle tasks among the currently selected tasks.
+    public func resumeSelected() {
+        for task in selectedTasks {
+            switch task.status {
+            case .paused, .failed, .idle:
+                resume(id: task.id)
+            case .downloading, .probing, .completed:
+                break
+            }
+        }
+    }
+
     /// Explicitly loads sample demo tasks into the queue for demonstration and visual testing.
     public func loadDemoSampleTasks() {
         self.tasks = Self.sampleTasks
-        self.selectedTaskId = self.tasks.first?.id
+        if let first = self.tasks.first?.id {
+            self.selectedTaskIDs = [first]
+        }
     }
 
-    /// Prompts the delete confirmation sheet/dialog for the given or selected task.
+    /// Prompts the delete confirmation sheet/dialog for the given task, or the selected tasks if none specified.
     public func promptDelete(task: DownloadTaskModel? = nil) {
-        let target = task ?? selectedTask
-        guard let target else { return }
-        self.taskPendingDeletion = target
+        if let task {
+            self.taskPendingDeletion = task
+            self.tasksPendingDeletion = [task]
+            self.showDeleteConfirmation = true
+        } else {
+            promptDeleteSelected()
+        }
+    }
+
+    /// Sets up delete confirmation for the selected task(s).
+    public func promptDeleteSelected() {
+        let targets = selectedTasks
+        guard !targets.isEmpty else { return }
+        self.tasksPendingDeletion = targets
+        self.taskPendingDeletion = targets.first
         self.showDeleteConfirmation = true
     }
 
-    /// Toggles pause / resume for the currently selected task.
-    public func togglePauseSelected() {
-        guard let selectedTask else { return }
-        switch selectedTask.status {
+    /// Toggles pause / resume for a task with the given ID.
+    public func togglePause(id: UUID) {
+        guard let task = tasks.first(where: { $0.id == id }) else { return }
+        switch task.status {
         case .downloading, .probing:
-            pause(id: selectedTask.id)
+            pause(id: id)
         case .paused, .idle, .failed:
-            resume(id: selectedTask.id)
+            resume(id: id)
         case .completed:
             break
         }
     }
 
-    /// Opens the completed file for the currently selected task.
-    public func openSelectedFile() {
-        guard let selectedTask, selectedTask.status == .completed else { return }
-        openFile(task: selectedTask)
+    /// Toggles pause / resume for the currently selected task(s).
+    public func togglePauseSelected() {
+        let targets = selectedTasks
+        if targets.count > 1 {
+            let hasActive = targets.contains { $0.status == .downloading || $0.status == .probing }
+            if hasActive {
+                pauseSelected()
+            } else {
+                resumeSelected()
+            }
+        } else if let single = targets.first ?? selectedTask {
+            togglePause(id: single.id)
+        }
     }
 
-    /// Reveals the currently selected task's destination in Finder.
+    /// Opens the completed file(s) for the currently selected task(s).
+    public func openSelectedFile() {
+        for task in selectedTasks where task.status == .completed {
+            openFile(task: task)
+        }
+    }
+
+    /// Reveals the currently selected task(s) destination in Finder.
     public func revealSelectedInFinder() {
-        guard let selectedTask else { return }
-        openInFinder(task: selectedTask)
+        let targets = selectedTasks
+        let urls = targets.map(\.destinationURL)
+        if !urls.isEmpty {
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        }
     }
 
     /// Pauses all downloads.
@@ -396,12 +797,25 @@ public final class AppState: ObservableObject {
     /// Updates the global download speed limit preset.
     public func setSpeedLimit(preset: SpeedLimitPreset) {
         self.speedLimitPreset = preset
+        UserDefaults.standard.set(preset.rawValue, forKey: Self.speedLimitPresetKey)
         Task {
             await queueManager.setSpeedLimit(preset.bytesPerSecond)
         }
     }
 
     // MARK: - System & Finder Helpers
+
+    /// Activates HyperFetch and brings all active application windows to the foreground.
+    @MainActor
+    public func bringToFront() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        let keyWindows = NSApp.windows.filter { $0.canBecomeMain || $0.isVisible }
+        for window in keyWindows {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
 
     /// Reveals the downloaded file in macOS Finder.
     public func openInFinder(task: DownloadTaskModel) {
@@ -451,7 +865,7 @@ public final class AppState: ObservableObject {
         self.isAddSheetPresented = true
     }
 
-    private func setupLocalhostBridge() {
+    public func setupLocalhostBridge() {
         localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart, headers in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -466,10 +880,33 @@ public final class AppState: ObservableObject {
 
         Task {
             do {
-                _ = try await localhostBridge.start()
+                let port = try await localhostBridge.start()
+                await MainActor.run {
+                    self.isBridgeRunning = true
+                    self.bridgeListeningPort = port
+                }
             } catch {
                 print("LocalhostBridge failed to start: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isBridgeRunning = self.localhostBridge.isRunning
+                    self.bridgeListeningPort = self.localhostBridge.listeningPort ?? self.localhostBridge.preferredPort
+                }
             }
+        }
+    }
+
+    /// Restarts the localhost bridge if stopped or offline.
+    public func restartLocalhostBridge() {
+        localhostBridge.stop()
+        self.isBridgeRunning = false
+        setupLocalhostBridge()
+    }
+
+    /// Refreshes bridge status indicators from the active listener.
+    public func refreshBridgeStatus() {
+        self.isBridgeRunning = localhostBridge.isRunning
+        if let port = localhostBridge.listeningPort {
+            self.bridgeListeningPort = port
         }
     }
 
@@ -486,6 +923,10 @@ public final class AppState: ObservableObject {
 
     private func handleClipboardDetected(url: URL, filename: String) {
         if autoStartCapturedDownloads {
+            if bringToFrontOnCapture {
+                bringToFront()
+                NSSound(named: "Pop")?.play()
+            }
             addTask(url: url, filename: filename, autoStart: true)
         } else {
             FloatingHUDController.shared.show(url: url, filename: filename, appState: self)
@@ -494,7 +935,15 @@ public final class AppState: ObservableObject {
 
     /// Handles an incoming download from localhost bridge, clipboard, or custom URL scheme.
     public func handleIncomingDownload(url: URL, filename: String?, headers: [String: String] = [:], autoStart: Bool) {
+        if bringToFrontOnCapture {
+            bringToFront()
+            NSSound(named: "Pop")?.play()
+        }
+
         if autoStart || autoStartCapturedDownloads {
+            if sidebarSelection != .status(.all) && sidebarSelection != .status(.active) {
+                sidebarSelection = .status(.active)
+            }
             addTask(url: url, filename: filename, headers: headers, autoStart: true)
         } else {
             let name = filename ?? (url.path as NSString).lastPathComponent
@@ -504,15 +953,13 @@ public final class AppState: ObservableObject {
 
     /// Handles external URLs opened via the custom hyperfetch:// scheme.
     public func handleIncomingURLScheme(_ url: URL) {
+        bringToFront()
+
         guard url.scheme?.lowercased() == "hyperfetch" else { return }
 
         // Format 1: hyperfetch://open (brings app forward)
         let host = url.host?.lowercased()
         if host == "open" || url.path == "/open" {
-            NSApp.activate(ignoringOtherApps: true)
-            for window in NSApp.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
-            }
             return
         }
 
@@ -543,6 +990,11 @@ public final class AppState: ObservableObject {
                 handleIncomingDownload(url: targetURL, filename: filename.isEmpty ? nil : filename, autoStart: true)
             }
         }
+    }
+
+    /// Convenience alias for handleIncomingURLScheme.
+    public func handleURLScheme(_ url: URL) {
+        handleIncomingURLScheme(url)
     }
 
     // MARK: - Formatters
@@ -603,10 +1055,10 @@ public final class AppState: ObservableObject {
 
     private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
         // Detect newly completed tasks to trigger notifications
-        if !isInitialLoad {
+        if !isInitialLoad && showCompletionNotification {
             for task in updatedTasks {
                 if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
-                    notificationManager.sendDownloadCompletedNotification(task: task)
+                    notificationManager.sendDownloadCompletedNotification(task: task, playSound: playCompletionSound)
                 }
             }
         }
@@ -618,8 +1070,12 @@ public final class AppState: ObservableObject {
 
         self.tasks = updatedTasks
 
-        if selectedTaskId == nil || !updatedTasks.contains(where: { $0.id == self.selectedTaskId }) {
-            self.selectedTaskId = updatedTasks.first?.id
+        // Maintain selection validity
+        let validIds = Set(updatedTasks.map(\.id))
+        let previouslyHadSelection = !selectedTaskIDs.isEmpty
+        selectedTaskIDs.formIntersection(validIds)
+        if (isInitialLoad || previouslyHadSelection), selectedTaskIDs.isEmpty, let firstId = updatedTasks.first?.id {
+            selectedTaskIDs = [firstId]
         }
 
         // Update Dock icon badge

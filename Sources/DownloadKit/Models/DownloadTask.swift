@@ -26,6 +26,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public var category: DownloadCategory
     public var bytesPerSecond: Double
     public var headers: [String: String]
+    public var preferredChunkCount: Int?
 
     /// Overall progress of the download, ranging from 0.0 to 1.0.
     public var progress: Double {
@@ -49,7 +50,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         completedAt: Date? = nil,
         category: DownloadCategory? = nil,
         bytesPerSecond: Double = 0.0,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        preferredChunkCount: Int? = nil
     ) {
         self.id = id
         self.url = url
@@ -67,11 +69,13 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.category = category ?? DownloadCategory.category(for: resolvedFilename)
         self.bytesPerSecond = bytesPerSecond
         self.headers = headers
+        self.preferredChunkCount = preferredChunkCount
     }
 
     enum CodingKeys: String, CodingKey {
         case id, url, filename, destinationURL, totalBytes, downloadedBytes
         case status, chunks, supportsRange, createdAt, completedAt, category, bytesPerSecond, headers
+        case preferredChunkCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -90,6 +94,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.category = try container.decode(DownloadCategory.self, forKey: .category)
         self.bytesPerSecond = try container.decode(Double.self, forKey: .bytesPerSecond)
         self.headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+        self.preferredChunkCount = try container.decodeIfPresent(Int.self, forKey: .preferredChunkCount)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -108,5 +113,6 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         try container.encode(category, forKey: .category)
         try container.encode(bytesPerSecond, forKey: .bytesPerSecond)
         try container.encode(headers, forKey: .headers)
+        try container.encodeIfPresent(preferredChunkCount, forKey: .preferredChunkCount)
     }
 }

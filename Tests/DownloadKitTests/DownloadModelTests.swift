@@ -230,7 +230,24 @@ struct DownloadModelTests {
 
         #expect(task.filename == "movie.mp4")
         #expect(task.headers == [:])
+        #expect(task.preferredChunkCount == nil)
         #expect(task.supportsRange == false)
+    }
+
+    @Test("DownloadTaskModel with preferredChunkCount roundtrips via Codable")
+    func testPreferredChunkCountCodable() throws {
+        let task = DownloadTaskModel(
+            url: URL(string: "https://example.com/file.zip")!,
+            filename: "file.zip",
+            preferredChunkCount: 8
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(task)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(DownloadTaskModel.self, from: data)
+
+        #expect(decoded.preferredChunkCount == 8)
     }
 
     @Test("DownloadTaskModel with custom headers preserves headers through Codable")

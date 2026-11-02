@@ -465,4 +465,20 @@ struct QueueManagerTests {
         let totalSnapshots = await collectorTask.value
         #expect(totalSnapshots >= 2) // Initial empty/added + progress/completion
     }
+
+    @Test("QueueManager addTask forwards preferredChunkCount to DownloadTaskModel")
+    func testAddTaskForwardsPreferredChunkCount() async throws {
+        let queueManager = QueueManager()
+        let url = URL(string: "https://example.com/custom_chunks.zip")!
+
+        let task = try await queueManager.addTask(
+            url: url,
+            preferredChunkCount: 16,
+            autoStart: false
+        )
+
+        #expect(task.preferredChunkCount == 16)
+        let queuedTask = await queueManager.task(for: task.id)
+        #expect(queuedTask?.preferredChunkCount == 16)
+    }
 }

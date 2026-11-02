@@ -19,9 +19,22 @@ public struct DownloadRowView: View {
     }
 
     public var body: some View {
-        let isSelected = (appState.selectedTaskId == task.id)
+        let isSelected = appState.selectedTaskIDs.contains(task.id)
 
         HStack(spacing: 12) {
+            // Row-level selection checkbox
+            Button {
+                appState.toggleSelection(id: task.id)
+            } label: {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 18, height: 18)
+                    .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isSelected ? "Deselect" : "Select")
+
             // File Icon
             fileTypeIcon
                 .frame(width: 38, height: 38)
@@ -53,6 +66,14 @@ public struct DownloadRowView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            if task.status == .completed {
+                appState.openFile(task: task)
+            } else {
+                appState.togglePause(id: task.id)
+            }
+        }
+        .modifier(DragCompletedModifier(task: task))
     }
 
     // MARK: - Subviews
@@ -274,9 +295,16 @@ public struct DownloadRowView: View {
             .foregroundStyle(baseColor)
 
         case .failed(let reason):
-            Text(reason)
-                .font(.caption)
-                .foregroundStyle(isSelected ? Color.white : Color.red)
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                Text(reason)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .font(.caption)
+            .foregroundStyle(isSelected ? Color.white : Color.red)
+            .help(reason)
 
         case .idle:
             Text("Waiting in queue...")
@@ -297,10 +325,19 @@ public struct DownloadRowView: View {
                     appState.pause(id: task.id)
                 }
 
-            case .paused, .idle, .failed:
+            case .paused, .idle:
                 QuickActionButton(
                     icon: "play.fill",
                     help: "Resume Download",
+                    isSelected: isSelected
+                ) {
+                    appState.resume(id: task.id)
+                }
+
+            case .failed:
+                QuickActionButton(
+                    icon: "arrow.clockwise",
+                    help: "Retry Download",
                     isSelected: isSelected
                 ) {
                     appState.resume(id: task.id)
@@ -374,5 +411,19 @@ private struct QuickActionButton: View {
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .help(help)
+    }
+}
+
+private struct DragCompletedModifier: ViewModifier {
+    let task: DownloadTaskModel
+
+    func body(content: Content) -> some View {
+        if task.status == .completed {
+            content.onDrag {
+                NSItemProvider(contentsOf: task.destinationURL) ?? NSItemProvider()
+            }
+        } else {
+            content
+        }
     }
 }
