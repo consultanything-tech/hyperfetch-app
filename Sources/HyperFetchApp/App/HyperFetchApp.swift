@@ -40,6 +40,9 @@ struct HyperFetchApp: App {
             MainWindow()
                 .environmentObject(appState)
                 .frame(minWidth: 850, minHeight: 550)
+                .onOpenURL { url in
+                    appState.handleIncomingURLScheme(url)
+                }
         }
         .defaultSize(width: 950, height: 600)
         .windowResizability(.contentMinSize)
@@ -76,6 +79,11 @@ struct HyperFetchApp: App {
                         }
                     }
                 }
+
+                Divider()
+
+                Toggle("Auto-Capture Clipboard Links", isOn: $appState.autoCaptureClipboard)
+                Toggle("Auto-Start Captured Downloads (Bypass HUD)", isOn: $appState.autoStartCapturedDownloads)
             }
         }
 

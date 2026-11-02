@@ -216,7 +216,16 @@ public struct AddDownloadSheet: View {
         .padding(22)
         .frame(width: 520, height: 490)
         .onAppear {
-            autoPopulateFromClipboard()
+            if !appState.prefilledURL.isEmpty {
+                urlString = appState.prefilledURL
+                appState.prefilledURL = ""
+                if !appState.prefilledFilename.isEmpty {
+                    customFilename = appState.prefilledFilename
+                    appState.prefilledFilename = ""
+                }
+            } else {
+                autoPopulateFromClipboard()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isURLFocused = true
             }

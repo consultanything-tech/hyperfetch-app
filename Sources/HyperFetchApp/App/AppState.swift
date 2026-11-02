@@ -113,19 +113,47 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Whether HyperFetch automatically monitors the macOS pasteboard for copied file links.
+    @Published public var autoCaptureClipboard: Bool = true {
+        didSet {
+            if autoCaptureClipboard {
+                clipboardMonitor.start()
+            } else {
+                clipboardMonitor.stop()
+            }
+        }
+    }
+
+    /// When true, captured downloads start immediately without showing the Floating Quick-Add HUD.
+    @Published public var autoStartCapturedDownloads: Bool = false
+
+    /// Prefilled URL when presenting AddDownloadSheet via HUD customize or external call.
+    @Published public var prefilledURL: String = ""
+
+    /// Prefilled filename when presenting AddDownloadSheet.
+    @Published public var prefilledFilename: String = ""
+
     public let queueManager: QueueManager
     public let notificationManager = NotificationManager.shared
+    public let localhostBridge: LocalhostBridge
+    public let clipboardMonitor: ClipboardMonitor
 
     private var updatesTask: Task<Void, Never>?
     private var previouslyCompletedTaskIds: Set<UUID> = []
 
-    public init(queueManager: QueueManager? = nil) {
+    public init(
+        queueManager: QueueManager? = nil,
+        localhostBridge: LocalhostBridge? = nil,
+        clipboardMonitor: ClipboardMonitor? = nil
+    ) {
         let qm = queueManager ?? QueueManager(
             statePersister: JSONStatePersister(),
             rateLimiter: TokenBucketRateLimiter(bytesPerSecond: 0),
             maxConcurrentDownloads: 4
         )
         self.queueManager = qm
+        self.localhostBridge = localhostBridge ?? LocalhostBridge()
+        self.clipboardMonitor = clipboardMonitor ?? ClipboardMonitor.shared
 
         notificationManager.requestAuthorization()
 
@@ -137,10 +165,19 @@ public final class AppState: ObservableObject {
 
         // Start listening to the QueueManager stream
         startListeningToQueue()
+
+        // Setup background bridges and clipboard monitoring
+        setupLocalhostBridge()
+        setupClipboardMonitor()
     }
 
     deinit {
         updatesTask?.cancel()
+        localhostBridge.stop()
+        let monitor = clipboardMonitor
+        Task { @MainActor in
+            monitor.stop()
+        }
     }
 
     // MARK: - Computed Properties
@@ -400,6 +437,108 @@ public final class AppState: ObservableObject {
             return nil
         }
         return url
+    }
+
+    // MARK: - Download Catching & Integration
+
+    /// Presents the Add Download sheet pre-filled with the specified URL and optional filename.
+    public func presentAddSheet(url: String = "", filename: String = "") {
+        self.prefilledURL = url
+        self.prefilledFilename = filename
+        self.isAddSheetPresented = true
+    }
+
+    private func setupLocalhostBridge() {
+        localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.handleIncomingDownload(
+                    url: url,
+                    filename: filename,
+                    autoStart: autoStart || self.autoStartCapturedDownloads
+                )
+            }
+        }
+
+        Task {
+            do {
+                _ = try await localhostBridge.start()
+            } catch {
+                print("LocalhostBridge failed to start: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func setupClipboardMonitor() {
+        clipboardMonitor.onDetected = { [weak self] url, filename in
+            guard let self, self.autoCaptureClipboard else { return }
+            self.handleClipboardDetected(url: url, filename: filename)
+        }
+
+        if autoCaptureClipboard {
+            clipboardMonitor.start()
+        }
+    }
+
+    private func handleClipboardDetected(url: URL, filename: String) {
+        if autoStartCapturedDownloads {
+            addTask(url: url, filename: filename, autoStart: true)
+        } else {
+            FloatingHUDController.shared.show(url: url, filename: filename, appState: self)
+        }
+    }
+
+    /// Handles an incoming download from localhost bridge, clipboard, or custom URL scheme.
+    public func handleIncomingDownload(url: URL, filename: String?, autoStart: Bool) {
+        if autoStart || autoStartCapturedDownloads {
+            addTask(url: url, filename: filename, autoStart: true)
+        } else {
+            let name = filename ?? (url.path as NSString).lastPathComponent
+            FloatingHUDController.shared.show(url: url, filename: name.isEmpty ? "download" : name, appState: self)
+        }
+    }
+
+    /// Handles external URLs opened via the custom hyperfetch:// scheme.
+    public func handleIncomingURLScheme(_ url: URL) {
+        guard url.scheme?.lowercased() == "hyperfetch" else { return }
+
+        // Format 1: hyperfetch://open (brings app forward)
+        let host = url.host?.lowercased()
+        if host == "open" || url.path == "/open" {
+            NSApp.activate(ignoringOtherApps: true)
+            for window in NSApp.windows where window.canBecomeMain {
+                window.makeKeyAndOrderFront(nil)
+            }
+            return
+        }
+
+        // Format 2: hyperfetch://add?url=... or hyperfetch://download?url=...
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            if let targetURLString = components.queryItems?.first(where: { $0.name.lowercased() == "url" })?.value,
+               let targetURL = URL(string: targetURLString),
+               let targetScheme = targetURL.scheme?.lowercased(),
+               (targetScheme == "http" || targetScheme == "https") {
+                let filename = components.queryItems?.first(where: { $0.name.lowercased() == "filename" })?.value
+                let autoStart = components.queryItems?.first(where: { $0.name.lowercased() == "autostart" })?.value.map { $0.lowercased() != "false" && $0 != "0" } ?? true
+
+                handleIncomingDownload(url: targetURL, filename: filename, autoStart: autoStart)
+                return
+            }
+        }
+
+        // Format 3: hyperfetch://https://example.com/file.dmg
+        let raw = url.absoluteString
+        let prefix = "hyperfetch://"
+        if raw.lowercased().hasPrefix(prefix) {
+            let remainder = String(raw.dropFirst(prefix.count))
+            let normalized = (remainder.hasPrefix("http://") || remainder.hasPrefix("https://")) ? remainder : "https://\(remainder)"
+            if let targetURL = URL(string: normalized),
+               let targetScheme = targetURL.scheme?.lowercased(),
+               (targetScheme == "http" || targetScheme == "https") {
+                let filename = (targetURL.path as NSString).lastPathComponent
+                handleIncomingDownload(url: targetURL, filename: filename.isEmpty ? nil : filename, autoStart: true)
+            }
+        }
     }
 
     // MARK: - Formatters
