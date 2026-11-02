@@ -11,11 +11,12 @@ import DownloadKit
 /// Primary application window structure featuring a 3-column NavigationSplitView and full toolbar.
 public struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
+    @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init() {}
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } content: {
@@ -35,6 +36,9 @@ public struct MainWindow: View {
         .sheet(isPresented: $appState.isAddSheetPresented) {
             AddDownloadSheet()
         }
+        .background {
+            keyboardShortcutTriggers
+        }
         .onAppear {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -46,6 +50,7 @@ public struct MainWindow: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            // Prominent Add Download button
             Button {
                 appState.isAddSheetPresented = true
             } label: {
@@ -54,24 +59,26 @@ public struct MainWindow: View {
             .help("Add New Download (⌘N)")
             .keyboardShortcut("n", modifiers: .command)
 
-            Divider()
+            // Pause All / Resume All grouped nicely
+            ControlGroup {
+                Button {
+                    appState.pauseAll()
+                } label: {
+                    Label("Pause All", systemImage: "pause.fill")
+                }
+                .help("Pause All Downloads")
+                .disabled(appState.activeDownloadCount == 0)
 
-            Button {
-                appState.pauseAll()
-            } label: {
-                Label("Pause All", systemImage: "pause.circle")
+                Button {
+                    appState.resumeAll()
+                } label: {
+                    Label("Resume All", systemImage: "play.fill")
+                }
+                .help("Resume All Downloads")
+                .disabled(appState.pausedDownloadCount == 0)
             }
-            .help("Pause All Downloads")
 
-            Button {
-                appState.resumeAll()
-            } label: {
-                Label("Resume All", systemImage: "play.circle")
-            }
-            .help("Resume All Downloads")
-
-            Divider()
-
+            // Speed Limit picker styled with speed indicator
             Menu {
                 ForEach(SpeedLimitPreset.allCases) { preset in
                     Button {
@@ -86,9 +93,62 @@ public struct MainWindow: View {
                     }
                 }
             } label: {
-                Label("Speed Limit", systemImage: "gauge.with.needle")
+                HStack(spacing: 4) {
+                    Image(systemName: "gauge.with.needle.fill")
+                        .foregroundStyle(appState.speedLimitPreset == .unlimited ? Color.secondary : Color.orange)
+                    Text(appState.speedLimitPreset == .unlimited ? "Speed Limit" : appState.speedLimitPreset.rawValue)
+                        .font(.system(size: 12))
+                }
             }
-            .help("Download Speed Limiter")
+            .help("Bandwidth Throttling / Speed Limiter")
+
+            // Inspector toggle button
+            Button {
+                toggleDetailPane()
+            } label: {
+                Image(systemName: "sidebar.trailing")
+            }
+            .help("Toggle Details Inspector")
+        }
+    }
+
+    // MARK: - Keyboard Shortcuts
+
+    @ViewBuilder
+    private var keyboardShortcutTriggers: some View {
+        Group {
+            Button("Toggle Pause") {
+                appState.togglePauseSelected()
+            }
+            .keyboardShortcut(.space, modifiers: [])
+
+            Button("Delete Selected") {
+                appState.promptDelete()
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+
+            Button("Reveal in Finder") {
+                appState.revealSelectedInFinder()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+
+            Button("Open Completed") {
+                appState.openSelectedFile()
+            }
+            .keyboardShortcut("o", modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .frame(width: 0, height: 0)
+    }
+
+    private func toggleDetailPane() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if columnVisibility == .all {
+                columnVisibility = .doubleColumn
+            } else {
+                columnVisibility = .all
+            }
         }
     }
 
@@ -207,12 +267,14 @@ public struct MainWindow: View {
                     Text("File Size:")
                         .foregroundStyle(.secondary)
                     Text(AppState.formatBytes(task.totalBytes))
+                        .monospacedDigit()
                 }
 
                 GridRow {
                     Text("Downloaded:")
                         .foregroundStyle(.secondary)
                     Text("\(AppState.formatBytes(task.downloadedBytes)) (\(Int(task.progress * 100))%)")
+                        .monospacedDigit()
                 }
 
                 if task.status == .downloading {
@@ -221,6 +283,7 @@ public struct MainWindow: View {
                             .foregroundStyle(.secondary)
                         Text(AppState.formatSpeed(task.bytesPerSecond))
                             .foregroundStyle(.blue)
+                            .monospacedDigit()
                     }
                 }
 

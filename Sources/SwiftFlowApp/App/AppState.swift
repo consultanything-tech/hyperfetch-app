@@ -34,6 +34,21 @@ public enum StatusFilter: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Unified navigation item representing a selectable sidebar destination.
+public enum SidebarItem: Hashable, Identifiable, Sendable {
+    case status(StatusFilter)
+    case category(DownloadCategory)
+
+    public var id: String {
+        switch self {
+        case .status(let filter):
+            return "status_\(filter.rawValue)"
+        case .category(let category):
+            return "category_\(category.rawValue)"
+        }
+    }
+}
+
 /// Bandwidth throttling preset.
 public enum SpeedLimitPreset: String, CaseIterable, Identifiable, Sendable {
     case unlimited = "Unlimited"
@@ -61,12 +76,42 @@ public enum SpeedLimitPreset: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 public final class AppState: ObservableObject {
     @Published public var tasks: [DownloadTaskModel] = []
-    @Published public var selectedCategory: DownloadCategory? = nil
-    @Published public var statusFilter: StatusFilter = .all
+    @Published public var sidebarSelection: SidebarItem? = .status(.all)
     @Published public var searchText: String = ""
     @Published public var speedLimitPreset: SpeedLimitPreset = .unlimited
     @Published public var isAddSheetPresented: Bool = false
     @Published public var selectedTaskId: UUID? = nil
+    @Published public var taskPendingDeletion: DownloadTaskModel? = nil
+    @Published public var showDeleteConfirmation: Bool = false
+
+    /// Backward compatibility accessors for statusFilter and selectedCategory
+    public var statusFilter: StatusFilter {
+        get {
+            if case .status(let filter) = sidebarSelection {
+                return filter
+            }
+            return .all
+        }
+        set {
+            sidebarSelection = .status(newValue)
+        }
+    }
+
+    public var selectedCategory: DownloadCategory? {
+        get {
+            if case .category(let category) = sidebarSelection {
+                return category
+            }
+            return nil
+        }
+        set {
+            if let newValue {
+                sidebarSelection = .category(newValue)
+            } else {
+                sidebarSelection = .status(.all)
+            }
+        }
+    }
 
     public let queueManager: QueueManager
     public let notificationManager = NotificationManager.shared
@@ -106,35 +151,41 @@ public final class AppState: ObservableObject {
         return tasks.first(where: { $0.id == selectedTaskId })
     }
 
-    /// Tasks filtered by the current status filter, category, and search query.
+    /// Tasks filtered by the current sidebar selection (status filter or category) and search query.
     public var filteredTasks: [DownloadTaskModel] {
         tasks.filter { task in
-            // 1. Status Filter
-            let matchesStatus: Bool
-            switch statusFilter {
-            case .all:
-                matchesStatus = true
-            case .active:
-                matchesStatus = (task.status == .downloading || task.status == .probing || task.status == .idle)
-            case .completed:
-                matchesStatus = (task.status == .completed)
-            case .paused:
-                matchesStatus = (task.status == .paused)
-            case .failed:
-                if case .failed = task.status {
+            // 1. Sidebar Selection (Status or Category)
+            switch sidebarSelection {
+            case .status(let filter):
+                let matchesStatus: Bool
+                switch filter {
+                case .all:
                     matchesStatus = true
-                } else {
-                    matchesStatus = false
+                case .active:
+                    matchesStatus = (task.status == .downloading || task.status == .probing || task.status == .idle)
+                case .completed:
+                    matchesStatus = (task.status == .completed)
+                case .paused:
+                    matchesStatus = (task.status == .paused)
+                case .failed:
+                    if case .failed = task.status {
+                        matchesStatus = true
+                    } else {
+                        matchesStatus = false
+                    }
                 }
-            }
-            guard matchesStatus else { return false }
+                guard matchesStatus else { return false }
 
-            // 2. Category Filter
-            if let selectedCategory, selectedCategory != .all {
-                guard task.category == selectedCategory else { return false }
+            case .category(let category):
+                if category != .all {
+                    guard task.category == category else { return false }
+                }
+
+            case nil:
+                break
             }
 
-            // 3. Search Query
+            // 2. Search Query
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !query.isEmpty {
                 let matchesName = task.filename.localizedCaseInsensitiveContains(query)
@@ -253,6 +304,39 @@ public final class AppState: ObservableObject {
         Task {
             try? await queueManager.removeTask(id: id, deleteFile: deleteFile)
         }
+    }
+
+    /// Prompts the delete confirmation sheet/dialog for the given or selected task.
+    public func promptDelete(task: DownloadTaskModel? = nil) {
+        let target = task ?? selectedTask
+        guard let target else { return }
+        self.taskPendingDeletion = target
+        self.showDeleteConfirmation = true
+    }
+
+    /// Toggles pause / resume for the currently selected task.
+    public func togglePauseSelected() {
+        guard let selectedTask else { return }
+        switch selectedTask.status {
+        case .downloading, .probing:
+            pause(id: selectedTask.id)
+        case .paused, .idle, .failed:
+            resume(id: selectedTask.id)
+        case .completed:
+            break
+        }
+    }
+
+    /// Opens the completed file for the currently selected task.
+    public func openSelectedFile() {
+        guard let selectedTask, selectedTask.status == .completed else { return }
+        openFile(task: selectedTask)
+    }
+
+    /// Reveals the currently selected task's destination in Finder.
+    public func revealSelectedInFinder() {
+        guard let selectedTask else { return }
+        openInFinder(task: selectedTask)
     }
 
     /// Pauses all downloads.

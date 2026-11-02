@@ -9,9 +9,6 @@ import DownloadKit
 /// Main list displaying filtered download tasks with context menus and empty state handling.
 public struct DownloadListView: View {
     @EnvironmentObject private var appState: AppState
-    @ViewState private var taskPendingDeletion: DownloadTaskModel? = nil
-    @ViewState private var shouldDeleteDiskFile = false
-    @ViewState private var showDeleteConfirmation = false
 
     public init() {}
 
@@ -25,8 +22,8 @@ public struct DownloadListView: View {
         }
         .confirmationDialog(
             "Delete Download?",
-            isPresented: $showDeleteConfirmation,
-            presenting: taskPendingDeletion
+            isPresented: $appState.showDeleteConfirmation,
+            presenting: appState.taskPendingDeletion
         ) { task in
             Button("Remove from List", role: .destructive) {
                 appState.remove(id: task.id, deleteFile: false)
@@ -43,10 +40,16 @@ public struct DownloadListView: View {
     // MARK: - Subviews
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: emptyStateIcon)
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary.opacity(0.6))
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 84, height: 84)
+
+                Image(systemName: emptyStateIcon)
+                    .font(.system(size: 40, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
 
             VStack(spacing: 6) {
                 Text(emptyStateTitle)
@@ -56,6 +59,7 @@ public struct DownloadListView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
             }
 
             Button {
@@ -66,6 +70,7 @@ public struct DownloadListView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .keyboardShortcut("n", modifiers: .command)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(32)
@@ -116,8 +121,7 @@ public struct DownloadListView: View {
         }
 
         Button("Delete File from Disk...", role: .destructive) {
-            taskPendingDeletion = task
-            showDeleteConfirmation = true
+            appState.promptDelete(task: task)
         }
     }
 
@@ -161,6 +165,6 @@ public struct DownloadListView: View {
         if !appState.searchText.isEmpty {
             return "No downloads match your query '\(appState.searchText)'."
         }
-        return "Click '+' or paste a URL to start downloading with multi-chunk acceleration."
+        return "Click '+' or press ⌘N to start downloading with multi-chunk acceleration."
     }
 }

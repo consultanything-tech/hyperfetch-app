@@ -9,41 +9,52 @@ import DownloadKit
 /// Sidebar navigation view organizing downloads by lifecycle status and file categories.
 public struct SidebarView: View {
     @EnvironmentObject private var appState: AppState
+    @ViewState private var isPulsing: Bool = false
 
     public init() {}
 
     public var body: some View {
-        List {
+        List(selection: $appState.sidebarSelection) {
             // Status Filters Section
             Section("Downloads") {
                 ForEach(StatusFilter.allCases) { filter in
-                    NavigationLink(
-                        value: filter,
-                        label: {
-                            HStack {
-                                Label(filter.rawValue, systemImage: filter.iconName)
-                                    .foregroundStyle(statusColor(for: filter))
-
-                                Spacer()
-
-                                Text("\(appState.count(for: filter))")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.secondary.opacity(0.12), in: Capsule())
-                            }
+                    let item = SidebarItem.status(filter)
+                    let isSelected = (appState.sidebarSelection == item)
+                    HStack {
+                        Label {
+                            Text(filter.rawValue)
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                        } icon: {
+                            Image(systemName: filter.iconName)
+                                .foregroundStyle(statusColor(for: filter))
                         }
-                    )
+
+                        Spacer()
+
+                        Text("\(appState.count(for: filter))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.12))
+                            )
+                    }
+                    .tag(item)
                 }
             }
 
             // Categories Section
             Section("Categories") {
                 ForEach(contentCategories, id: \.self) { category in
+                    let item = SidebarItem.category(category)
+                    let isSelected = (appState.sidebarSelection == item)
                     HStack {
                         Label {
                             Text(category.rawValue)
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                         } icon: {
                             Image(systemName: iconName(for: category))
                                 .foregroundStyle(color(for: category))
@@ -52,25 +63,17 @@ public struct SidebarView: View {
                         Spacer()
 
                         Text("\(appState.count(for: category))")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.12))
+                            )
                     }
-                    .contentShape(Rectangle())
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(appState.selectedCategory == category ? Color.accentColor.opacity(0.15) : Color.clear)
-                    )
-                    .onTapGesture {
-                        if appState.selectedCategory == category {
-                            appState.selectedCategory = nil
-                        } else {
-                            appState.selectedCategory = category
-                        }
-                    }
+                    .tag(item)
                 }
             }
         }
@@ -87,17 +90,40 @@ public struct SidebarView: View {
     }
 
     private var bandwidthFootnote: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 8) {
-                Image(systemName: appState.activeDownloadCount > 0 ? "arrow.down.circle.fill" : "arrow.down.circle")
-                    .foregroundStyle(appState.activeDownloadCount > 0 ? Color.blue : Color.secondary)
-                    .imageScale(.medium)
+            HStack(spacing: 10) {
+                // Live pulsing mini indicator dot when downloads are active
+                ZStack {
+                    if appState.activeDownloadCount > 0 {
+                        Circle()
+                            .fill(Color.blue.opacity(0.35))
+                            .frame(width: 14, height: 14)
+                            .scaleEffect(isPulsing ? 1.5 : 1.0)
+                            .opacity(isPulsing ? 0.0 : 0.8)
+                            .animation(.easeOut(duration: 1.2).repeatForever(autoreverses: false), value: isPulsing)
+
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 8, height: 8)
+                    } else {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.4))
+                            .frame(width: 8, height: 8)
+                    }
+                }
+                .frame(width: 16, height: 16)
+                .onAppear {
+                    isPulsing = true
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(appState.formattedTotalSpeed)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    Text("\(appState.activeDownloadCount) active downloads")
+                        .monospacedDigit()
+                    Text(appState.activeDownloadCount > 0
+                         ? "\(appState.activeDownloadCount) active download\(appState.activeDownloadCount == 1 ? "" : "s")"
+                         : "All downloads idle")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

@@ -25,7 +25,7 @@ let package = Package(
             name: "SwiftFlowApp",
             dependencies: ["DownloadKit"],
             path: "Sources/SwiftFlowApp",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist", "Resources"]
         ),
         .testTarget(
             name: "DownloadKitTests",

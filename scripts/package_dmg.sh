@@ -41,9 +41,13 @@ echo "==> Copying binary..."
 cp "$PROJECT_ROOT/.build/release/SwiftFlowApp" "$APP_BUNDLE/Contents/MacOS/SwiftFlowApp"
 chmod +x "$APP_BUNDLE/Contents/MacOS/SwiftFlowApp"
 
-# 4. Copy Info.plist
-echo "==> Copying Info.plist..."
+# 4. Copy Info.plist and AppIcon
+echo "==> Copying Info.plist and Resources..."
 cp "$PROJECT_ROOT/Sources/SwiftFlowApp/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+if [ -f "$PROJECT_ROOT/Sources/SwiftFlowApp/Resources/AppIcon.icns" ]; then
+    echo "==> Copying AppIcon.icns..."
+    cp "$PROJECT_ROOT/Sources/SwiftFlowApp/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+fi
 
 # 5. Create PkgInfo with APPL????
 echo "==> Creating PkgInfo..."
@@ -63,6 +67,16 @@ rm -rf "$DMG_STAGING"
 mkdir -p "$DMG_STAGING"
 cp -R "$APP_BUNDLE" "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
+
+# Set DMG volume icon if AppIcon.icns exists
+if [ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]; then
+    echo "==> Setting DMG volume icon..."
+    cp "$APP_BUNDLE/Contents/Resources/AppIcon.icns" "$DMG_STAGING/.VolumeIcon.icns"
+    if command -v SetFile &>/dev/null; then
+        SetFile -c icnC "$DMG_STAGING/.VolumeIcon.icns" || true
+        SetFile -a C "$DMG_STAGING" || true
+    fi
+fi
 
 # 8. Generate DMG using hdiutil create
 echo "==> Creating DMG..."
