@@ -91,18 +91,46 @@ public enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable 
     case general = "General"
     case automation = "Automation"
     case browser = "Browser"
+    case updates = "Updates"
 
     public var id: String { rawValue }
+}
+
+/// Application color theme appearance setting.
+public enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
+    case system = "System"
+    case dark = "Dark"
+    case light = "Light"
+
+    public var id: String { rawValue }
+
+    public var iconName: String {
+        switch self {
+        case .system: return "circle.righthalf.filled"
+        case .dark: return "moon.fill"
+        case .light: return "sun.max.fill"
+        }
+    }
 }
 
 /// Central application state managing download tasks, user selections, and system integrations.
 @MainActor
 public final class AppState: ObservableObject {
-    @Published public var tasks: [DownloadTaskModel] = []
-    @Published public var sidebarSelection: SidebarItem? = .status(.all)
-    @Published public var searchText: String = ""
+    @Published public var tasks: [DownloadTaskModel] = [] {
+        didSet { _cachedFilteredTasks = nil }
+    }
+    @Published public var sidebarSelection: SidebarItem? = .status(.all) {
+        didSet {
+            _cachedFilteredTasks = nil
+            NSLog("🎯 [HyperFetch] sidebarSelection changed to: %@", String(describing: sidebarSelection))
+        }
+    }
+    @Published public var searchText: String = "" {
+        didSet { _cachedFilteredTasks = nil }
+    }
     @Published public var speedLimitPreset: SpeedLimitPreset = .unlimited
     @Published public var selectedSettingsTab: SettingsTab = .general
+    public var openSettingsHandler: (@MainActor () -> Void)?
     @Published public var isBridgeRunning: Bool = false
     @Published public var bridgeListeningPort: UInt16 = 31415
     @Published public var isAddSheetPresented: Bool = false
@@ -113,17 +141,30 @@ public final class AppState: ObservableObject {
     @Published public var sortOption: SortOption {
         didSet {
             UserDefaults.standard.set(sortOption.rawValue, forKey: Self.sortOptionKey)
+            _cachedFilteredTasks = nil
         }
     }
+    @Published public var appearanceMode: AppearanceMode {
+        didSet {
+            UserDefaults.standard.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
+            applyAppearance()
+        }
+    }
+
+    private var _cachedFilteredTasks: [DownloadTaskModel]?
 
     /// Backward compatibility accessor for single-task selection.
     public var selectedTaskId: UUID? {
         get { selectedTaskIDs.first }
         set {
             if let newValue {
-                selectedTaskIDs = [newValue]
+                if selectedTaskIDs != [newValue] {
+                    selectedTaskIDs = [newValue]
+                }
             } else {
-                selectedTaskIDs = []
+                if !selectedTaskIDs.isEmpty {
+                    selectedTaskIDs = []
+                }
             }
         }
     }
@@ -166,6 +207,7 @@ public final class AppState: ObservableObject {
     private static let defaultDownloadDirectoryKey = "com.hyperfetch.defaultDownloadDirectory"
     private static let defaultChunkCountKey = "com.hyperfetch.defaultChunkCount"
     private static let sortOptionKey = "com.hyperfetch.sortOption"
+    private static let appearanceModeKey = "com.hyperfetch.appearanceMode"
     private static let maxConcurrentDownloadsKey = "com.hyperfetch.maxConcurrentDownloads"
     private static let speedLimitPresetKey = "com.hyperfetch.speedLimitPreset"
     private static let autoCaptureClipboardKey = "com.hyperfetch.autoCaptureClipboard"
@@ -233,7 +275,13 @@ public final class AppState: ObservableObject {
     public var extensionDirectoryURL: URL {
         let fileManager = FileManager.default
 
-        // 1. Check relative to source repo via #filePath (development / debug builds)
+        // 1. Check App Bundle Resources (production packaged builds)
+        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("extensions/chrome"),
+           fileManager.fileExists(atPath: resourceURL.path) {
+            return resourceURL
+        }
+
+        // 2. Check relative to source repo via #filePath (development / debug builds)
         let sourceBase = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // App
             .deletingLastPathComponent() // HyperFetchApp
@@ -244,16 +292,10 @@ public final class AppState: ObservableObject {
             return sourceBase
         }
 
-        // 2. Check current working directory
+        // 3. Check current working directory
         let cwdPath = URL(fileURLWithPath: fileManager.currentDirectoryPath).appendingPathComponent("extensions/chrome")
         if fileManager.fileExists(atPath: cwdPath.path) {
             return cwdPath
-        }
-
-        // 3. Check App Bundle Resources
-        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("extensions/chrome"),
-           fileManager.fileExists(atPath: resourceURL.path) {
-            return resourceURL
         }
 
         // 4. Check sibling to App bundle
@@ -304,6 +346,7 @@ public final class AppState: ObservableObject {
 
     private var updatesTask: Task<Void, Never>?
     private var previouslyCompletedTaskIds: Set<UUID> = []
+    nonisolated(unsafe) private var themeObserver: (any NSObjectProtocol)?
 
     public init(
         queueManager: QueueManager? = nil,
@@ -356,6 +399,13 @@ public final class AppState: ObservableObject {
             self.sortOption = .dateNewest
         }
 
+        if let savedAppearance = UserDefaults.standard.string(forKey: Self.appearanceModeKey),
+           let mode = AppearanceMode(rawValue: savedAppearance) {
+            self.appearanceMode = mode
+        } else {
+            self.appearanceMode = .system
+        }
+
         let speedBytes = initialSpeed.bytesPerSecond
         let qm = queueManager ?? QueueManager(
             statePersister: JSONStatePersister(),
@@ -381,14 +431,74 @@ public final class AppState: ObservableObject {
         // Setup background bridges and clipboard monitoring
         setupLocalhostBridge()
         setupClipboardMonitor()
+        applyAppearance()
+
+        HyperFetchServiceProvider.shared.appState = self
+
+        // Observe system theme changes for .system appearance mode
+        themeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.appearanceMode == .system else { return }
+                self.objectWillChange.send()
+                self.applyAppearance()
+            }
+        }
     }
 
     deinit {
         updatesTask?.cancel()
         localhostBridge.stop()
+        if let themeObserver {
+            DistributedNotificationCenter.default().removeObserver(themeObserver)
+        }
         let monitor = clipboardMonitor
         Task { @MainActor in
             monitor.stop()
+        }
+    }
+
+    // MARK: - Appearance Management
+
+    /// Determines whether the host macOS system interface is currently in Dark Mode.
+    public var isSystemDark: Bool {
+        if let style = CFPreferencesCopyAppValue("AppleInterfaceStyle" as CFString, kCFPreferencesAnyApplication) as? String {
+            return style.caseInsensitiveCompare("dark") == .orderedSame
+        }
+        return false
+    }
+
+    public var preferredColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .system:
+            return isSystemDark ? .dark : .light
+        case .dark:
+            return .dark
+        case .light:
+            return .light
+        }
+    }
+
+    public func applyAppearance() {
+        let targetAppearance: NSAppearance?
+        switch appearanceMode {
+        case .system:
+            targetAppearance = isSystemDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
+        case .dark:
+            targetAppearance = NSAppearance(named: .darkAqua)
+        case .light:
+            targetAppearance = NSAppearance(named: .aqua)
+        }
+
+        NSApp.appearance = targetAppearance
+        for window in NSApp.windows {
+            window.appearance = targetAppearance
+            window.invalidateShadow()
+            window.viewsNeedDisplay = true
+            window.contentView?.needsDisplay = true
         }
     }
 
@@ -464,6 +574,15 @@ public final class AppState: ObservableObject {
 
     /// Tasks filtered by the current sidebar selection (status filter or category), search query, and sort option.
     public var filteredTasks: [DownloadTaskModel] {
+        if let cached = _cachedFilteredTasks {
+            return cached
+        }
+        let computed = computeFilteredTasks()
+        _cachedFilteredTasks = computed
+        return computed
+    }
+
+    private func computeFilteredTasks() -> [DownloadTaskModel] {
         let filtered = tasks.filter { task in
             // 1. Sidebar Selection (Status or Category)
             switch sidebarSelection {
@@ -575,6 +694,48 @@ public final class AppState: ObservableObject {
     /// Count of paused tasks.
     public var pausedDownloadCount: Int {
         tasks.filter { $0.status == .paused }.count
+    }
+
+    /// Count of currently open TCP connections across active chunk streams.
+    public var activeSocketCount: Int {
+        let activeChunks = tasks.filter { $0.status == .downloading }.reduce(0) { sum, task in
+            let active = task.chunks.filter { $0.status == .downloading }.count
+            return sum + (active > 0 ? active : (task.status == .downloading ? 1 : 0))
+        }
+        return activeChunks
+    }
+
+    /// Current resident application memory usage in megabytes.
+    public var allocatedMemoryMB: Int {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if kerr == KERN_SUCCESS {
+            return max(16, Int(info.resident_size / (1024 * 1024)))
+        }
+        return 48
+    }
+
+    /// Total bytes downloaded today across all completed and active tasks.
+    public var totalDownloadedTodayBytes: Int64 {
+        let calendar = Calendar.current
+        return tasks.reduce(0) { sum, task in
+            if let completedAt = task.completedAt, calendar.isDateInToday(completedAt) {
+                return sum + task.downloadedBytes
+            } else if calendar.isDateInToday(task.createdAt) {
+                return sum + task.downloadedBytes
+            }
+            return sum
+        }
+    }
+
+    /// Formatted total bytes downloaded today.
+    public var formattedTotalDownloadedToday: String {
+        Self.formatBytes(totalDownloadedTodayBytes)
     }
 
     /// Returns the task count for a given status filter.
@@ -708,13 +869,6 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Explicitly loads sample demo tasks into the queue for demonstration and visual testing.
-    public func loadDemoSampleTasks() {
-        self.tasks = Self.sampleTasks
-        if let first = self.tasks.first?.id {
-            self.selectedTaskIDs = [first]
-        }
-    }
 
     /// Prompts the delete confirmation sheet/dialog for the given task, or the selected tasks if none specified.
     public func promptDelete(task: DownloadTaskModel? = nil) {
@@ -808,13 +962,39 @@ public final class AppState: ObservableObject {
     /// Activates HyperFetch and brings all active application windows to the foreground.
     @MainActor
     public func bringToFront() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        let keyWindows = NSApp.windows.filter { $0.canBecomeMain || $0.isVisible }
-        for window in keyWindows {
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
+        MainWindowDelegate.shared.reopenMainWindow()
+    }
+
+    /// Opens the macOS Settings window and selects the specified tab.
+    @MainActor
+    public func openSettingsWindow(tab: SettingsTab = .general) {
+        self.selectedSettingsTab = tab
+        MainWindowDelegate.shared.reopenMainWindow()
+
+        if let openSettingsHandler {
+            openSettingsHandler()
+            return
         }
+
+        // Fallback 1: Trigger the native Settings menu item if present in NSApp.mainMenu
+        if let mainMenu = NSApp.mainMenu {
+            for item in mainMenu.items {
+                if let submenu = item.submenu {
+                    for subitem in submenu.items {
+                        if subitem.keyEquivalent == "," && subitem.keyEquivalentModifierMask.contains(.command) {
+                            if let action = subitem.action {
+                                NSApp.sendAction(action, to: subitem.target, from: subitem)
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback 2: Standard selector dispatch
+        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     /// Reveals the downloaded file in macOS Finder.
@@ -875,6 +1055,27 @@ public final class AppState: ObservableObject {
                     headers: headers ?? [:],
                     autoStart: autoStart || self.autoStartCapturedDownloads
                 )
+            }
+        }
+
+        localhostBridge.onSheetRequested = { [weak self] url, filename in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.bringToFront()
+                self.presentAddSheet(url: url ?? "", filename: filename ?? "")
+            }
+        }
+
+        localhostBridge.onAppearanceChangeRequested = { [weak self] mode in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if mode.lowercased() == "dark" {
+                    self.appearanceMode = .dark
+                } else if mode.lowercased() == "light" {
+                    self.appearanceMode = .light
+                } else {
+                    self.appearanceMode = .system
+                }
             }
         }
 
@@ -960,6 +1161,30 @@ public final class AppState: ObservableObject {
         // Format 1: hyperfetch://open (brings app forward)
         let host = url.host?.lowercased()
         if host == "open" || url.path == "/open" {
+            return
+        }
+
+        // Format: hyperfetch://settings?tab=general
+        if host == "settings" || url.path == "/settings" {
+            let tabString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name.lowercased() == "tab" })?.value
+            let tab = tabString.flatMap { SettingsTab(rawValue: $0.capitalized) } ?? .general
+            openSettingsWindow(tab: tab)
+            return
+        }
+
+        // Format: hyperfetch://appearance?mode=dark|light|system
+        if host == "appearance" || url.path == "/appearance" {
+            if let modeString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name.lowercased() == "mode" })?.value {
+                if modeString.lowercased() == "dark" {
+                    appearanceMode = .dark
+                } else if modeString.lowercased() == "light" {
+                    appearanceMode = .light
+                } else {
+                    appearanceMode = .system
+                }
+            }
             return
         }
 
@@ -1068,6 +1293,13 @@ public final class AppState: ObservableObject {
             updatedTasks.filter { $0.status == .completed }.map(\.id)
         )
 
+        if updatedTasks.isEmpty {
+            self.tasks = []
+            self.selectedTaskIDs = []
+            DockTileController.updateBadge(activeCount: 0)
+            return
+        }
+
         self.tasks = updatedTasks
 
         // Maintain selection validity
@@ -1080,103 +1312,5 @@ public final class AppState: ObservableObject {
 
         // Update Dock icon badge
         DockTileController.updateBadge(activeCount: self.activeDownloadCount)
-    }
-
-    // MARK: - Sample Demo Tasks
-
-    /// Sample demo tasks populated when launching HyperFetch with an empty queue.
-    public static var sampleTasks: [DownloadTaskModel] {
-        let chunkCount = 8
-        let totalSize: Int64 = 3_435_973_836 // 3.2 GB
-        let chunkSize = totalSize / Int64(chunkCount)
-        var chunks: [Chunk] = []
-        var downloadedBytes: Int64 = 0
-
-        for i in 0..<chunkCount {
-            let start = Int64(i) * chunkSize
-            let end = (i == chunkCount - 1) ? totalSize - 1 : (start + chunkSize - 1)
-            let length = end - start + 1
-            let (status, bytes): (ChunkStatus, Int64) = {
-                switch i {
-                case 0...2:
-                    return (.completed, length)
-                case 3:
-                    let b = Int64(Double(length) * 0.75)
-                    return (.downloading, b)
-                case 4:
-                    let b = Int64(Double(length) * 0.50)
-                    return (.downloading, b)
-                case 5:
-                    let b = Int64(Double(length) * 0.20)
-                    return (.downloading, b)
-                default:
-                    return (.pending, 0)
-                }
-            }()
-            downloadedBytes += bytes
-            chunks.append(Chunk(
-                id: UUID(),
-                index: i,
-                startOffset: start,
-                endOffset: end,
-                bytesDownloaded: bytes,
-                status: status
-            ))
-        }
-
-        let task1 = DownloadTaskModel(
-            id: UUID(),
-            url: URL(string: "https://download.developer.apple.com/Developer_Tools/Xcode_16.2/Xcode_16.2.xip")!,
-            filename: "Xcode_16.2_Release.xip",
-            totalBytes: totalSize,
-            downloadedBytes: downloadedBytes,
-            status: .downloading,
-            chunks: chunks,
-            supportsRange: true,
-            createdAt: Date().addingTimeInterval(-1200),
-            category: .applications,
-            bytesPerSecond: 18_420_000
-        )
-
-        let task2 = DownloadTaskModel(
-            id: UUID(),
-            url: URL(string: "https://swcdn.apple.com/content/downloads/macOS_Sequoia_15.3.pkg")!,
-            filename: "macOS_Sequoia_15.3_Installer.pkg",
-            totalBytes: 14_520_000_000,
-            downloadedBytes: 14_520_000_000,
-            status: .completed,
-            chunks: [
-                Chunk(index: 0, startOffset: 0, endOffset: 3_630_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
-                Chunk(index: 1, startOffset: 3_630_000_000, endOffset: 7_260_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
-                Chunk(index: 2, startOffset: 7_260_000_000, endOffset: 10_890_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
-                Chunk(index: 3, startOffset: 10_890_000_000, endOffset: 14_520_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed)
-            ],
-            supportsRange: true,
-            createdAt: Date().addingTimeInterval(-86400),
-            completedAt: Date().addingTimeInterval(-3600),
-            category: .applications,
-            bytesPerSecond: 0
-        )
-
-        let task3 = DownloadTaskModel(
-            id: UUID(),
-            url: URL(string: "https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso")!,
-            filename: "ubuntu-24.04-desktop-amd64.iso",
-            totalBytes: 6_291_456_000,
-            downloadedBytes: 2_516_582_400,
-            status: .paused,
-            chunks: [
-                Chunk(index: 0, startOffset: 0, endOffset: 1_572_864_000 - 1, bytesDownloaded: 1_572_864_000, status: .completed),
-                Chunk(index: 1, startOffset: 1_572_864_000, endOffset: 3_145_728_000 - 1, bytesDownloaded: 943_718_400, status: .pending),
-                Chunk(index: 2, startOffset: 3_145_728_000, endOffset: 4_718_592_000 - 1, bytesDownloaded: 0, status: .pending),
-                Chunk(index: 3, startOffset: 4_718_592_000, endOffset: 6_291_456_000 - 1, bytesDownloaded: 0, status: .pending)
-            ],
-            supportsRange: true,
-            createdAt: Date().addingTimeInterval(-3600),
-            category: .archives,
-            bytesPerSecond: 0
-        )
-
-        return [task1, task2, task3]
     }
 }

@@ -36,8 +36,15 @@ public struct SettingsView: View {
                     Label("Browser", systemImage: "globe")
                 }
                 .tag(SettingsTab.browser)
+
+            UpdatesSettingsTab()
+                .tabItem {
+                    Label("Updates", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .tag(SettingsTab.updates)
         }
         .frame(width: 560, height: 480)
+        .preferredColorScheme(appState.preferredColorScheme)
     }
 }
 
@@ -48,6 +55,21 @@ private struct GeneralSettingsTab: View {
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("Theme", selection: $appState.appearanceMode) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.iconName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(appearanceDescription(for: appState.appearanceMode))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Default Download Location") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
@@ -142,6 +164,17 @@ private struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(8)
+    }
+
+    private func appearanceDescription(for mode: AppearanceMode) -> String {
+        switch mode {
+        case .system:
+            return "Follows macOS system appearance automatically."
+        case .dark:
+            return "Obsidian Sequoia theme optimized for low-light environments."
+        case .light:
+            return "Clean Apple native light appearance."
+        }
     }
 
     private func chunkDescription(for count: Int) -> String {
@@ -564,5 +597,75 @@ private struct BrowserSettingsTab: View {
                 copiedPath = false
             }
         }
+    }
+}
+
+// MARK: - 4. Updates Tab
+
+private struct UpdatesSettingsTab: View {
+    @EnvironmentObject private var versionManager: AppVersionManager
+
+    var body: some View {
+        Form {
+            Section("Current Version") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(.tint)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("HyperFetch")
+                                .font(.headline)
+                            Text("Version \(versionManager.currentVersion) (Build \(versionManager.buildNumber))")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Check for Updates Now") {
+                            versionManager.checkForUpdates(userInitiated: true)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.vertical, 4)
+
+                    Divider()
+
+                    HStack {
+                        Text("Last checked:")
+                            .foregroundStyle(.secondary)
+                        Text(versionManager.formattedLastCheckedDate)
+                            .foregroundStyle(.primary)
+                    }
+                    .font(.caption)
+                }
+            }
+
+            Section("Update Preferences") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Automatically check for updates on launch", isOn: $versionManager.autoCheckOnLaunch)
+
+                    Text("When enabled, HyperFetch checks for newer releases in the background once every 24 hours.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    Picker("Update Channel", selection: $versionManager.updateChannel) {
+                        Text("Stable (Recommended)").tag("Stable")
+                        Text("Beta / Pre-Release").tag("Beta")
+                    }
+
+                    Text("Stable builds receive thoroughly tested features. Beta builds receive early releases.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding(8)
     }
 }

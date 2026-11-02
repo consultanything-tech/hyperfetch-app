@@ -19,6 +19,7 @@ public actor JSONStatePersister: StatePersisting {
     public let storageURL: URL
     private let fileManager: FileManager
     private let logger = Logger(subsystem: "com.hyperfetch.downloadkit", category: "JSONStatePersister")
+    private var cachedTasks: [DownloadTaskModel]?
 
     /// Default storage location inside the application support directory.
     public static var defaultStorageURL: URL {
@@ -38,6 +39,7 @@ public actor JSONStatePersister: StatePersisting {
 
     /// Persists the collection of tasks atomically to disk.
     public func save(tasks: [DownloadTaskModel]) async throws {
+        cachedTasks = tasks
         let parentDir = storageURL.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: parentDir.path) {
             try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
@@ -50,26 +52,28 @@ public actor JSONStatePersister: StatePersisting {
     /// Loads tasks from disk, automatically converting interrupted downloads to paused state.
     public func load() async throws -> [DownloadTaskModel] {
         let rawTasks = loadRawTasks()
+        cachedTasks = rawTasks
         return rawTasks.map { autoRecover(task: $0) }
     }
 
     /// Updates or inserts a single download task and persists the updated task list atomically.
     public func saveTask(_ task: DownloadTaskModel) async throws {
-        var currentTasks = loadRawTasks()
+        var currentTasks = cachedTasks ?? loadRawTasks()
         if let index = currentTasks.firstIndex(where: { $0.id == task.id }) {
             currentTasks[index] = task
         } else {
             currentTasks.append(task)
         }
+        cachedTasks = currentTasks
         try await save(tasks: currentTasks)
     }
 
     /// Removes a download task with the given identifier and persists changes atomically.
     public func deleteTask(id: UUID) async throws {
-        guard fileManager.fileExists(atPath: storageURL.path) else { return }
-        var currentTasks = loadRawTasks()
+        var currentTasks = cachedTasks ?? loadRawTasks()
         guard currentTasks.contains(where: { $0.id == id }) else { return }
         currentTasks.removeAll(where: { $0.id == id })
+        cachedTasks = currentTasks
         try await save(tasks: currentTasks)
     }
 

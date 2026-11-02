@@ -5,10 +5,12 @@
   "description": "Intercepts browser downloads and transfers them to HyperFetch for accelerated multi-chunk downloading.",
   "permissions": [
     "downloads",
-    "webRequest",
     "cookies",
     "storage"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:31415 http://127.0.0.1:31416"
+  },
   "host_permissions": [
     "<all_urls>"
   ],

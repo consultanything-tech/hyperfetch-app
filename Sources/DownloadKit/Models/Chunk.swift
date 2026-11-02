@@ -17,9 +17,10 @@ public struct Chunk: Identifiable, Codable, Equatable, Sendable {
     public var bytesDownloaded: Int64
     public var status: ChunkStatus
 
-    /// The closed byte range represented by this chunk.
-    public var range: ClosedRange<Int64> {
-        startOffset...endOffset
+    /// The closed byte range represented by this chunk, or nil if indeterminate/non-range.
+    public var range: ClosedRange<Int64>? {
+        guard startOffset >= 0, endOffset >= startOffset else { return nil }
+        return startOffset...endOffset
     }
 
     /// The expected total byte length of this chunk.

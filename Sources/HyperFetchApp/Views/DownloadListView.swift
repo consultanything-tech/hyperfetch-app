@@ -2,29 +2,43 @@
 //  DownloadListView.swift
 //  HyperFetchApp
 //
+//  Modernized card list displaying accelerated downloads with selection toolbar,
+//  rich batch actions, and Obsidian Sequoia styling.
+//
 
 import SwiftUI
 import UniformTypeIdentifiers
 import DownloadKit
 
-/// Main list displaying filtered download tasks with context menus and empty state handling.
+/// Main list displaying filtered download tasks as cards with toolbar controls and empty state handling.
 public struct DownloadListView: View {
     @EnvironmentObject private var appState: AppState
 
     public init() {}
 
     public var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            // Top Selection & Batch Actions Toolbar
+            queueSelectionToolbar
+
+            Divider()
+                .overlay(Theme.separator)
+
+            // Main Content Area
             if appState.filteredTasks.isEmpty {
                 emptyStateView
             } else {
-                VStack(spacing: 0) {
-                    selectionActionBar
-                    Divider()
-                    taskListView
-                }
+                taskCardsScrollView
             }
+
+            Divider()
+                .overlay(Theme.separator)
+
+            // Bottom Engine Status Telemetry Bar
+            queueBottomStatusBar
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.canvasBackground)
         .onDrop(of: [.url, .utf8PlainText], isTargeted: nil) { providers in
             handleDrop(providers: providers)
         }
@@ -105,237 +119,163 @@ public struct DownloadListView: View {
         return false
     }
 
-    // MARK: - Subviews
+    // MARK: - Selection & Batch Action Toolbar
 
-    // MARK: - Selection & Batch Action Bar
-
-    private var selectionActionBar: some View {
+    private var queueSelectionToolbar: some View {
         HStack(spacing: 12) {
-            // Left Side: Select All Checkbox & Selection Status
+            // Select All Checkbox & Count
             HStack(spacing: 8) {
                 Button {
                     appState.toggleSelectAll()
                 } label: {
-                    Image(systemName: selectAllCheckboxIcon)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(selectAllCheckboxColor)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            .stroke(appState.isAllSelected || appState.isPartiallySelected ? Theme.accent : Theme.cardBorder.opacity(2.0), lineWidth: 1.2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                                    .fill(appState.isAllSelected || appState.isPartiallySelected ? Theme.accent : Color.white.opacity(0.001))
+                            )
+                            .frame(width: 14, height: 14)
+
+                        if appState.isAllSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                        } else if appState.isPartiallySelected {
+                            Image(systemName: "minus")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .help(appState.isAllSelected ? "Deselect All (Esc)" : "Select All (⌘A)")
 
                 Button {
                     appState.toggleSelectAll()
                 } label: {
                     if appState.selectedTaskIDs.isEmpty {
-                        Text("Select All (\(appState.filteredTasks.count))")
+                        Text("\(appState.filteredTasks.count) item\(appState.filteredTasks.count == 1 ? "" : "s")")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.textSecondary)
                     } else {
-                        Text("\(appState.selectedTasks.count) of \(appState.filteredTasks.count) selected")
+                        Text("\(appState.selectedTasks.count) of \(appState.filteredTasks.count) items selected")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Theme.textPrimary)
                     }
                 }
                 .buttonStyle(.plain)
-                .help(appState.isAllSelected ? "Deselect All (Esc)" : "Select All (⌘A)")
+                .contentShape(Rectangle())
             }
 
             Spacer()
 
-            // Right Side: Batch Action Controls
+            // Quick Batch Actions
             if !appState.selectedTaskIDs.isEmpty {
-                batchActionControls
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
-    private var selectAllCheckboxIcon: String {
-        if appState.isAllSelected {
-            return "checkmark.square.fill"
-        } else if appState.isPartiallySelected {
-            return "minus.square.fill"
-        } else {
-            return "square"
-        }
-    }
-
-    private var selectAllCheckboxColor: Color {
-        if appState.isAllSelected || appState.isPartiallySelected {
-            return .accentColor
-        } else {
-            return .secondary
-        }
-    }
-
-    @ViewBuilder
-    private var batchActionControls: some View {
-        ViewThatFits(in: .horizontal) {
-            fullBatchActionControls
-            compactBatchActionControls
-        }
-        .animation(.easeInOut(duration: 0.15), value: appState.selectedTaskIDs.isEmpty)
-    }
-
-    private var fullBatchActionControls: some View {
-        HStack(spacing: 6) {
-            Button {
-                appState.pauseSelected()
-            } label: {
-                Label("Pause", systemImage: "pause.fill")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!hasActiveSelectedTasks)
-            .help("Pause selected downloads")
-
-            Button {
-                appState.resumeSelected()
-            } label: {
-                Label("Resume", systemImage: "play.fill")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!hasResumableSelectedTasks)
-            .help("Resume selected downloads")
-
-            Button {
-                appState.removeSelected(deleteFile: false)
-            } label: {
-                Label("Remove", systemImage: "trash")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Remove selected downloads from list")
-
-            Button(role: .destructive) {
-                appState.promptDeleteSelected()
-            } label: {
-                Label("Delete...", systemImage: "trash.fill")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Delete selected downloads and files from disk...")
-
-            Button {
-                appState.deselectAll()
-            } label: {
-                Text("Deselect")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .foregroundStyle(.secondary)
-            .help("Clear selection (Esc)")
-        }
-    }
-
-    private var compactBatchActionControls: some View {
-        HStack(spacing: 4) {
-            Button {
-                appState.pauseSelected()
-            } label: {
-                Image(systemName: "pause.fill")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!hasActiveSelectedTasks)
-            .help("Pause selected downloads")
-
-            Button {
-                appState.resumeSelected()
-            } label: {
-                Image(systemName: "play.fill")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!hasResumableSelectedTasks)
-            .help("Resume selected downloads")
-
-            Button {
-                appState.removeSelected(deleteFile: false)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Remove selected from list")
-
-            Button(role: .destructive) {
-                appState.promptDeleteSelected()
-            } label: {
-                Image(systemName: "trash.fill")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Delete selected from disk...")
-
-            Button {
-                appState.deselectAll()
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .foregroundStyle(.secondary)
-            .help("Clear selection (Esc)")
-        }
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 84, height: 84)
-
-                Image(systemName: emptyStateIcon)
-                    .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-            }
-
-            VStack(spacing: 6) {
-                Text(emptyStateTitle)
-                    .font(.title3.bold())
-
-                Text(emptyStateSubtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 320)
-            }
-
-            Button {
-                appState.isAddSheetPresented = true
-            } label: {
-                Label("Add Download", systemImage: "plus")
-                    .padding(.horizontal, 8)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut("n", modifiers: .command)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(32)
-    }
-
-    private var taskListView: some View {
-        List(selection: $appState.selectedTaskIDs) {
-            ForEach(appState.filteredTasks) { task in
-                DownloadRowView(task: task)
-                    .tag(task.id)
-                    .contextMenu {
-                        rowContextMenu(for: task)
+                HStack(spacing: 6) {
+                    Button {
+                        appState.pauseSelected()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "pause.fill")
+                                .font(.system(size: 9.5))
+                            Text("Pause")
+                        }
+                        .font(.system(size: 11, weight: .medium))
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!appState.hasActiveSelectedTasks)
+                    .help("Pause selected downloads")
+
+                    Button {
+                        appState.resumeSelected()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 9.5))
+                            Text("Resume")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!appState.hasResumableSelectedTasks)
+                    .help("Resume selected downloads")
+
+                    Button {
+                        appState.revealSelectedInFinder()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 9.5))
+                            Text("Finder")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Show selected in Finder")
+
+                    Divider()
+                        .frame(height: 12)
+                        .overlay(Theme.separator)
+                        .padding(.horizontal, 2)
+
+                    Button(role: .destructive) {
+                        appState.promptDeleteSelected()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 9.5))
+                            Text("Delete")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.critical)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Delete selected downloads from disk...")
+
+                    Button {
+                        appState.deselectAll()
+                    } label: {
+                        Text("Deselect")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .padding(.leading, 4)
+                    .help("Clear selection (Esc)")
+                }
             }
         }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
+        .padding(.horizontal, 16)
+        .frame(height: 40)
+        .background(Theme.toolbarBackground)
     }
+
+    // MARK: - Task Cards ScrollView
+
+    private var taskCardsScrollView: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 12) {
+                ForEach(appState.filteredTasks) { task in
+                    DownloadRowView(task: task)
+                        .contextMenu {
+                            rowContextMenu(for: task)
+                        }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - Context Menus
 
     @ViewBuilder
     private func rowContextMenu(for task: DownloadTaskModel) -> some View {
@@ -353,12 +293,12 @@ public struct DownloadListView: View {
         Button("Pause Selected (\(count))") {
             appState.pauseSelected()
         }
-        .disabled(!hasActiveSelectedTasks)
+        .disabled(!appState.hasActiveSelectedTasks)
 
         Button("Resume Selected (\(count))") {
             appState.resumeSelected()
         }
-        .disabled(!hasResumableSelectedTasks)
+        .disabled(!appState.hasResumableSelectedTasks)
 
         Divider()
 
@@ -372,21 +312,6 @@ public struct DownloadListView: View {
 
         Button("Delete Selected Files from Disk...", role: .destructive) {
             appState.promptDeleteSelected()
-        }
-    }
-
-    private var hasActiveSelectedTasks: Bool {
-        appState.selectedTasks.contains { $0.status == .downloading || $0.status == .probing }
-    }
-
-    private var hasResumableSelectedTasks: Bool {
-        appState.selectedTasks.contains { task in
-            switch task.status {
-            case .paused, .idle, .failed:
-                return true
-            case .downloading, .probing, .completed:
-                return false
-            }
         }
     }
 
@@ -424,6 +349,47 @@ public struct DownloadListView: View {
         Button("Delete File from Disk...", role: .destructive) {
             appState.promptDelete(task: task)
         }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Theme.accent.opacity(0.12))
+                    .frame(width: 80, height: 80)
+
+                Image(systemName: emptyStateIcon)
+                    .font(.system(size: 36, weight: .medium))
+                    .foregroundStyle(Theme.accent)
+            }
+
+            VStack(spacing: 5) {
+                Text(emptyStateTitle)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+
+                Text(emptyStateSubtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
+            }
+
+            Button {
+                appState.isAddSheetPresented = true
+            } label: {
+                Label("Add Download", systemImage: "plus")
+                    .padding(.horizontal, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .tint(Theme.accent)
+            .keyboardShortcut("n", modifiers: .command)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
     }
 
     private var emptyStateIcon: String {
@@ -505,5 +471,63 @@ public struct DownloadListView: View {
         case .failed:
             return "No failed download attempts recorded."
         }
+    }
+
+    // MARK: - Bottom Engine Status Telemetry Bar
+
+    private var queueBottomStatusBar: some View {
+        HStack(spacing: 14) {
+            // Engine status & active sockets
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Theme.success)
+                        .frame(width: 6, height: 6)
+                    Text("HyperFetch Engine: Ready")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Text("•")
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text("Active TCP Sockets: \(appState.activeSocketCount)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text("•")
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text("Allocated RAM: \(appState.allocatedMemoryMB) MB")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+
+            Spacer()
+
+            // Today's total downloaded & refresh button
+            HStack(spacing: 10) {
+                Text("Total Downloaded Today: \(appState.formattedTotalDownloadedToday)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+
+                Button {
+                    // Quick refresh / sync
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textTertiary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("Refresh Status")
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 26)
+        .frame(maxWidth: .infinity)
+        .background(Theme.statusBarBackground)
     }
 }

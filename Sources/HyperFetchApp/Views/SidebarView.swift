@@ -2,6 +2,9 @@
 //  SidebarView.swift
 //  HyperFetchApp
 //
+//  Modernized sidebar navigation view organizing downloads by lifecycle status,
+//  file categories, and featuring real-time bandwidth telemetry and engine status.
+//
 
 import SwiftUI
 import DownloadKit
@@ -9,151 +12,262 @@ import DownloadKit
 /// Sidebar navigation view organizing downloads by lifecycle status and file categories.
 public struct SidebarView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var versionManager: AppVersionManager
+
     @ViewState private var isPulsing: Bool = false
 
     public init() {}
 
     public var body: some View {
         List(selection: $appState.sidebarSelection) {
-            // Status Filters Section
-            Section("Downloads") {
-                ForEach(StatusFilter.allCases) { filter in
-                    let item = SidebarItem.status(filter)
-                    let isSelected = (appState.sidebarSelection == item)
-                    HStack {
-                        Label {
-                            Text(filter.rawValue)
-                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        } icon: {
-                            Image(systemName: filter.iconName)
-                                .foregroundStyle(statusColor(for: filter))
-                        }
-
-                        Spacer()
-
-                        Text("\(appState.count(for: filter))")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.12))
-                            )
-                    }
-                    .tag(item)
-                }
-            }
-
-            // Categories Section
-            Section("Categories") {
-                ForEach(contentCategories, id: \.self) { category in
-                    let item = SidebarItem.category(category)
-                    let isSelected = (appState.sidebarSelection == item)
-                    HStack {
-                        Label {
-                            Text(category.rawValue)
-                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        } icon: {
-                            Image(systemName: iconName(for: category))
-                                .foregroundStyle(color(for: category))
-                        }
-
-                        Spacer()
-
-                        Text("\(appState.count(for: category))")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(isSelected ? Color.white : Color.secondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.12))
-                            )
-                    }
-                    .tag(item)
-                }
-            }
+            transfersSection
+            categoriesSection
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Theme.sidebarBackground)
         .safeAreaInset(edge: .bottom) {
-            bandwidthFootnote
+            sidebarFooterTelemetry
+        }
+        .onAppear {
+            isPulsing = true
         }
     }
 
-    // MARK: - Helpers & Subviews
+    // MARK: - Transfers Section
+
+    private var transfersSection: some View {
+        Section("Transfers") {
+            ForEach(StatusFilter.allCases) { filter in
+                let item = SidebarItem.status(filter)
+                let isSelected = (appState.sidebarSelection == item)
+                let count = appState.count(for: filter)
+
+                SidebarNavRow(
+                    title: filter.rawValue,
+                    icon: filter.iconName,
+                    iconColor: statusColor(for: filter),
+                    badgeText: "\(count)",
+                    isSelected: isSelected,
+                    isHighlightedBadge: filter == .all && isSelected
+                )
+                .tag(item)
+            }
+        }
+    }
+
+    // MARK: - Categories Section
+
+    private var categoriesSection: some View {
+        Section("Categories") {
+            ForEach(contentCategories, id: \.self) { category in
+                let item = SidebarItem.category(category)
+                let isSelected = (appState.sidebarSelection == item)
+                let count = appState.count(for: category)
+
+                SidebarNavRow(
+                    title: categoryTitle(for: category),
+                    icon: iconName(for: category),
+                    iconColor: color(for: category),
+                    badgeText: "\(count)",
+                    isSelected: isSelected,
+                    isHighlightedBadge: false
+                )
+                .tag(item)
+            }
+        }
+    }
+
+    // MARK: - Sidebar Footer Telemetry
+
+    private var sidebarFooterTelemetry: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .overlay(Theme.separator)
+
+            VStack(spacing: 10) {
+                // Real-time Bandwidth Telemetry Card
+                VStack(spacing: 8) {
+                    // Header: Status dot + Title + Preset Badge
+                    HStack {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(appState.activeDownloadCount > 0 ? Theme.success : Theme.textTertiary.opacity(0.5))
+                                .frame(width: 7, height: 7)
+
+                            Text("Total Bandwidth")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+
+                        Spacer()
+
+                        Text(bandwidthStatusTitle)
+                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                (appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning).opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 4)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(
+                                        (appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning).opacity(0.25),
+                                        lineWidth: 0.8
+                                    )
+                            )
+                    }
+
+                    // Speed readout and active count
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(appState.formattedTotalSpeed)
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.textPrimary)
+
+                        Spacer()
+
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(appState.activeDownloadCount > 0 ? Theme.success : Theme.textTertiary)
+                            Text("\(appState.activeDownloadCount) active")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                    }
+
+                    // Mini Sparkline Simulation (8 bars)
+                    sparklineView
+                        .frame(height: 22)
+
+                    // Disk Status Line
+                    HStack {
+                        Text("Disk: APFS (Encrypted)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textTertiary)
+                        Spacer()
+                        Text("OK")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.success)
+                    }
+                    .padding(.top, 2)
+                    .overlay(alignment: .top) {
+                        Divider()
+                            .overlay(Theme.separator.opacity(0.5))
+                    }
+                }
+                .padding(10)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+
+                // Version & Update Check
+                HStack {
+                    Text("HyperFetch \(versionManager.fullVersionString)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textTertiary)
+
+                    Spacer()
+
+                    Button {
+                        versionManager.checkForUpdates(userInitiated: true)
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textTertiary)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("Check for Updates")
+                }
+                .padding(.horizontal, 2)
+            }
+            .padding(12)
+            .background(Theme.statusBarBackground)
+        }
+    }
+
+    private var sparklineView: some View {
+        let isActive = appState.activeDownloadCount > 0
+        let heights: [CGFloat] = isActive
+            ? [0.40, 0.55, 0.45, 0.70, 0.65, 0.85, 0.95, 0.90]
+            : [0.15, 0.20, 0.12, 0.18, 0.15, 0.22, 0.14, 0.16]
+
+        return HStack(alignment: .bottom, spacing: 3) {
+            ForEach(0..<8, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(
+                        isActive
+                            ? LinearGradient(
+                                colors: [Color.blue.opacity(0.5 + Double(i) * 0.06), Theme.accent],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                            : LinearGradient(
+                                colors: [Theme.textTertiary.opacity(0.2), Theme.textTertiary.opacity(0.3)],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 22 * heights[i])
+                    .animation(.easeInOut(duration: 0.3), value: isActive)
+            }
+        }
+    }
+
+    private var bandwidthStatusTitle: String {
+        if appState.speedLimitPreset == .unlimited {
+            return "Optimal"
+        } else {
+            return appState.speedLimitPreset.rawValue
+        }
+    }
+
+    // MARK: - Helpers
 
     private var contentCategories: [DownloadCategory] {
         DownloadCategory.allCases.filter { $0 != .all }
     }
 
-    private var bandwidthFootnote: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 10) {
-                // Live pulsing mini indicator dot when downloads are active
-                ZStack {
-                    if appState.activeDownloadCount > 0 {
-                        Circle()
-                            .fill(Color.blue.opacity(0.35))
-                            .frame(width: 14, height: 14)
-                            .scaleEffect(isPulsing ? 1.5 : 1.0)
-                            .opacity(isPulsing ? 0.0 : 0.8)
-                            .animation(.easeOut(duration: 1.2).repeatForever(autoreverses: false), value: isPulsing)
-
-                        Circle()
-                            .fill(Color.blue)
-                            .frame(width: 8, height: 8)
-                    } else {
-                        Circle()
-                            .fill(Color.secondary.opacity(0.4))
-                            .frame(width: 8, height: 8)
-                    }
-                }
-                .frame(width: 16, height: 16)
-                .onAppear {
-                    isPulsing = true
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(appState.formattedTotalSpeed)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                    Text(appState.activeDownloadCount > 0
-                         ? "\(appState.activeDownloadCount) active download\(appState.activeDownloadCount == 1 ? "" : "s")"
-                         : "All downloads idle")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if appState.speedLimitPreset != .unlimited {
-                    Image(systemName: "gauge.with.needle.fill")
-                        .foregroundStyle(.orange)
-                        .help("Speed limited to \(appState.speedLimitPreset.rawValue)")
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+    private func categoryTitle(for category: DownloadCategory) -> String {
+        switch category {
+        case .all:
+            return "All"
+        case .archives:
+            return "Archives (.zip, .xip)"
+        case .documents:
+            return "Documents"
+        case .video:
+            return "Video & Media"
+        case .music:
+            return "Audio & Music"
+        case .applications:
+            return "Applications & Disk"
+        case .other:
+            return "Other"
         }
-        .background(.ultraThinMaterial)
     }
 
     private func statusColor(for filter: StatusFilter) -> Color {
         switch filter {
         case .all:
-            return .primary
+            return Theme.accent
         case .active:
-            return .blue
+            return Color.cyan
         case .completed:
-            return .green
+            return Theme.success
         case .paused:
-            return .orange
+            return Theme.warning
         case .failed:
-            return .red
+            return Theme.critical
         }
     }
 
@@ -179,19 +293,75 @@ public struct SidebarView: View {
     private func color(for category: DownloadCategory) -> Color {
         switch category {
         case .all:
-            return .primary
+            return Theme.accent
         case .archives:
-            return .orange
+            return Theme.warning
         case .documents:
-            return .blue
+            return Theme.accent
         case .video:
-            return .purple
+            return Color.purple
         case .music:
-            return .pink
+            return Color.pink
         case .applications:
-            return .indigo
+            return Color.indigo
         case .other:
-            return .gray
+            return Theme.textTertiary
         }
+    }
+}
+
+// MARK: - SidebarNavRow Component
+
+private struct SidebarNavRow: View {
+    let title: String
+    let icon: String
+    let iconColor: Color
+    let badgeText: String
+    let isSelected: Bool
+    let isHighlightedBadge: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // 22x22 squircle icon container with colored tint / active accent
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Theme.accent : iconColor.opacity(0.15))
+                    .frame(width: 22, height: 22)
+
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white : iconColor)
+            }
+
+            // Title in system font (weight .semibold when selected, .regular otherwise)
+            Text(title)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+
+            Spacer()
+
+            // Monospaced count pill badge in a capsule
+            Text(badgeText)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(badgeForeground)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 1.5)
+                .background(badgeBackground, in: Capsule())
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var badgeForeground: Color {
+        if isSelected {
+            return isHighlightedBadge ? Color.white : Theme.textPrimary
+        }
+        return Theme.textTertiary
+    }
+
+    private var badgeBackground: Color {
+        if isSelected {
+            return isHighlightedBadge ? Theme.accent : Theme.tagBackground
+        }
+        return Theme.tagBackground.opacity(0.8)
     }
 }

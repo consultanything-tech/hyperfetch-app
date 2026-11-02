@@ -2,11 +2,13 @@
 //  ChunkVisualizer.swift
 //  HyperFetchApp
 //
+//  Modernized connection segments visualization matching the Obsidian Sequoia design.
+//
 
 import SwiftUI
 import DownloadKit
 
-/// Displays the segmented multi-chunk download visualizer inspired by Free Download Manager.
+/// Displays the segmented multi-chunk download visualizer and per-thread telemetry.
 public struct ChunkVisualizer: View {
     public let task: DownloadTaskModel
 
@@ -17,20 +19,32 @@ public struct ChunkVisualizer: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
-            HStack {
-                Label("Connection Segments", systemImage: "square.split.3x1.fill")
-                    .font(.headline)
+            HStack(alignment: .center) {
+                HStack(spacing: 6) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+
+                    Text("Connection Segments")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                }
 
                 Spacer()
 
                 if !task.chunks.isEmpty {
                     Text("\(completedChunkCount)/\(task.chunks.count) completed")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.accent)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .padding(.vertical, 2.5)
+                        .background(Theme.accent.opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Theme.accent.opacity(0.25), lineWidth: 0.8)
+                        )
                 }
             }
 
@@ -38,41 +52,54 @@ public struct ChunkVisualizer: View {
                 // Pending allocation state
                 HStack(spacing: 10) {
                     Image(systemName: "circle.dotted")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                    Text("Connection segments will be allocated once probing completes.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.textTertiary)
+                    Text("Connection segments will be allocated once server handshake completes.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                .padding()
+                .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
             } else if !task.supportsRange {
-                // Single stream warning banner
+                // Single stream banner
                 HStack(spacing: 10) {
                     Image(systemName: "info.circle.fill")
-                        .foregroundStyle(.blue)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Single Connection Mode")
-                            .font(.subheadline.bold())
-                        Text("The remote server does not advertise HTTP Range support; downloading via single stream.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Server does not advertise byte-range support; downloading via single stream.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textSecondary)
                     }
                 }
                 .padding(10)
-                .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                        .stroke(Theme.accent.opacity(0.2), lineWidth: 1)
+                )
 
-                // Single chunk bar
                 if let firstChunk = task.chunks.first {
-                    singleChunkBar(firstChunk)
+                    singleChunkProgressCard(firstChunk)
                 }
             } else {
-                // Multi-chunk segmented strip
-                segmentedStripView
+                // Legend
+                legendView
 
-                // Detailed chunk list
-                chunkBreakdownList
+                // Visual Segments Heat Blocks Grid
+                chunkHeatBlocksGrid
+
+                // Granular Breakdown per Thread
+                threadBreakdownList
             }
         }
     }
@@ -83,170 +110,19 @@ public struct ChunkVisualizer: View {
         task.chunks.filter { $0.status == .completed || ($0.expectedLength > 0 && $0.bytesDownloaded >= $0.expectedLength) }.count
     }
 
-    private var segmentedStripView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 3) {
-                ForEach(task.chunks) { chunk in
-                    chunkStripBlock(chunk)
-                }
-            }
-            .frame(height: 32)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-            )
-
-            // Legend
-            HStack(spacing: 16) {
-                legendItem(color: .green, label: "Completed")
-                legendItem(color: .blue, label: "Downloading")
-                legendItem(color: .secondary.opacity(0.4), label: "Pending")
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 2)
+    private var legendView: some View {
+        HStack(spacing: 16) {
+            legendItem(color: Theme.success, label: "Completed")
+            legendItem(color: Theme.accent, label: "Downloading")
+            legendItem(color: Theme.textTertiary.opacity(0.5), label: "Pending")
         }
-    }
-
-    private func chunkStripBlock(_ chunk: Chunk) -> some View {
-        GeometryReader { geo in
-            let blockWidth = geo.size.width
-            let progressRatio = CGFloat(max(0.0, min(1.0, chunk.progress)))
-
-            ZStack(alignment: .leading) {
-                // Background track
-                Rectangle()
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-
-                // Progress fill
-                Rectangle()
-                    .fill(chunkGradient(chunk))
-                    .frame(width: blockWidth * progressRatio)
-                    .animation(.linear(duration: 0.25), value: chunk.progress)
-
-                // Label overlay: adapt gracefully to narrow widths (prevents overflow on 8/16 chunks)
-                if blockWidth >= 64 {
-                    // Wide block: show chunk number and percentage
-                    HStack {
-                        Text("#\(chunk.index + 1)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(progressRatio > 0.4 ? Color.white : Color.primary)
-                        Spacer()
-                        Text("\(Int(chunk.progress * 100))%")
-                            .font(.system(size: 9, weight: .semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(progressRatio > 0.4 ? Color.white : Color.secondary)
-                    }
-                    .padding(.horizontal, 4)
-                } else if blockWidth >= 34 {
-                    // Medium block: show only chunk number centered
-                    HStack {
-                        Spacer()
-                        Text("#\(chunk.index + 1)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(progressRatio > 0.4 ? Color.white : Color.primary)
-                        Spacer()
-                    }
-                }
-                // When blockWidth < 34: render clean colored bar without text to prevent clipping/overflow
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .help("Chunk #\(chunk.index + 1): \(Int(chunk.progress * 100))% • \(chunkStatusTitle(chunk))")
-    }
-
-    private func singleChunkBar(_ chunk: Chunk) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.18))
-                        .frame(height: 8)
-
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.blue, Color(red: 0.2, green: 0.7, blue: 1.0)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * CGFloat(max(0.0, min(1.0, task.progress))), height: 8)
-                        .animation(.linear(duration: 0.25), value: task.progress)
-                }
-            }
-            .frame(height: 8)
-
-            HStack {
-                Text("Connection 1 of 1")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(AppState.formatBytes(task.downloadedBytes)) downloaded")
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var chunkBreakdownList: some View {
-        VStack(spacing: 6) {
-            ForEach(task.chunks) { chunk in
-                HStack(spacing: 12) {
-                    // Chunk Index Badge
-                    Text("#\(chunk.index + 1)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(chunkColor(chunk).opacity(0.16), in: RoundedRectangle(cornerRadius: 4))
-                        .foregroundStyle(chunkColor(chunk))
-
-                    // Progress Mini Bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.18))
-                                .frame(height: 5)
-
-                            Capsule()
-                                .fill(chunkGradient(chunk))
-                                .frame(width: geo.size.width * CGFloat(max(0.0, min(1.0, chunk.progress))), height: 5)
-                                .animation(.linear(duration: 0.25), value: chunk.progress)
-                        }
-                    }
-                    .frame(width: 80, height: 5)
-
-                    // Bytes downloaded / expected
-                    Text(chunkBytesDescription(chunk))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    // Status Pill
-                    Text(chunkStatusTitle(chunk))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(chunkColor(chunk))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(chunkColor(chunk).opacity(0.12), in: Capsule())
-                }
-                .padding(.vertical, 5)
-                .padding(.horizontal, 10)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.10), lineWidth: 1)
-                )
-            }
-        }
+        .font(.system(size: 11))
+        .foregroundStyle(Theme.textSecondary)
+        .padding(.horizontal, 2)
     }
 
     private func legendItem(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Circle()
                 .fill(color)
                 .frame(width: 7, height: 7)
@@ -254,56 +130,158 @@ public struct ChunkVisualizer: View {
         }
     }
 
-    private func chunkColor(_ chunk: Chunk) -> Color {
-        switch chunk.status {
-        case .completed:
-            return .green
-        case .downloading:
-            return .blue
-        case .failed:
-            return .red
-        case .pending:
-            if chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength {
-                return .green
+    /// Heat map grid of chunk segment blocks (#1 to #N)
+    private var chunkHeatBlocksGrid: some View {
+        let chunkCount = max(1, task.chunks.count)
+        let columns = min(8, max(4, chunkCount))
+
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns),
+            spacing: 6
+        ) {
+            ForEach(task.chunks) { chunk in
+                chunkHeatBlock(chunk)
             }
-            return .secondary.opacity(0.4)
+        }
+        .padding(8)
+        .background(Theme.canvasBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private func chunkHeatBlock(_ chunk: Chunk) -> some View {
+        let isDone = chunk.status == .completed || (chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength)
+        let isActive = (chunk.status == .downloading)
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.cardBackground))
+                .frame(height: 34)
+
+            if isActive {
+                // Bottom pulsing progress highlight
+                VStack {
+                    Spacer()
+                    Rectangle()
+                        .fill(Color.white.opacity(0.6))
+                        .frame(height: 3)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+
+            Text("#\(chunk.index + 1)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(isDone ? Color(hex: 0x0b2812) : (isActive ? Color.white : Theme.textTertiary))
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(isDone ? Theme.success.opacity(0.5) : (isActive ? Theme.accent.opacity(0.5) : Theme.cardBorder), lineWidth: 1)
+        )
+        .help("Segment #\(chunk.index + 1): \(chunkStatusTitle(chunk)) (\(chunkBytesDescription(chunk)))")
+    }
+
+    /// Granular thread breakdown list
+    private var threadBreakdownList: some View {
+        VStack(spacing: 6) {
+            ForEach(task.chunks) { chunk in
+                chunkRowCard(chunk)
+            }
         }
     }
 
-    private func chunkGradient(_ chunk: Chunk) -> LinearGradient {
-        switch chunk.status {
-        case .completed:
-            return LinearGradient(
-                colors: [Color.green, Color(red: 0.35, green: 0.85, blue: 0.55)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        case .downloading:
-            return LinearGradient(
-                colors: [Color.blue, Color(red: 0.25, green: 0.75, blue: 1.0)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        case .failed:
-            return LinearGradient(
-                colors: [Color.red, Color.pink],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        case .pending:
-            if chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength {
-                return LinearGradient(
-                    colors: [Color.green, Color(red: 0.35, green: 0.85, blue: 0.55)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+    private func chunkRowCard(_ chunk: Chunk) -> some View {
+        let isDone = chunk.status == .completed || (chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength)
+        let isActive = (chunk.status == .downloading)
+
+        return HStack(spacing: 10) {
+            // Segment index tag
+            Text("#\(chunk.index + 1)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary))
+                .frame(width: 22, alignment: .leading)
+
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.canvasBackground)
+                        .frame(height: 5)
+
+                    let progressRatio = max(0.0, min(1.0, CGFloat(chunk.progress)))
+                    Capsule()
+                        .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary.opacity(0.3)))
+                        .frame(width: geo.size.width * progressRatio, height: 5)
+                        .animation(.linear(duration: 0.2), value: chunk.progress)
+                }
             }
-            return LinearGradient(
-                colors: [Color.secondary.opacity(0.3), Color.secondary.opacity(0.5)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
+            .frame(height: 5)
+
+            // Byte progress description
+            Text(chunkBytesDescription(chunk))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(isActive ? Theme.textPrimary : Theme.textTertiary)
+                .frame(minWidth: 100, alignment: .trailing)
+
+            // Status Badge
+            Text(chunkStatusTitle(chunk))
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    (isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary)).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke((isDone ? Theme.success : (isActive ? Theme.accent : Theme.cardBorder)).opacity(0.3), lineWidth: 0.8)
+                )
+                .frame(width: 50, alignment: .center)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(isActive ? Theme.accent.opacity(0.06) : Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isActive ? Theme.accent.opacity(0.25) : Theme.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private func singleChunkProgressCard(_ chunk: Chunk) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Stream #1")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.accent)
+                Spacer()
+                Text(chunkBytesDescription(chunk))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.canvasBackground)
+                        .frame(height: 6)
+
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(width: geo.size.width * CGFloat(max(0.0, min(1.0, chunk.progress))), height: 6)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(10)
+        .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
     }
 
     private func chunkStatusTitle(_ chunk: Chunk) -> String {

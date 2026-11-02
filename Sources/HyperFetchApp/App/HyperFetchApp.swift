@@ -7,26 +7,50 @@ import AppKit
 import SwiftUI
 import DownloadKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = HyperFetchServiceProvider.shared
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            for window in NSApp.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
-            }
+            MainWindowDelegate.shared.reopenMainWindow()
+            self.logMenuBarItems()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.logMenuBarItems()
         }
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        if !flag {
-            for window in sender.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
+    func logMenuBarItems() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        var lines: [String] = []
+        for item in mainMenu.items {
+            let title = item.title.isEmpty ? (item.submenu?.title ?? "<empty>") : item.title
+            var subitems: [String] = []
+            if let submenu = item.submenu {
+                for sub in submenu.items {
+                    if sub.isSeparatorItem {
+                        subitems.append("---")
+                    } else {
+                        subitems.append(sub.title)
+                    }
+                }
             }
+            lines.append("Menu '\(title)': [\(subitems.joined(separator: ", "))]")
         }
+        try? lines.joined(separator: "\n").write(toFile: "/tmp/hyperfetch_menus.log", atomically: true, encoding: .utf8)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainWindowDelegate.shared.reopenMainWindow()
+        logMenuBarItems()
         return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainWindowDelegate.shared.isTerminating = true
+        return .terminateNow
     }
 }
 
@@ -34,31 +58,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct HyperFetchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
+    @StateObject private var versionManager = AppVersionManager.shared
+
+    private struct BrowserGuideMenuButton: View {
+        @EnvironmentObject private var appState: AppState
+        @Environment(\.openSettings) private var openSettings
+
+        var body: some View {
+            Button("Browser Integration Guide...") {
+                appState.selectedSettingsTab = .browser
+                openSettings()
+            }
+        }
+    }
 
     var body: some Scene {
         WindowGroup("HyperFetch") {
             MainWindow()
                 .environmentObject(appState)
-                .frame(minWidth: 850, minHeight: 550)
+                .environmentObject(versionManager)
+                .preferredColorScheme(appState.preferredColorScheme)
+                .sheet(isPresented: $versionManager.isUpdateSheetPresented) {
+                    UpdateSheetView()
+                        .environmentObject(versionManager)
+                }
+                .sheet(isPresented: $versionManager.isAboutSheetPresented) {
+                    AboutView()
+                        .environmentObject(versionManager)
+                }
+                .frame(minWidth: 1000, minHeight: 600)
                 .onOpenURL { url in
                     appState.bringToFront()
                     appState.handleIncomingURLScheme(url)
+                    (NSApp.delegate as? AppDelegate)?.logMenuBarItems()
+                }
+                .onAppear {
+                    versionManager.checkOnLaunchIfNeeded()
                 }
         }
-        .defaultSize(width: 950, height: 600)
+        .defaultSize(width: 1200, height: 750)
         .windowResizability(.contentMinSize)
+        .handlesExternalEvents(matching: Set(["*"]))
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    appState.selectedSettingsTab = .general
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            CommandGroup(replacing: .appInfo) {
+                Button("About HyperFetch") {
+                    versionManager.isAboutSheetPresented = true
                 }
-                .keyboardShortcut(",", modifiers: .command)
+                Button("Check for Updates...") {
+                    versionManager.checkForUpdates(userInitiated: true)
+                }
+            }
 
-                Button("Browser Integration Guide...") {
-                    appState.selectedSettingsTab = .browser
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                }
+            CommandGroup(after: .appSettings) {
+                BrowserGuideMenuButton()
             }
 
             CommandGroup(replacing: .newItem) {
@@ -103,35 +155,53 @@ struct HyperFetchApp: App {
                 Divider()
 
                 Button("Browser Integration Guide...") {
-                    appState.selectedSettingsTab = .browser
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    appState.openSettingsWindow(tab: .browser)
                 }
+            }
 
-                Button("Load Sample Demo Downloads") {
-                    appState.loadDemoSampleTasks()
+            CommandGroup(after: .toolbar) {
+                Divider()
+                Menu("Appearance") {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Button {
+                            appState.appearanceMode = mode
+                        } label: {
+                            HStack {
+                                Text(mode.rawValue)
+                                if appState.appearanceMode == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             CommandGroup(replacing: .help) {
-                Button("Browser Integration Guide...") {
-                    appState.selectedSettingsTab = .browser
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                Button("Check for Updates...") {
+                    versionManager.checkForUpdates(userInitiated: true)
                 }
+
+                Button("About HyperFetch") {
+                    versionManager.isAboutSheetPresented = true
+                }
+
+                Divider()
+
+                BrowserGuideMenuButton()
             }
         }
 
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .environmentObject(versionManager)
         }
 
         // Live status bar / menu bar companion
         MenuBarExtra {
             Button("Open HyperFetch") {
-                NSApp.activate(ignoringOtherApps: true)
-                for window in NSApp.windows where window.canBecomeMain {
-                    window.makeKeyAndOrderFront(nil)
-                }
+                MainWindowDelegate.shared.reopenMainWindow()
             }
 
             Divider()
@@ -152,22 +222,46 @@ struct HyperFetchApp: App {
 
             Divider()
 
+            Button("Check for Updates...") {
+                MainWindowDelegate.shared.reopenMainWindow()
+                versionManager.checkForUpdates(userInitiated: true)
+            }
+
+            Button("About HyperFetch") {
+                MainWindowDelegate.shared.reopenMainWindow()
+                versionManager.isAboutSheetPresented = true
+            }
+
+            Divider()
+
             Button("Settings...") {
-                appState.selectedSettingsTab = .general
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                appState.openSettingsWindow(tab: .general)
             }
             .keyboardShortcut(",", modifiers: .command)
 
+            Menu("Appearance") {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Button {
+                        appState.appearanceMode = mode
+                    } label: {
+                        HStack {
+                            Text(mode.rawValue)
+                            if appState.appearanceMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
             Button("Browser Integration Guide...") {
-                appState.selectedSettingsTab = .browser
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                appState.openSettingsWindow(tab: .browser)
             }
 
             Divider()
 
             Button("Quit HyperFetch") {
+                MainWindowDelegate.shared.isTerminating = true
                 NSApp.terminate(nil)
             }
             .keyboardShortcut("q")

@@ -2,17 +2,23 @@
 //  DownloadRowView.swift
 //  HyperFetchApp
 //
+//  Modernized card-based download row item matching the Obsidian Sequoia macOS design system.
+//
 
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import DownloadKit
 
-/// Single row item representing a download task in the list.
+/// Single card row item representing an accelerated download task in the list.
 public struct DownloadRowView: View {
     public let task: DownloadTaskModel
     @EnvironmentObject private var appState: AppState
+
+    @ViewState private var isHovered: Bool = false
     @ViewState private var isMoreHovered: Bool = false
+    @ViewState private var isActionHovered: Bool = false
+    @ViewState private var isFinderHovered: Bool = false
 
     public init(task: DownloadTaskModel) {
         self.task = task
@@ -21,51 +27,122 @@ public struct DownloadRowView: View {
     public var body: some View {
         let isSelected = appState.selectedTaskIDs.contains(task.id)
 
-        HStack(spacing: 12) {
-            // Row-level selection checkbox
+        HStack(alignment: .top, spacing: 14) {
+            // Checkbox
             Button {
                 appState.toggleSelection(id: task.id)
             } label: {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 18, height: 18)
-                    .foregroundStyle(isSelected ? Color.white : Color.secondary)
-                    .contentShape(Rectangle())
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(isSelected ? Theme.accent : Theme.cardBorder.opacity(2.0), lineWidth: 1.2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isSelected ? Theme.accent : Color.white.opacity(0.001))
+                        )
+                        .frame(width: 16, height: 16)
+
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.top, 2)
             .help(isSelected ? "Deselect" : "Select")
 
-            // File Icon
-            fileTypeIcon
-                .frame(width: 38, height: 38)
+            // High Craft File Format Badge Squircle
+            fileFormatBadge
+                .frame(width: 48, height: 48)
 
-            // Details and Progress
-            VStack(alignment: .leading, spacing: 4) {
-                // Filename and percentage
-                HStack {
-                    Text(task.filename)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(isSelected ? Color.white : Color.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            // Content & Progress Strip
+            VStack(alignment: .leading, spacing: 6) {
+                // Header: Filename + Badges + Percentage
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(task.filename)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        // Completed Verification Badge
+                        if task.status == .completed {
+                            ZStack {
+                                Circle()
+                                    .fill(Theme.success)
+                                    .frame(width: 16, height: 16)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(Color(hex: 0x0b2812))
+                            }
+                            .help("Integrity Verified")
+                        }
+
+                        // Multi-Chunk Badge
+                        if task.supportsRange && task.status != .completed {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Theme.accent)
+                                    .frame(width: 5, height: 5)
+                                Text("Multi-Chunk Accelerated")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            }
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent.opacity(0.12), in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Theme.accent.opacity(0.25), lineWidth: 0.8)
+                            )
+                        }
+                    }
 
                     Spacer()
 
-                    statusTrailingBadge(isSelected: isSelected)
+                    // Trailing Status Pill
+                    statusTrailingPill
                 }
 
-                // Custom smooth Capsule progress bar
-                customProgressBar(isSelected: isSelected)
+                // Sleek Dual-Layer Progress Bar
+                dualLayerProgressBar
 
-                // Subtitle metadata
-                statusMetadataView(isSelected: isSelected)
+                // Metric Details Strip & Quick Actions
+                HStack(alignment: .center) {
+                    metricDetailsStrip
+
+                    Spacer()
+
+                    quickActionButtons
+                }
             }
-
-            // Quick Actions
-            quickActionButtons(isSelected: isSelected)
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1)
+        )
+        .shadow(
+            color: isSelected ? Theme.accent.opacity(0.18) : Color.black.opacity(0.06),
+            radius: isSelected ? 10 : 3,
+            x: 0,
+            y: isSelected ? 2 : 1
+        )
+        .onHover { isHovered = $0 }
+        .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+        .onTapGesture {
+            // Single tap selects this task as active
+            appState.selectedTaskId = task.id
+        }
         .onTapGesture(count: 2) {
             if task.status == .completed {
                 appState.openFile(task: task)
@@ -78,289 +155,394 @@ public struct DownloadRowView: View {
 
     // MARK: - Subviews
 
-    private var fileTypeIcon: some View {
+    private var fileFormatBadge: some View {
         let ext = (task.filename as NSString).pathExtension
-        let utType = UTType(filenameExtension: ext) ?? .data
-        let image = NSWorkspace.shared.icon(for: utType)
-        return Image(nsImage: image)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
+        let style = Theme.fileBadge(for: ext)
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [style.gradientTop, style.gradientBottom],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(style.borderColor, lineWidth: 1)
+                )
+
+            Image(systemName: style.systemIcon)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(style.tintColor)
+
+            // Extension label badge anchored at bottom
+            VStack {
+                Spacer()
+                Text(style.label)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(style.tintColor)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(style.gradientBottom.opacity(0.95), in: RoundedRectangle(cornerRadius: 3))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(style.borderColor, lineWidth: 0.8)
+                    )
+                    .offset(y: 4)
+            }
+        }
     }
 
-    private func customProgressBar(isSelected: Bool) -> some View {
+    private var statusTrailingPill: some View {
+        Group {
+            switch task.status {
+            case .downloading:
+                Text("\(Int(task.progress * 100))%")
+                    .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.accent.opacity(0.35), lineWidth: 1)
+                    )
+
+            case .probing:
+                Text("PROBING")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.purple)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+
+            case .paused:
+                HStack(spacing: 5) {
+                    Text("PAUSED")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.warning)
+                    Text("\(Int(task.progress * 100))%")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Theme.warning.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Theme.warning.opacity(0.35), lineWidth: 1)
+                )
+
+            case .completed:
+                Text("100% DONE")
+                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.success)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Theme.success.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.success.opacity(0.35), lineWidth: 1)
+                    )
+
+            case .failed:
+                Text("FAILED")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.critical)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Theme.critical.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.critical.opacity(0.35), lineWidth: 1)
+                    )
+
+            case .idle:
+                Text("QUEUED")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textTertiary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var dualLayerProgressBar: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                // Background track
+                // Background Track
                 Capsule()
-                    .fill(isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.16))
-                    .frame(height: 6)
+                    .fill(Theme.canvasBackground)
+                    .overlay(
+                        Capsule()
+                            .stroke(Theme.cardBorder, lineWidth: 1)
+                    )
+                    .frame(height: 7)
 
-                // Progress fill
-                let fillWidth = max(0.0, min(1.0, task.progress)) * geo.size.width
+                // Fill Bar
+                let fillRatio = max(0.0, min(1.0, task.progress))
+                let fillWidth = CGFloat(fillRatio) * geo.size.width
+
                 Capsule()
-                    .fill(progressGradient(isSelected: isSelected))
-                    .frame(width: fillWidth, height: 6)
+                    .fill(progressGradient)
+                    .frame(width: fillWidth, height: 7)
                     .animation(.linear(duration: 0.25), value: task.progress)
             }
         }
-        .frame(height: 6)
+        .frame(height: 7)
+        .padding(.vertical, 2)
     }
 
-    private func progressGradient(isSelected: Bool) -> LinearGradient {
-        if isSelected {
-            return LinearGradient(
-                colors: [Color.white, Color(red: 0.85, green: 0.95, blue: 1.0)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        }
+    private var progressGradient: LinearGradient {
         switch task.status {
         case .downloading:
             return LinearGradient(
-                colors: [Color.blue, Color(red: 0.15, green: 0.70, blue: 1.0)],
+                colors: [Color.blue, Color(hex: 0x38bdf8), Color(hex: 0x818cf8)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         case .probing:
             return LinearGradient(
-                colors: [Color.purple, Color(red: 0.70, green: 0.40, blue: 1.0)],
+                colors: [Color.purple, Color(hex: 0xa855f7)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         case .completed:
             return LinearGradient(
-                colors: [Color.green, Color(red: 0.30, green: 0.85, blue: 0.50)],
+                colors: [Theme.success, Color(hex: 0x47e266)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         case .paused:
             return LinearGradient(
-                colors: [Color.orange, Color.yellow],
+                colors: [Theme.warning, Color(hex: 0xfbbf24)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         case .failed:
             return LinearGradient(
-                colors: [Color.red, Color.pink],
+                colors: [Theme.critical, Color.pink],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         case .idle:
             return LinearGradient(
-                colors: [Color.secondary, Color.gray],
+                colors: [Theme.textTertiary.opacity(0.4), Theme.textTertiary.opacity(0.6)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         }
     }
 
-    @ViewBuilder
-    private func statusTrailingBadge(isSelected: Bool) -> some View {
-        if isSelected {
-            switch task.status {
-            case .downloading:
-                Text("\(Int(task.progress * 100))%")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.25), in: Capsule())
-            case .completed:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.white)
-            case .paused:
-                Text("PAUSED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.25), in: Capsule())
-            case .failed:
-                Text("FAILED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.25), in: Capsule())
-            case .probing:
-                Text("PROBING")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.25), in: Capsule())
-            case .idle:
-                Text("QUEUED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.25), in: Capsule())
-            }
-        } else {
-            switch task.status {
-            case .downloading:
-                Text("\(Int(task.progress * 100))%")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.12), in: Capsule())
-            case .completed:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case .paused:
-                Text("PAUSED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.12), in: Capsule())
-            case .failed:
-                Text("FAILED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.red.opacity(0.12), in: Capsule())
-            case .probing:
-                Text("PROBING")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.purple)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.12), in: Capsule())
-            case .idle:
-                Text("QUEUED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func statusMetadataView(isSelected: Bool) -> some View {
-        let baseColor = isSelected ? Color.white.opacity(0.85) : Color.secondary
-        switch task.status {
-        case .downloading:
-            HStack(spacing: 6) {
-                Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
-                    .monospacedDigit()
-                Text("•")
-                Text(AppState.formatSpeed(task.bytesPerSecond))
-                    .monospacedDigit()
-                    .foregroundStyle(isSelected ? Color.white : Color.primary)
-                Text("•")
-                let remaining = max(0, task.totalBytes - task.downloadedBytes)
-                Text(AppState.formatETA(remainingBytes: remaining, bytesPerSecond: task.bytesPerSecond))
-                    .monospacedDigit()
-            }
-            .font(.caption)
-            .foregroundStyle(baseColor)
-
-        case .probing:
-            Text("Connecting to server and negotiating HTTP Range...")
-                .font(.caption)
-                .foregroundStyle(baseColor)
-
-        case .paused:
-            HStack(spacing: 6) {
-                Text("Paused")
-                if task.totalBytes > 0 {
-                    Text("•")
-                    Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
-                        .monospacedDigit()
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(baseColor)
-
-        case .completed:
-            HStack(spacing: 6) {
-                Text("Completed")
-                Text("•")
-                Text(AppState.formatBytes(task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes))
-                    .monospacedDigit()
-                if let completedAt = task.completedAt {
-                    Text("•")
-                    Text(completedAt, style: .date)
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(baseColor)
-
-        case .failed(let reason):
-            HStack(spacing: 5) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
-                Text(reason)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .font(.caption)
-            .foregroundStyle(isSelected ? Color.white : Color.red)
-            .help(reason)
-
-        case .idle:
-            Text("Waiting in queue...")
-                .font(.caption)
-                .foregroundStyle(baseColor)
-        }
-    }
-
-    private func quickActionButtons(isSelected: Bool) -> some View {
+    private var metricDetailsStrip: some View {
         HStack(spacing: 8) {
             switch task.status {
-            case .downloading, .probing:
-                QuickActionButton(
-                    icon: "pause.fill",
-                    help: "Pause Download",
-                    isSelected: isSelected
-                ) {
-                    appState.pause(id: task.id)
+            case .downloading:
+                Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down.right")
+                        .font(.system(size: 10, weight: .bold))
+                    Text(AppState.formatSpeed(task.bytesPerSecond))
+                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                }
+                .foregroundStyle(Theme.success)
+                .lineLimit(1)
+
+                let remaining = remainingTimeString
+                if !remaining.isEmpty {
+                    Text("•")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+
+                    Text(remaining)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
                 }
 
-            case .paused, .idle:
-                QuickActionButton(
-                    icon: "play.fill",
-                    help: "Resume Download",
-                    isSelected: isSelected
-                ) {
-                    appState.resume(id: task.id)
-                }
+            case .probing:
+                Text("Analyzing remote headers and range support...")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Color.purple)
+                    .lineLimit(1)
 
-            case .failed:
-                QuickActionButton(
-                    icon: "arrow.clockwise",
-                    help: "Retry Download",
-                    isSelected: isSelected
-                ) {
-                    appState.resume(id: task.id)
-                }
+            case .paused:
+                Text("Paused")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Theme.warning)
+                    .lineLimit(1)
+
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
 
             case .completed:
-                QuickActionButton(
-                    icon: "arrow.up.forward.app",
-                    help: "Open File",
-                    isSelected: isSelected
-                ) {
-                    appState.openFile(task: task)
+                Text("Completed")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Theme.success)
+                    .lineLimit(1)
+
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text(AppState.formatBytes(task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes))
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+
+                if let completedAt = task.completedAt {
+                    Text("•")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+
+                    Text(completedAt, style: .date)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
                 }
+
+            case .failed(let reason):
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                    Text(reason)
+                        .font(.system(size: 11.5))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .foregroundStyle(Theme.critical)
+                .help(reason)
+
+            case .idle:
+                Text("Waiting in queue...")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .lineLimit(1)
+    }
+
+    private var remainingTimeString: String {
+        guard task.status == .downloading, task.bytesPerSecond > 0, task.totalBytes > task.downloadedBytes else {
+            return ""
+        }
+        let remainingBytes = task.totalBytes - task.downloadedBytes
+        let remainingSeconds = Double(remainingBytes) / task.bytesPerSecond
+        if remainingSeconds < 60 {
+            return "\(Int(remainingSeconds))s remaining"
+        } else if remainingSeconds < 3600 {
+            let mins = Int(remainingSeconds / 60)
+            let secs = Int(remainingSeconds.truncatingRemainder(dividingBy: 60))
+            return "\(mins)m \(secs)s remaining"
+        } else {
+            let hours = Int(remainingSeconds / 3600)
+            let mins = Int((remainingSeconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            return "\(hours)h \(mins)m remaining"
+        }
+    }
+
+    private var quickActionButtons: some View {
+        HStack(spacing: 4) {
+            // Pause / Resume / Open Primary Action
+            switch task.status {
+            case .downloading, .probing:
+                Button {
+                    appState.pause(id: task.id)
+                } label: {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 24, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Pause Download")
+
+            case .paused, .idle, .failed:
+                Button {
+                    appState.resume(id: task.id)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 24, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Resume Download")
+
+            case .completed:
+                Button {
+                    appState.openFile(task: task)
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 24, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Open File")
             }
 
-            QuickActionButton(
-                icon: "folder",
-                help: "Show in Finder",
-                isSelected: isSelected
-            ) {
+            // Show in Finder
+            Button {
                 appState.openInFinder(task: task)
+            } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isFinderHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                    )
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onHover { isFinderHovered = $0 }
+            .help("Show in Finder")
 
+            // More Options Menu
             Menu {
                 Button("Copy Download Link") {
                     appState.copyDownloadLink(task: task)
@@ -374,43 +556,22 @@ public struct DownloadRowView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.85))
-                    .frame(width: 26, height: 26)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 24, height: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(isMoreHovered ? (isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.15)) : Color.clear)
+                            .fill(isMoreHovered ? Theme.tagBackground : Color.white.opacity(0.001))
                     )
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
+            .contentShape(Rectangle())
             .onHover { isMoreHovered = $0 }
             .help("More Options")
         }
-    }
-}
-
-private struct QuickActionButton: View {
-    let icon: String
-    let help: String
-    let isSelected: Bool
-    let action: () -> Void
-    @ViewState private var isHovered: Bool = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.85))
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isHovered ? (isSelected ? Color.white.opacity(0.25) : Color.secondary.opacity(0.15)) : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help(help)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

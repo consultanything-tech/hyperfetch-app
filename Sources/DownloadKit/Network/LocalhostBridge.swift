@@ -73,10 +73,54 @@ public final class LocalhostBridge: @unchecked Sendable {
         _ autoStart: Bool,
         _ headers: [String: String]?
     ) -> Void
+    public typealias SheetHandler = @Sendable (_ url: String?, _ filename: String?) -> Void
+    public typealias ThemeHandler = @Sendable (_ mode: String) -> Void
 
     public let preferredPort: UInt16
     public let fallbackPort: UInt16
-    public var onDownloadRequested: DownloadHandler?
+    private let lock = NSLock()
+    private var _onDownloadRequested: DownloadHandler?
+    private var _onSheetRequested: SheetHandler?
+    private var _onAppearanceChangeRequested: ThemeHandler?
+
+    public var onDownloadRequested: DownloadHandler? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onDownloadRequested
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _onDownloadRequested = newValue
+        }
+    }
+
+    public var onSheetRequested: SheetHandler? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onSheetRequested
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _onSheetRequested = newValue
+        }
+    }
+
+    public var onAppearanceChangeRequested: ThemeHandler? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onAppearanceChangeRequested
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _onAppearanceChangeRequested = newValue
+        }
+    }
 
     private let queue = DispatchQueue(label: "com.hyperfetch.localhostbridge", qos: .userInitiated)
     private var listener: NWListener?
@@ -377,6 +421,23 @@ public final class LocalhostBridge: @unchecked Sendable {
 
         case ("GET", "/add"), ("GET", "/download"):
             handleGetAdd(queryItems: urlComponents.queryItems ?? [], connection: connection)
+
+        case ("GET", "/sheet"), ("POST", "/sheet"):
+            let queryDict = Dictionary((urlComponents.queryItems ?? []).compactMap { item in
+                item.value != nil ? (item.name, item.value!) : nil
+            }, uniquingKeysWith: { first, _ in first })
+            let url = queryDict["url"]
+            let filename = queryDict["filename"]
+            onSheetRequested?(url, filename)
+            sendJSONResponse(status: 200, json: ["status": "ok", "message": "Sheet requested"], connection: connection)
+
+        case ("GET", "/theme"), ("POST", "/theme"):
+            let queryDict = Dictionary((urlComponents.queryItems ?? []).compactMap { item in
+                item.value != nil ? (item.name, item.value!) : nil
+            }, uniquingKeysWith: { first, _ in first })
+            let mode = queryDict["mode"] ?? "dark"
+            onAppearanceChangeRequested?(mode)
+            sendJSONResponse(status: 200, json: ["status": "ok", "theme": mode], connection: connection)
 
         default:
             sendErrorResponse(status: 404, message: "Route not found: \(path)", connection: connection)

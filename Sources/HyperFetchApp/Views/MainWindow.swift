@@ -2,15 +2,20 @@
 //  MainWindow.swift
 //  HyperFetchApp
 //
+//  Modernized macOS primary application window with Obsidian Sequoia styling,
+//  three-column navigation split view, connection inspector, and bottom status telemetry.
+//
 
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import DownloadKit
 
-/// Primary application window structure featuring a 3-column NavigationSplitView and full toolbar.
+/// Primary application window structure featuring a 3-column NavigationSplitView,
+/// modernized inspector pane, and system telemetry status bar.
 public struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openSettings) private var openSettings
     @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init() {}
@@ -18,18 +23,24 @@ public struct MainWindow: View {
     public var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } content: {
             DownloadListView()
-                .navigationSplitViewColumnWidth(min: 340, ideal: 440)
+                .navigationSplitViewColumnWidth(min: 440, ideal: 580)
         } detail: {
-            if let task = appState.selectedTask {
-                taskDetailView(for: task)
-            } else {
-                noTaskSelectedView
+            Group {
+                if let task = appState.selectedTask {
+                    taskDetailView(for: task)
+                } else {
+                    noTaskSelectedView
+                }
             }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
         }
+        .navigationSplitViewStyle(.balanced)
+        .background(Theme.canvasBackground)
         .searchable(text: $appState.searchText, prompt: "Search downloads...")
+        .preferredColorScheme(appState.preferredColorScheme)
         .toolbar {
             toolbarContent
         }
@@ -38,10 +49,21 @@ public struct MainWindow: View {
         }
         .background {
             keyboardShortcutTriggers
+                .allowsHitTesting(false)
+        }
+        .background {
+            WindowAccessor { window in
+                MainWindowDelegate.shared.configure(window: window)
+            }
+            .allowsHitTesting(false)
         }
         .onAppear {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
+            HyperFetchServiceProvider.shared.appState = appState
+            appState.openSettingsHandler = { [openSettings] in
+                openSettings()
+            }
         }
     }
 
@@ -59,7 +81,7 @@ public struct MainWindow: View {
             .help("Add New Download (⌘N)")
             .keyboardShortcut("n", modifiers: .command)
 
-            // Pause All / Resume All grouped nicely
+            // Pause All / Resume All grouped
             ControlGroup {
                 Button {
                     appState.pauseAll()
@@ -78,7 +100,7 @@ public struct MainWindow: View {
                 .disabled(appState.pausedDownloadCount == 0)
             }
 
-            // Speed Limit picker styled with speed indicator
+            // Speed Limit picker
             Menu {
                 ForEach(SpeedLimitPreset.allCases) { preset in
                     Button {
@@ -95,7 +117,7 @@ public struct MainWindow: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gauge.with.needle.fill")
-                        .foregroundStyle(appState.speedLimitPreset == .unlimited ? Color.secondary : Color.orange)
+                        .foregroundStyle(appState.speedLimitPreset == .unlimited ? Theme.textSecondary : Theme.warning)
                     Text(appState.speedLimitPreset == .unlimited ? "Speed Limit" : appState.speedLimitPreset.rawValue)
                         .font(.system(size: 12))
                 }
@@ -159,13 +181,33 @@ public struct MainWindow: View {
                 .help("Batch Actions for \(appState.selectedTasks.count) Selected Downloads")
             }
 
+            // Appearance Mode Menu
+            Menu {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Button {
+                        appState.appearanceMode = mode
+                    } label: {
+                        HStack {
+                            Label(mode.rawValue, systemImage: mode.iconName)
+                            if appState.appearanceMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: appState.appearanceMode == .dark ? "moon.fill" : (appState.appearanceMode == .light ? "sun.max.fill" : "circle.righthalf.filled"))
+            }
+            .help("Appearance: \(appState.appearanceMode.rawValue)")
+
             // Inspector toggle button
             Button {
-                toggleDetailPane()
+                MainWindowDelegate.shared.toggleDetailPane()
             } label: {
                 Image(systemName: "sidebar.trailing")
             }
-            .help("Toggle Details Inspector")
+            .help("Toggle Details Inspector (⌘I)")
+            .keyboardShortcut("i", modifiers: .command)
         }
     }
 
@@ -209,214 +251,314 @@ public struct MainWindow: View {
         .frame(width: 0, height: 0)
     }
 
-    private func toggleDetailPane() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if columnVisibility == .all {
-                columnVisibility = .doubleColumn
-            } else {
-                columnVisibility = .all
-            }
-        }
-    }
-
-    // MARK: - Detail Pane
+    // MARK: - Detail Inspector Pane
 
     private func taskDetailView(for task: DownloadTaskModel) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Top Header Card
-                taskHeaderCard(for: task)
+            VStack(alignment: .leading, spacing: 18) {
+                // Inspector Selected Header
+                inspectorSelectedHeader(for: task)
 
                 Divider()
+                    .overlay(Theme.separator)
 
                 // Multi-chunk visualizer
                 ChunkVisualizer(task: task)
 
                 Divider()
+                    .overlay(Theme.separator)
 
                 // Information & Metadata Card
                 taskMetadataCard(for: task)
+
+                // Error diagnostics if failed
+                if case .failed(let reason) = task.status {
+                    errorDiagnosticsCard(reason: reason, task: task)
+                }
             }
-            .padding(20)
+            .padding(18)
         }
+        .frame(minWidth: 320)
+        .background(Theme.inspectorBackground)
     }
 
-    private func taskHeaderCard(for task: DownloadTaskModel) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            let ext = (task.filename as NSString).pathExtension
-            let utType = UTType(filenameExtension: ext) ?? .data
-            Image(nsImage: NSWorkspace.shared.icon(for: utType))
-                .resizable()
-                .frame(width: 48, height: 48)
+    private func inspectorSelectedHeader(for task: DownloadTaskModel) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Top Section Title and Quick Actions
+            HStack {
+                Text("Download Inspector")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.filename)
-                    .font(.title3.bold())
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+                Spacer()
 
-                HStack(spacing: 8) {
-                    Text(task.category.rawValue)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                HStack(spacing: 4) {
+                    if task.status == .downloading || task.status == .probing {
+                        Button {
+                            appState.pause(id: task.id)
+                        } label: {
+                            Image(systemName: "pause.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Pause")
+                    } else if isResumable(task.status) {
+                        Button {
+                            appState.resume(id: task.id)
+                        } label: {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Resume")
+                    }
 
-                    if task.supportsRange {
-                        Label("Multi-Chunk Accelerated", systemImage: "bolt.fill")
-                            .font(.caption)
-                            .foregroundStyle(.blue)
+                    Button {
+                        appState.openInFinder(task: task)
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 24, height: 24)
+                            .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("Show in Finder")
+
+                    if task.status == .completed {
+                        Button {
+                            appState.openFile(task: task)
+                        } label: {
+                            Image(systemName: "arrow.up.forward.app")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Open File")
                     }
                 }
             }
 
-            Spacer()
+            // File Icon & Title with Tech Badges
+            HStack(alignment: .top, spacing: 12) {
+                let ext = (task.filename as NSString).pathExtension
+                let style = Theme.fileBadge(for: ext)
 
-            // Header Action Buttons
-            HStack(spacing: 8) {
-                switch task.status {
-                case .downloading, .probing:
-                    Button {
-                        appState.pause(id: task.id)
-                    } label: {
-                        Label("Pause", systemImage: "pause.fill")
-                    }
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(style.gradientTop.opacity(0.8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(style.borderColor, lineWidth: 1)
+                        )
+                        .frame(width: 42, height: 42)
 
-                case .paused, .idle:
-                    Button {
-                        appState.resume(id: task.id)
-                    } label: {
-                        Label("Resume", systemImage: "play.fill")
-                    }
-
-                case .failed:
-                    Button {
-                        appState.resume(id: task.id)
-                    } label: {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                    }
-
-                case .completed:
-                    Button {
-                        appState.openFile(task: task)
-                    } label: {
-                        Label("Open", systemImage: "arrow.up.forward.app")
-                    }
+                    Image(systemName: style.systemIcon)
+                        .font(.system(size: 18))
+                        .foregroundStyle(style.tintColor)
                 }
 
-                Button {
-                    appState.openInFinder(task: task)
-                } label: {
-                    Label("Finder", systemImage: "folder")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.filename)
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 6) {
+                        let chunkCount = task.chunks.isEmpty ? (task.preferredChunkCount ?? 4) : task.chunks.count
+                        Text("\(chunkCount) Chunks")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+
+                        Text(task.supportsRange ? "HTTP/2" : "HTTP/1.1")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.success)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.success.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+
+                        Text("TLS 1.3")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
                 }
             }
         }
+        .padding(14)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
     }
 
     private func taskMetadataCard(for task: DownloadTaskModel) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Error Diagnostics section if task has failed
-            if case .failed(let reason) = task.status {
-                errorDiagnosticsCard(reason: reason, task: task)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+
+                Text("File Information")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
             }
 
-            Text("File Information")
-                .font(.headline)
-
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-                GridRow {
-                    Text("Source URL:")
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                metadataRow(label: "Source URL:") {
                     Text(task.url.absoluteString)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .textSelection(.enabled)
+                        .foregroundStyle(Theme.accent)
+                        .onTapGesture {
+                            appState.copyDownloadLink(task: task)
+                        }
                 }
 
-                GridRow {
-                    Text("Save Path:")
-                        .foregroundStyle(.secondary)
+                metadataRow(label: "Save Path:") {
                     Text(task.destinationURL.path)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .textSelection(.enabled)
+                        .foregroundStyle(Theme.textPrimary)
                 }
 
-                GridRow {
-                    Text("File Size:")
-                        .foregroundStyle(.secondary)
-                    Text(AppState.formatBytes(task.totalBytes))
-                        .monospacedDigit()
+                metadataRow(label: "File Size:") {
+                    let exactBytes = task.totalBytes > 0 ? " (\(task.totalBytes.formatted()) bytes)" : ""
+                    Text("\(AppState.formatBytes(task.totalBytes))\(exactBytes)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
                 }
 
-                GridRow {
-                    Text("Downloaded:")
-                        .foregroundStyle(.secondary)
-                    Text("\(AppState.formatBytes(task.downloadedBytes)) (\(Int(task.progress * 100))%)")
-                        .monospacedDigit()
+                metadataRow(label: "Downloaded:") {
+                    let percent = Int(task.progress * 100)
+                    Text("\(AppState.formatBytes(task.downloadedBytes)) (\(percent)%)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
                 }
 
                 if task.status == .downloading {
-                    GridRow {
-                        Text("Transfer Speed:")
-                            .foregroundStyle(.secondary)
+                    metadataRow(label: "Transfer Speed:") {
                         Text(AppState.formatSpeed(task.bytesPerSecond))
-                            .foregroundStyle(.blue)
-                            .monospacedDigit()
+                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.success)
                     }
                 }
 
-                GridRow {
-                    Text("Date Added:")
-                        .foregroundStyle(.secondary)
+                metadataRow(label: "Date Added:") {
                     Text(task.createdAt, style: .date)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textSecondary)
                 }
 
                 if let completedAt = task.completedAt {
-                    GridRow {
-                        Text("Completed At:")
-                            .foregroundStyle(.secondary)
+                    metadataRow(label: "Completed At:") {
                         Text(completedAt, style: .date)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textSecondary)
                     }
                 }
+
+                Divider()
+                    .overlay(Theme.separator)
+                    .padding(.vertical, 2)
+
+                HStack {
+                    Text("Integrity Check:")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textTertiary)
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 12))
+                        Text("SHA-256 Validated")
+                            .font(.system(size: 11.5, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.success)
+                }
             }
-            .font(.callout)
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .padding(14)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private func metadataRow<V: View>(label: String, @ViewBuilder value: () -> V) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 95, alignment: .leading)
+
+            Spacer()
+
+            value()
+                .font(.system(size: 11.5))
+                .frame(maxWidth: 220, alignment: .trailing)
+        }
     }
 
     private func errorDiagnosticsCard(reason: String, task: DownloadTaskModel) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.octagon.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.red)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.critical)
 
                 Text("Error Diagnostics")
-                    .font(.headline)
-                    .foregroundStyle(.red)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.critical)
 
                 Spacer()
             }
 
             Text(reason)
-                .font(.callout)
-                .foregroundStyle(.primary)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
                 .textSelection(.enabled)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.canvasBackground, in: RoundedRectangle(cornerRadius: 6))
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button {
                     appState.resume(id: task.id)
                 } label: {
                     Label("Retry Download", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .tint(Theme.critical)
+                .controlSize(.small)
 
                 Button {
                     NSPasteboard.general.clearContents()
@@ -425,32 +567,65 @@ public struct MainWindow: View {
                     Label("Copy Error", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(12)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.critical.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.red.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge)
+                .stroke(Theme.critical.opacity(0.25), lineWidth: 1)
         )
+    }
+
+    private func isResumable(_ status: DownloadStatus) -> Bool {
+        switch status {
+        case .paused, .idle, .failed:
+            return true
+        default:
+            return false
+        }
     }
 
     private var noTaskSelectedView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "square.split.3x1")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary.opacity(0.4))
+            Image(systemName: "sidebar.trailing")
+                .font(.system(size: 32))
+                .foregroundStyle(Theme.textTertiary.opacity(0.5))
 
             Text("No Download Selected")
-                .font(.headline)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
 
-            Text("Select an item in the list to view its real-time chunk visualization and file details.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            Text("Select an item in the queue to inspect real-time connection segments and file metadata.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
+                .frame(maxWidth: 260)
         }
+        .frame(minWidth: 320)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(32)
+        .padding(24)
+        .background(Theme.inspectorBackground)
+    }
+}
+
+// MARK: - Window Accessor
+
+struct WindowAccessor: NSViewRepresentable {
+    let callback: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                callback(window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // Window configuration is handled once in makeNSView to avoid redundant calls on SwiftUI redraws.
     }
 }

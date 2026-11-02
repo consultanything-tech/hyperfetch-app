@@ -73,6 +73,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   }
 
   const filename = downloadItem.filename || '';
+  const fallbackName = getFilenameFromUrl(downloadItem.url) || 'download';
   const ext = getFileExtension(filename || downloadItem.url);
 
   const shouldIntercept = settings.interceptAll || (ext && DOWNLOADABLE_EXTENSIONS.has(ext));
@@ -87,7 +88,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   // 1. Tell Chrome to complete filename determination so state transitions cleanly
   if (typeof suggest === 'function') {
     try {
-      suggest({ filename: filename || 'download' });
+      suggest({ filename: filename || fallbackName });
     } catch (e) {
       // Ignore if already suggested or closed
     }
@@ -125,13 +126,32 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
       headers['Cookie'] = cookieString;
     }
 
-    forwardDownloadToHyperFetch({
+    const payload = {
       url: downloadItem.url,
-      filename: filename,
+      filename: filename || fallbackName,
       referrer: downloadItem.referrer || '',
       headers: headers,
       autoStart: true
-    });
+    };
+
+    const success = await forwardDownloadToHyperFetch(payload);
+    if (!success) {
+      console.warn('[HyperFetch] Native app unreachable, falling back to browser download for:', payload.url);
+      showErrorBadge();
+      try {
+        chrome.downloads.download({
+          url: payload.url,
+          filename: payload.filename || undefined,
+          saveAs: false
+        }, (downloadId) => {
+          if (downloadId) {
+            processedDownloadIds.add(downloadId);
+          }
+        });
+      } catch (fallbackErr) {
+        console.error('[HyperFetch] Failed to re-trigger fallback download:', fallbackErr);
+      }
+    }
   })();
 });
 
@@ -246,4 +266,26 @@ async function checkHyperFetchStatus() {
     } catch (e) {}
   }
   return { connected: false };
+}
+
+function showErrorBadge() {
+  try {
+    chrome.action.setBadgeText({ text: '!' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+    chrome.action.setBadgeBackgroundColor({ color: '#FF3B30' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+    setTimeout(() => updateBadge(), 4000);
+  } catch (e) {}
+}
+
+function getFilenameFromUrl(url) {
+  try {
+    const pathname = new URL(url).pathname;
+    const lastSegment = pathname.substring(pathname.lastIndexOf('/') + 1);
+    return decodeURIComponent(lastSegment.split('?')[0]);
+  } catch (e) {
+    return '';
+  }
 }

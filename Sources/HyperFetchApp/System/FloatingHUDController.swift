@@ -52,20 +52,23 @@ public final class FloatingHUDController: NSObject {
             hudPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             self.panel = hudPanel
         }
+        hudPanel.appearance = NSApp.appearance
 
         // Host SwiftUI QuickAddHUDView
         let hudView = QuickAddHUDView(
             url: url,
             filename: filename,
-            onDownloadNow: { [weak self] in
+            onDownloadNow: { [weak self, weak appState] in
                 self?.dismiss()
+                guard let appState else { return }
                 if appState.bringToFrontOnCapture {
                     appState.bringToFront()
                 }
                 appState.addTask(url: url, filename: filename, autoStart: true)
             },
-            onCustomize: { [weak self] in
+            onCustomize: { [weak self, weak appState] in
                 self?.dismiss()
+                guard let appState else { return }
                 appState.presentAddSheet(url: url.absoluteString, filename: filename)
                 appState.bringToFront()
             },
@@ -92,7 +95,7 @@ public final class FloatingHUDController: NSObject {
 
         // Schedule auto-dismiss
         autoDismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(self?.autoDismissTimeout ?? 10 * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64((self?.autoDismissTimeout ?? 10.0) * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.dismiss()
         }

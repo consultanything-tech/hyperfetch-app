@@ -218,10 +218,12 @@ public actor DownloadEngine {
                 }
 
                 for try await completedChunk in group {
-                    if let idx = currentTask.chunks.firstIndex(where: { $0.index == completedChunk.index }) {
-                        currentTask.chunks[idx] = completedChunk
-                        taskStore[currentTask.id] = currentTask
-                        try? await statePersister?.saveTask(currentTask)
+                    if var storedTask = taskStore[currentTask.id] {
+                        if let idx = storedTask.chunks.firstIndex(where: { $0.index == completedChunk.index }) {
+                            storedTask.chunks[idx] = completedChunk
+                            taskStore[storedTask.id] = storedTask
+                            try? await statePersister?.saveTask(storedTask)
+                        }
                     }
                 }
             }
@@ -229,12 +231,17 @@ public actor DownloadEngine {
             progressContinuation.finish()
             _ = await progressTask.value
 
+            if let latestTask = taskStore[currentTask.id] {
+                currentTask = latestTask
+            }
+
             try await writer.sync()
             await writer.close()
 
-            // Ensure all chunks that reached expected length are marked completed
+            // Ensure all chunks that reached expected length are clamped and marked completed
             for i in 0..<currentTask.chunks.count {
                 if currentTask.chunks[i].expectedLength > 0 && currentTask.chunks[i].bytesDownloaded >= currentTask.chunks[i].expectedLength {
+                    currentTask.chunks[i].bytesDownloaded = currentTask.chunks[i].expectedLength
                     currentTask.chunks[i].status = .completed
                 } else if currentTask.chunks[i].endOffset == -1 {
                     currentTask.chunks[i].status = .completed
@@ -294,6 +301,7 @@ public actor DownloadEngine {
         if let idx = task.chunks.firstIndex(where: { $0.index == chunkIndex }) {
             task.chunks[idx].bytesDownloaded += delta
             if task.chunks[idx].expectedLength > 0 && task.chunks[idx].bytesDownloaded >= task.chunks[idx].expectedLength {
+                task.chunks[idx].bytesDownloaded = task.chunks[idx].expectedLength
                 task.chunks[idx].status = .completed
             } else {
                 task.chunks[idx].status = .downloading
@@ -315,39 +323,44 @@ public actor DownloadEngine {
 
 // MARK: - Speed Tracker
 
-/// Rolling window speed calculator measuring bytes per second.
+/// Rolling window speed calculator measuring bytes per second using a monotonic ContinuousClock.
 public struct SpeedTracker: Sendable {
-    private var window: [(time: CFAbsoluteTime, bytes: Int64)] = []
-    private let windowDuration: CFTimeInterval
+    private var window: [(time: ContinuousClock.Instant, bytes: Int64)] = []
+    private let clock: ContinuousClock
+    private let windowDuration: Duration
 
-    public init(windowDuration: CFTimeInterval = 1.0) {
+    public init(windowDuration: Duration = .seconds(1), clock: ContinuousClock = ContinuousClock()) {
         self.windowDuration = windowDuration
+        self.clock = clock
     }
 
     public mutating func record(bytes: Int64) {
         guard bytes > 0 else { return }
-        let now = CFAbsoluteTimeGetCurrent()
+        let now = clock.now
         window.append((time: now, bytes: bytes))
         prune(now: now)
     }
 
     public mutating func currentSpeed() -> Double {
-        let now = CFAbsoluteTimeGetCurrent()
+        let now = clock.now
         prune(now: now)
         guard let first = window.first, let last = window.last else {
             return 0.0
         }
         let totalBytes = window.reduce(Int64(0)) { $0 + $1.bytes }
-        let elapsed = last.time - first.time
-        if elapsed > 0.001 {
-            return Double(totalBytes) / elapsed
+        let elapsed = first.time.duration(to: last.time)
+        let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        if elapsedSeconds > 0.001 {
+            return Double(totalBytes) / elapsedSeconds
         } else {
             return Double(totalBytes)
         }
     }
 
-    private mutating func prune(now: CFAbsoluteTime) {
-        let cutoff = now - windowDuration
-        window.removeAll { $0.time < cutoff }
+    private mutating func prune(now: ContinuousClock.Instant) {
+        let maxAge = windowDuration
+        window.removeAll { entry in
+            now - entry.time > maxAge
+        }
     }
 }
