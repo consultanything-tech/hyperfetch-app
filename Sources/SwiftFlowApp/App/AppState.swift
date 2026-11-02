@@ -84,6 +84,12 @@ public final class AppState: ObservableObject {
 
         notificationManager.requestAuthorization()
 
+        // Initialize with sample demo tasks if queue is empty
+        if self.tasks.isEmpty {
+            self.tasks = Self.sampleTasks
+            self.selectedTaskId = self.tasks.first?.id
+        }
+
         // Start listening to the QueueManager stream
         startListeningToQueue()
     }
@@ -369,6 +375,17 @@ public final class AppState: ObservableObject {
     }
 
     private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
+        // If queue is empty on initial load, preserve or initialize sample demo tasks
+        if updatedTasks.isEmpty {
+            if self.tasks.isEmpty {
+                self.tasks = Self.sampleTasks
+                self.selectedTaskId = self.tasks.first?.id
+            }
+            if isInitialLoad {
+                return
+            }
+        }
+
         // Detect newly completed tasks to trigger notifications
         if !isInitialLoad {
             for task in updatedTasks {
@@ -385,7 +402,109 @@ public final class AppState: ObservableObject {
 
         self.tasks = updatedTasks
 
+        if selectedTaskId == nil || !updatedTasks.contains(where: { $0.id == self.selectedTaskId }) {
+            self.selectedTaskId = updatedTasks.first?.id
+        }
+
         // Update Dock icon badge
         DockTileController.updateBadge(activeCount: self.activeDownloadCount)
+    }
+
+    // MARK: - Sample Demo Tasks
+
+    /// Sample demo tasks populated when launching SwiftFlow with an empty queue.
+    public static var sampleTasks: [DownloadTaskModel] {
+        let chunkCount = 8
+        let totalSize: Int64 = 3_435_973_836 // 3.2 GB
+        let chunkSize = totalSize / Int64(chunkCount)
+        var chunks: [Chunk] = []
+        var downloadedBytes: Int64 = 0
+
+        for i in 0..<chunkCount {
+            let start = Int64(i) * chunkSize
+            let end = (i == chunkCount - 1) ? totalSize - 1 : (start + chunkSize - 1)
+            let length = end - start + 1
+            let (status, bytes): (ChunkStatus, Int64) = {
+                switch i {
+                case 0...2:
+                    return (.completed, length)
+                case 3:
+                    let b = Int64(Double(length) * 0.75)
+                    return (.downloading, b)
+                case 4:
+                    let b = Int64(Double(length) * 0.50)
+                    return (.downloading, b)
+                case 5:
+                    let b = Int64(Double(length) * 0.20)
+                    return (.downloading, b)
+                default:
+                    return (.pending, 0)
+                }
+            }()
+            downloadedBytes += bytes
+            chunks.append(Chunk(
+                id: UUID(),
+                index: i,
+                startOffset: start,
+                endOffset: end,
+                bytesDownloaded: bytes,
+                status: status
+            ))
+        }
+
+        let task1 = DownloadTaskModel(
+            id: UUID(),
+            url: URL(string: "https://download.developer.apple.com/Developer_Tools/Xcode_16.2/Xcode_16.2.xip")!,
+            filename: "Xcode_16.2_Release.xip",
+            totalBytes: totalSize,
+            downloadedBytes: downloadedBytes,
+            status: .downloading,
+            chunks: chunks,
+            supportsRange: true,
+            createdAt: Date().addingTimeInterval(-1200),
+            category: .applications,
+            bytesPerSecond: 18_420_000
+        )
+
+        let task2 = DownloadTaskModel(
+            id: UUID(),
+            url: URL(string: "https://swcdn.apple.com/content/downloads/macOS_Sequoia_15.3.pkg")!,
+            filename: "macOS_Sequoia_15.3_Installer.pkg",
+            totalBytes: 14_520_000_000,
+            downloadedBytes: 14_520_000_000,
+            status: .completed,
+            chunks: [
+                Chunk(index: 0, startOffset: 0, endOffset: 3_630_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
+                Chunk(index: 1, startOffset: 3_630_000_000, endOffset: 7_260_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
+                Chunk(index: 2, startOffset: 7_260_000_000, endOffset: 10_890_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed),
+                Chunk(index: 3, startOffset: 10_890_000_000, endOffset: 14_520_000_000 - 1, bytesDownloaded: 3_630_000_000, status: .completed)
+            ],
+            supportsRange: true,
+            createdAt: Date().addingTimeInterval(-86400),
+            completedAt: Date().addingTimeInterval(-3600),
+            category: .applications,
+            bytesPerSecond: 0
+        )
+
+        let task3 = DownloadTaskModel(
+            id: UUID(),
+            url: URL(string: "https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso")!,
+            filename: "ubuntu-24.04-desktop-amd64.iso",
+            totalBytes: 6_291_456_000,
+            downloadedBytes: 2_516_582_400,
+            status: .paused,
+            chunks: [
+                Chunk(index: 0, startOffset: 0, endOffset: 1_572_864_000 - 1, bytesDownloaded: 1_572_864_000, status: .completed),
+                Chunk(index: 1, startOffset: 1_572_864_000, endOffset: 3_145_728_000 - 1, bytesDownloaded: 943_718_400, status: .pending),
+                Chunk(index: 2, startOffset: 3_145_728_000, endOffset: 4_718_592_000 - 1, bytesDownloaded: 0, status: .pending),
+                Chunk(index: 3, startOffset: 4_718_592_000, endOffset: 6_291_456_000 - 1, bytesDownloaded: 0, status: .pending)
+            ],
+            supportsRange: true,
+            createdAt: Date().addingTimeInterval(-3600),
+            category: .archives,
+            bytesPerSecond: 0
+        )
+
+        return [task1, task2, task3]
     }
 }

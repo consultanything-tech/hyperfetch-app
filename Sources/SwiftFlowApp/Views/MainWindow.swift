@@ -35,6 +35,10 @@ public struct MainWindow: View {
         .sheet(isPresented: $appState.isAddSheetPresented) {
             AddDownloadSheet()
         }
+        .onAppear {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     // MARK: - Toolbar
