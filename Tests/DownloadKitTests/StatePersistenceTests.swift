@@ -7,6 +7,66 @@ import Testing
 import Foundation
 @testable import DownloadKit
 
+// MARK: - Isolated Mock URL Protocol for Persistence Tests
+
+final class PersistenceMockURLProtocol: URLProtocol, @unchecked Sendable {
+    typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data?)
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
+
+    static func reset() {
+        lock.withLock {
+            handlers.removeAll()
+        }
+    }
+
+    static func register(url: URL, handler: @escaping Handler) {
+        lock.withLock {
+            handlers[url.absoluteString] = handler
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url?.absoluteString else { return false }
+        return lock.withLock { handlers[url] != nil }
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+
+        let handler: Handler? = PersistenceMockURLProtocol.lock.withLock {
+            PersistenceMockURLProtocol.handlers[url.absoluteString]
+        }
+
+        guard let handler else {
+            let error = URLError(.badServerResponse)
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if let data = data {
+                client?.urlProtocol(self, didLoad: data)
+            }
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
 @Suite("StatePersistence Tests", .serialized)
 struct StatePersistenceTests {
 
@@ -19,7 +79,7 @@ struct StatePersistenceTests {
 
     private func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
+        config.protocolClasses = [PersistenceMockURLProtocol.self]
         return URLSession(configuration: config)
     }
 
@@ -338,7 +398,7 @@ struct StatePersistenceTests {
 
     @Test("End-to-end: download with engine, pause, persist, restore in new engine, resume to completion")
     func testEndToEndDownloadPausePersistResume() async throws {
-        MockURLProtocol.reset()
+        PersistenceMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -347,7 +407,7 @@ struct StatePersistenceTests {
         let totalSize = 512 * 1024 // 512 KB
         let expectedData = Data((0..<totalSize).map { UInt8(($0 * 43 + 19) & 0xFF) })
 
-        MockURLProtocol.register(url: testURL) { request in
+        PersistenceMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 let response = HTTPURLResponse(
                     url: testURL,

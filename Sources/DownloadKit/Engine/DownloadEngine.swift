@@ -7,6 +7,7 @@ public actor DownloadEngine {
     private let downloader: any ChunkDownloading
     private let fileWriterFactory: @Sendable (URL) -> any FileWriting
     private let statePersister: (any StatePersisting)?
+    public let rateLimiter: (any RateLimiting)?
     private let defaultChunkCount: Int
     private let minChunkSize: Int64
 
@@ -19,16 +20,23 @@ public actor DownloadEngine {
         downloader: (any ChunkDownloading)? = nil,
         fileWriterFactory: (@Sendable (URL) -> any FileWriting)? = nil,
         statePersister: (any StatePersisting)? = nil,
+        rateLimiter: (any RateLimiting)? = nil,
         defaultChunkCount: Int = 4,
         minChunkSize: Int64 = 256 * 1024
     ) {
         self.session = session
         self.probe = probe ?? HTTPRangeProbe(session: session)
-        self.downloader = downloader ?? ChunkDownloader(session: session)
+        self.downloader = downloader ?? ChunkDownloader(session: session, rateLimiter: rateLimiter)
         self.fileWriterFactory = fileWriterFactory ?? { FileWriter(destinationURL: $0) }
         self.statePersister = statePersister
+        self.rateLimiter = rateLimiter
         self.defaultChunkCount = defaultChunkCount
         self.minChunkSize = minChunkSize
+    }
+
+    /// Sets or updates the bandwidth limit for downloads.
+    public func setSpeedLimit(_ bytesPerSecond: Int64) async {
+        await rateLimiter?.updateLimit(bytesPerSecond: bytesPerSecond)
     }
 
     /// Retrieves the current recorded state of a download task.
@@ -67,8 +75,13 @@ public actor DownloadEngine {
         progressHandler: (@Sendable (DownloadTaskModel) -> Void)? = nil
     ) async throws -> DownloadTaskModel {
         var currentTask = taskStore[task.id] ?? task
-        if let existing = taskStore[task.id], (existing.status == .paused || existing.status == .idle) {
-            currentTask = task
+        if let existing = taskStore[task.id] {
+            switch existing.status {
+            case .paused, .idle, .failed:
+                currentTask = task
+            case .downloading, .probing, .completed:
+                break
+            }
         }
         taskStore[currentTask.id] = currentTask
 

@@ -29,7 +29,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
-        return true
+        guard let url = request.url?.absoluteString else { return false }
+        return lock.withLock { handlers[url] != nil }
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {

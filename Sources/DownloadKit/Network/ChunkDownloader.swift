@@ -37,9 +37,11 @@ public protocol ChunkDownloading: Sendable {
 /// Downloads a single chunk using URLSession and writes directly to FileWriting at exact offsets.
 public final class ChunkDownloader: ChunkDownloading, Sendable {
     private let session: URLSession
+    public let rateLimiter: (any RateLimiting)?
 
-    public init(session: URLSession = .shared) {
+    public init(session: URLSession = .shared, rateLimiter: (any RateLimiting)? = nil) {
         self.session = session
+        self.rateLimiter = rateLimiter
     }
 
     public func download(
@@ -94,9 +96,12 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
             try await withTaskCancellationHandler {
                 for try await data in dataStream {
                     try Task.checkCancellation()
+                    let count = Int64(data.count)
+                    if let rateLimiter {
+                        try await rateLimiter.requestTokens(count: count)
+                    }
                     let writeOffset = chunkStartOffset + downloadedSoFar
                     try await writer.write(data: data, at: writeOffset)
-                    let count = Int64(data.count)
                     downloadedSoFar += count
                     onProgress(count)
                 }

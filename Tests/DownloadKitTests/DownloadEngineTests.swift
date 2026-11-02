@@ -2,12 +2,82 @@ import Testing
 import Foundation
 @testable import DownloadKit
 
+// MARK: - Isolated Mock URL Protocol for Engine Tests
+
+final class EngineMockURLProtocol: URLProtocol, @unchecked Sendable {
+    typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data?)
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
+    nonisolated(unsafe) private static var recordedRequests: [URLRequest] = []
+
+    static func reset() {
+        lock.withLock {
+            handlers.removeAll()
+            recordedRequests.removeAll()
+        }
+    }
+
+    static func register(url: URL, handler: @escaping Handler) {
+        lock.withLock {
+            handlers[url.absoluteString] = handler
+        }
+    }
+
+    static func requests() -> [URLRequest] {
+        lock.withLock { recordedRequests }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url?.absoluteString else { return false }
+        return lock.withLock { handlers[url] != nil }
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        EngineMockURLProtocol.lock.withLock {
+            EngineMockURLProtocol.recordedRequests.append(request)
+        }
+
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+
+        let handler: Handler? = EngineMockURLProtocol.lock.withLock {
+            EngineMockURLProtocol.handlers[url.absoluteString]
+        }
+
+        guard let handler = handler else {
+            let error = URLError(.badServerResponse)
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if let data = data {
+                client?.urlProtocol(self, didLoad: data)
+            }
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
 @Suite("DownloadEngine Tests", .serialized)
 struct DownloadEngineTests {
 
     private func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockURLProtocol.self]
+        config.protocolClasses = [EngineMockURLProtocol.self]
         return URLSession(configuration: config)
     }
 
@@ -22,7 +92,7 @@ struct DownloadEngineTests {
 
     @Test("4-chunk concurrent download completes and file on disk matches expected payload")
     func testConcurrentFourChunkDownload() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -32,7 +102,7 @@ struct DownloadEngineTests {
         // Create known patterned data
         let expectedData = Data((0..<totalSize).map { UInt8(($0 * 31 + 7) & 0xFF) })
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 let response = HTTPURLResponse(
                     url: testURL,
@@ -114,7 +184,7 @@ struct DownloadEngineTests {
         #expect(diskData == expectedData)
 
         // Verify that 4 Range GET requests were recorded
-        let requests = MockURLProtocol.requests()
+        let requests = EngineMockURLProtocol.requests()
         let rangeRequests = requests.filter { $0.httpMethod == "GET" && $0.value(forHTTPHeaderField: "Range") != nil }
         #expect(rangeRequests.count == 4)
     }
@@ -123,7 +193,7 @@ struct DownloadEngineTests {
 
     @Test("Single-stream non-range download streams directly to disk")
     func testSingleStreamNonRangeDownload() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -132,7 +202,7 @@ struct DownloadEngineTests {
         let totalSize = 64 * 1024 // 64 KB
         let expectedData = Data((0..<totalSize).map { UInt8($0 & 0xFF) })
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 // Server returns 200 without Accept-Ranges
                 let response = HTTPURLResponse(
@@ -182,7 +252,7 @@ struct DownloadEngineTests {
 
     @Test("Progress updates increase monotonically up to 1.0")
     func testProgressUpdatesMonotonicallyIncrease() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -191,7 +261,7 @@ struct DownloadEngineTests {
         let totalSize = 256 * 1024 // 256 KB
         let expectedData = Data(repeating: 0xEE, count: totalSize)
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 let response = HTTPURLResponse(
                     url: testURL,
@@ -278,7 +348,7 @@ struct DownloadEngineTests {
 
     @Test("Server returns 500 during chunk download, task transitions to failed or throws")
     func testHTTP500DuringDownloadThrowsAndMarksFailed() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -286,7 +356,7 @@ struct DownloadEngineTests {
         let testURL = URL(string: "https://engine.example.com/files/failing.bin")!
         let totalSize = 256 * 1024
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 let response = HTTPURLResponse(
                     url: testURL,
@@ -333,7 +403,7 @@ struct DownloadEngineTests {
 
     @Test("Pause and resume download preserves downloaded chunks and finishes correctly")
     func testPauseAndResumeDownload() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -342,7 +412,7 @@ struct DownloadEngineTests {
         let totalSize = 256 * 1024 // 256 KB
         let expectedData = Data((0..<totalSize).map { UInt8(($0 * 17) & 0xFF) })
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
                 let response = HTTPURLResponse(
                     url: testURL,
@@ -418,7 +488,7 @@ struct DownloadEngineTests {
 
     @Test("ChunkDownloader downloads byte range and writes to exact offset")
     func testChunkDownloaderDirect() async throws {
-        MockURLProtocol.reset()
+        EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -427,7 +497,7 @@ struct DownloadEngineTests {
         let totalSize = 1000
         let expectedData = Data((0..<totalSize).map { UInt8($0 % 256) })
 
-        MockURLProtocol.register(url: testURL) { request in
+        EngineMockURLProtocol.register(url: testURL) { request in
             let range = request.value(forHTTPHeaderField: "Range")!
             #expect(range == "bytes=200-599")
             let subdata = expectedData.subdata(in: 200..<600)
