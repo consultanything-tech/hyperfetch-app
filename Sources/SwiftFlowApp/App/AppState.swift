@@ -1,0 +1,391 @@
+//
+//  AppState.swift
+//  SwiftFlowApp
+//
+
+import AppKit
+import Foundation
+import SwiftUI
+import DownloadKit
+
+/// Filter option for download lifecycle status.
+public enum StatusFilter: String, CaseIterable, Identifiable, Sendable {
+    case all = "All Downloads"
+    case active = "Downloading"
+    case completed = "Completed"
+    case paused = "Paused"
+    case failed = "Failed"
+
+    public var id: String { rawValue }
+
+    public var iconName: String {
+        switch self {
+        case .all:
+            return "tray.full"
+        case .active:
+            return "arrow.down.circle.fill"
+        case .completed:
+            return "checkmark.circle.fill"
+        case .paused:
+            return "pause.circle.fill"
+        case .failed:
+            return "exclamationmark.circle.fill"
+        }
+    }
+}
+
+/// Bandwidth throttling preset.
+public enum SpeedLimitPreset: String, CaseIterable, Identifiable, Sendable {
+    case unlimited = "Unlimited"
+    case fast = "Fast (10 MB/s)"
+    case normal = "Normal (2 MB/s)"
+    case snail = "Snail (500 KB/s)"
+
+    public var id: String { rawValue }
+
+    public var bytesPerSecond: Int64 {
+        switch self {
+        case .unlimited:
+            return 0
+        case .fast:
+            return 10 * 1024 * 1024
+        case .normal:
+            return 2 * 1024 * 1024
+        case .snail:
+            return 500 * 1024
+        }
+    }
+}
+
+/// Central application state managing download tasks, user selections, and system integrations.
+@MainActor
+public final class AppState: ObservableObject {
+    @Published public var tasks: [DownloadTaskModel] = []
+    @Published public var selectedCategory: DownloadCategory? = nil
+    @Published public var statusFilter: StatusFilter = .all
+    @Published public var searchText: String = ""
+    @Published public var speedLimitPreset: SpeedLimitPreset = .unlimited
+    @Published public var isAddSheetPresented: Bool = false
+    @Published public var selectedTaskId: UUID? = nil
+
+    public let queueManager: QueueManager
+    public let notificationManager = NotificationManager.shared
+
+    private var updatesTask: Task<Void, Never>?
+    private var previouslyCompletedTaskIds: Set<UUID> = []
+
+    public init(queueManager: QueueManager? = nil) {
+        let qm = queueManager ?? QueueManager(
+            statePersister: JSONStatePersister(),
+            rateLimiter: TokenBucketRateLimiter(bytesPerSecond: 0),
+            maxConcurrentDownloads: 4
+        )
+        self.queueManager = qm
+
+        notificationManager.requestAuthorization()
+
+        // Start listening to the QueueManager stream
+        startListeningToQueue()
+    }
+
+    deinit {
+        updatesTask?.cancel()
+    }
+
+    // MARK: - Computed Properties
+
+    /// Retrieves the currently selected task, if any.
+    public var selectedTask: DownloadTaskModel? {
+        guard let selectedTaskId else { return nil }
+        return tasks.first(where: { $0.id == selectedTaskId })
+    }
+
+    /// Tasks filtered by the current status filter, category, and search query.
+    public var filteredTasks: [DownloadTaskModel] {
+        tasks.filter { task in
+            // 1. Status Filter
+            let matchesStatus: Bool
+            switch statusFilter {
+            case .all:
+                matchesStatus = true
+            case .active:
+                matchesStatus = (task.status == .downloading || task.status == .probing || task.status == .idle)
+            case .completed:
+                matchesStatus = (task.status == .completed)
+            case .paused:
+                matchesStatus = (task.status == .paused)
+            case .failed:
+                if case .failed = task.status {
+                    matchesStatus = true
+                } else {
+                    matchesStatus = false
+                }
+            }
+            guard matchesStatus else { return false }
+
+            // 2. Category Filter
+            if let selectedCategory, selectedCategory != .all {
+                guard task.category == selectedCategory else { return false }
+            }
+
+            // 3. Search Query
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !query.isEmpty {
+                let matchesName = task.filename.localizedCaseInsensitiveContains(query)
+                let matchesURL = task.url.absoluteString.localizedCaseInsensitiveContains(query)
+                guard matchesName || matchesURL else { return false }
+            }
+
+            return true
+        }
+    }
+
+    /// Total active download speed in bytes per second.
+    public var totalDownloadSpeed: Double {
+        tasks.reduce(0.0) { sum, task in
+            if task.status == .downloading {
+                return sum + task.bytesPerSecond
+            }
+            return sum
+        }
+    }
+
+    /// Formatted representation of the aggregate download speed (e.g., "3.2 MB/s").
+    public var formattedTotalSpeed: String {
+        Self.formatSpeed(totalDownloadSpeed)
+    }
+
+    /// Count of currently active (downloading or probing) tasks.
+    public var activeDownloadCount: Int {
+        tasks.filter { $0.status == .downloading || $0.status == .probing }.count
+    }
+
+    /// Count of completed tasks.
+    public var completedDownloadCount: Int {
+        tasks.filter { $0.status == .completed }.count
+    }
+
+    /// Count of paused tasks.
+    public var pausedDownloadCount: Int {
+        tasks.filter { $0.status == .paused }.count
+    }
+
+    /// Returns the task count for a given status filter.
+    public func count(for filter: StatusFilter) -> Int {
+        switch filter {
+        case .all:
+            return tasks.count
+        case .active:
+            return activeDownloadCount
+        case .completed:
+            return completedDownloadCount
+        case .paused:
+            return pausedDownloadCount
+        case .failed:
+            return tasks.filter { if case .failed = $0.status { true } else { false } }.count
+        }
+    }
+
+    /// Returns the task count for a given category.
+    public func count(for category: DownloadCategory) -> Int {
+        if category == .all {
+            return tasks.count
+        }
+        return tasks.filter { $0.category == category }.count
+    }
+
+    // MARK: - Queue Actions
+
+    /// Adds a new download task.
+    public func addTask(
+        url: URL,
+        destinationURL: URL? = nil,
+        filename: String? = nil,
+        autoStart: Bool = true
+    ) {
+        Task {
+            do {
+                let newTask = try await queueManager.addTask(
+                    url: url,
+                    destinationURL: destinationURL,
+                    filename: filename,
+                    autoStart: autoStart
+                )
+                self.selectedTaskId = newTask.id
+            } catch {
+                print("Failed to add task: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Pauses an active or queued download task.
+    public func pause(id: UUID) {
+        Task {
+            await queueManager.pauseTask(id: id)
+        }
+    }
+
+    /// Resumes a paused or failed download task.
+    public func resume(id: UUID) {
+        Task {
+            try? await queueManager.resumeTask(id: id)
+        }
+    }
+
+    /// Cancels a download task.
+    public func cancel(id: UUID) {
+        Task {
+            await queueManager.cancelTask(id: id)
+        }
+    }
+
+    /// Removes a task from the list and optionally deletes its file from disk.
+    public func remove(id: UUID, deleteFile: Bool = false) {
+        if selectedTaskId == id {
+            selectedTaskId = nil
+        }
+        Task {
+            try? await queueManager.removeTask(id: id, deleteFile: deleteFile)
+        }
+    }
+
+    /// Pauses all downloads.
+    public func pauseAll() {
+        Task {
+            await queueManager.pauseAll()
+        }
+    }
+
+    /// Resumes all paused downloads.
+    public func resumeAll() {
+        Task {
+            try? await queueManager.resumeAll()
+        }
+    }
+
+    /// Updates the global download speed limit preset.
+    public func setSpeedLimit(preset: SpeedLimitPreset) {
+        self.speedLimitPreset = preset
+        Task {
+            await queueManager.setSpeedLimit(preset.bytesPerSecond)
+        }
+    }
+
+    // MARK: - System & Finder Helpers
+
+    /// Reveals the downloaded file in macOS Finder.
+    public func openInFinder(task: DownloadTaskModel) {
+        let url = task.destinationURL
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            // Open containing directory if file doesn't exist yet
+            NSWorkspace.shared.open(url.deletingLastPathComponent())
+        }
+    }
+
+    /// Opens the downloaded file with its default application.
+    public func openFile(task: DownloadTaskModel) {
+        let url = task.destinationURL
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Copies the task's source URL to the system clipboard.
+    public func copyDownloadLink(task: DownloadTaskModel) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(task.url.absoluteString, forType: .string)
+    }
+
+    /// Inspects the macOS system pasteboard for a valid HTTP/HTTPS URL.
+    public func getValidURLFromClipboard() -> URL? {
+        guard let text = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty,
+              let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              let host = url.host,
+              !host.isEmpty else {
+            return nil
+        }
+        return url
+    }
+
+    // MARK: - Formatters
+
+    /// Formats transfer speed into readable strings.
+    public static func formatSpeed(_ bytesPerSecond: Double) -> String {
+        guard bytesPerSecond > 0 else { return "0 B/s" }
+        if bytesPerSecond >= 1024 * 1024 * 1024 {
+            return String(format: "%.1f GB/s", bytesPerSecond / (1024 * 1024 * 1024))
+        } else if bytesPerSecond >= 1024 * 1024 {
+            return String(format: "%.1f MB/s", bytesPerSecond / (1024 * 1024))
+        } else if bytesPerSecond >= 1024 {
+            return String(format: "%.1f KB/s", bytesPerSecond / 1024)
+        } else {
+            return String(format: "%.0f B/s", bytesPerSecond)
+        }
+    }
+
+    /// Formats byte counts into localized file size strings.
+    public static func formatBytes(_ bytes: Int64) -> String {
+        guard bytes >= 0 else { return "Unknown size" }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// Calculates remaining time formatted as human-readable string.
+    public static func formatETA(remainingBytes: Int64, bytesPerSecond: Double) -> String {
+        guard remainingBytes > 0, bytesPerSecond > 100 else { return "--" }
+        let seconds = Double(remainingBytes) / bytesPerSecond
+        if seconds >= 3600 {
+            let hours = Int(seconds) / 3600
+            let minutes = (Int(seconds) % 3600) / 60
+            return "\(hours)h \(minutes)m remaining"
+        } else if seconds >= 60 {
+            let minutes = Int(seconds) / 60
+            let secs = Int(seconds) % 60
+            return "\(minutes)m \(secs)s remaining"
+        } else {
+            return "\(Int(seconds))s remaining"
+        }
+    }
+
+    // MARK: - Private Queue Observation
+
+    private func startListeningToQueue() {
+        updatesTask = Task { [weak self] in
+            guard let self else { return }
+
+            // Restore existing persisted tasks
+            if let restored = try? await self.queueManager.restoreTasks() {
+                self.handleQueueUpdate(restored, isInitialLoad: true)
+            }
+
+            for await updatedList in await self.queueManager.queueUpdates {
+                self.handleQueueUpdate(updatedList, isInitialLoad: false)
+            }
+        }
+    }
+
+    private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
+        // Detect newly completed tasks to trigger notifications
+        if !isInitialLoad {
+            for task in updatedTasks {
+                if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
+                    notificationManager.sendDownloadCompletedNotification(task: task)
+                }
+            }
+        }
+
+        // Track completed IDs
+        self.previouslyCompletedTaskIds = Set(
+            updatedTasks.filter { $0.status == .completed }.map(\.id)
+        )
+
+        self.tasks = updatedTasks
+
+        // Update Dock icon badge
+        DockTileController.updateBadge(activeCount: self.activeDownloadCount)
+    }
+}
