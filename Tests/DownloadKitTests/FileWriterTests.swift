@@ -167,7 +167,7 @@ struct FileWriterTests {
 
         let writer = FileWriter(destinationURL: fileURL)
 
-        let segment1 = Data("SwiftFlow".utf8)
+        let segment1 = Data("HyperFetch".utf8)
         let segment2 = Data("-Download-".utf8)
         let segment3 = Data("Manager".utf8)
 
@@ -183,7 +183,7 @@ struct FileWriterTests {
         await writer.close()
 
         let fullData = try Data(contentsOf: fileURL)
-        let expectedString = "SwiftFlow-Download-Manager"
+        let expectedString = "HyperFetch-Download-Manager"
         #expect(String(data: fullData, encoding: .utf8) == expectedString)
     }
 

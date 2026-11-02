@@ -83,7 +83,7 @@ struct DownloadEngineTests {
 
     private func createTempDir() throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SwiftFlowTests-\(UUID().uuidString)")
+            .appendingPathComponent("HyperFetchTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         return tempDir
     }

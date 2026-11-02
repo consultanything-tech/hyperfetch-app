@@ -18,15 +18,15 @@ public protocol StatePersisting: Sendable {
 public actor JSONStatePersister: StatePersisting {
     public let storageURL: URL
     private let fileManager: FileManager
-    private let logger = Logger(subsystem: "com.swiftflow.downloadkit", category: "JSONStatePersister")
+    private let logger = Logger(subsystem: "com.hyperfetch.downloadkit", category: "JSONStatePersister")
 
     /// Default storage location inside the application support directory.
     public static var defaultStorageURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return appSupport
-            .appendingPathComponent("SwiftFlow", isDirectory: true)
-            .appendingPathComponent("tasks.json")
+            .appendingPathComponent("HyperFetch", isDirectory: true)
+            .appendingPathComponent("downloads_state.json")
     }
 
     public init(storageURL: URL = JSONStatePersister.defaultStorageURL, fileManager: FileManager = .default) {

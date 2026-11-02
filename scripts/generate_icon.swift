@@ -322,7 +322,7 @@ func savePNG(image: CGImage, to url: URL) throws {
 }
 
 // Generate iconset
-let iconsetDir = URL(fileURLWithPath: "SwiftFlow.iconset")
+let iconsetDir = URL(fileURLWithPath: "HyperFetch.iconset")
 let fm = FileManager.default
 try? fm.removeItem(at: iconsetDir)
 try fm.createDirectory(at: iconsetDir, withIntermediateDirectories: true)
@@ -340,7 +340,7 @@ let sizes: [(name: String, size: Int)] = [
     ("icon_512x512@2x.png", 1024)
 ]
 
-print("Rendering SwiftFlow icons...")
+print("Rendering HyperFetch icons...")
 for (name, size) in sizes {
     guard let img = createIcon(size: size) else {
         fatalError("Failed to render icon at size \(size)")
@@ -351,3 +351,24 @@ for (name, size) in sizes {
 }
 
 print("Iconset created successfully at \(iconsetDir.path)")
+
+// Output to Sources/HyperFetchApp/Resources/AppIcon.icns
+let resourcesDir = URL(fileURLWithPath: "Sources/HyperFetchApp/Resources")
+try? fm.createDirectory(at: resourcesDir, withIntermediateDirectories: true)
+let icnsOutputURL = resourcesDir.appendingPathComponent("AppIcon.icns")
+
+let iconutil = Process()
+iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+iconutil.arguments = ["-c", "icns", iconsetDir.path, "-o", icnsOutputURL.path]
+do {
+    try iconutil.run()
+    iconutil.waitUntilExit()
+    if iconutil.terminationStatus == 0 {
+        print("✓ Generated \(icnsOutputURL.path)")
+        try? fm.removeItem(at: iconsetDir)
+    } else {
+        print("✗ iconutil failed with exit code \(iconutil.terminationStatus)")
+    }
+} catch {
+    print("✗ Failed to run iconutil: \(error)")
+}

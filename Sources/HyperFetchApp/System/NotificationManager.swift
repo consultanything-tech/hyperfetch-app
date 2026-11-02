@@ -1,6 +1,6 @@
 //
 //  NotificationManager.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import AppKit

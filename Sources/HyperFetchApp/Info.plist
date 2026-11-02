@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.swiftflow.SwiftFlowApp</string>
+    <string>com.hyperfetch.HyperFetch</string>
     <key>CFBundleName</key>
-    <string>SwiftFlow</string>
+    <string>HyperFetch</string>
     <key>CFBundleDisplayName</key>
-    <string>SwiftFlow</string>
+    <string>HyperFetch</string>
     <key>CFBundleExecutable</key>
-    <string>SwiftFlowApp</string>
+    <string>HyperFetch</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

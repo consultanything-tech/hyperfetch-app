@@ -1,6 +1,6 @@
 //
 //  DockTileController.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import AppKit

@@ -1,6 +1,6 @@
 //
 //  ChunkVisualizer.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import SwiftUI

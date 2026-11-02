@@ -12,8 +12,8 @@ let package = Package(
             targets: ["DownloadKit"]
         ),
         .executable(
-            name: "SwiftFlowApp",
-            targets: ["SwiftFlowApp"]
+            name: "HyperFetch",
+            targets: ["HyperFetchApp"]
         ),
     ],
     targets: [
@@ -22,9 +22,9 @@ let package = Package(
             path: "Sources/DownloadKit"
         ),
         .executableTarget(
-            name: "SwiftFlowApp",
+            name: "HyperFetchApp",
             dependencies: ["DownloadKit"],
-            path: "Sources/SwiftFlowApp",
+            path: "Sources/HyperFetchApp",
             exclude: ["Info.plist", "Resources"]
         ),
         .testTarget(

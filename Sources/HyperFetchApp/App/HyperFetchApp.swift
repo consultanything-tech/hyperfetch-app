@@ -1,6 +1,6 @@
 //
-//  SwiftFlowApp.swift
-//  SwiftFlowApp
+//  HyperFetchApp.swift
+//  HyperFetchApp
 //
 
 import AppKit
@@ -31,12 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct SwiftFlowApp: App {
+struct HyperFetchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("SwiftFlow") {
+        WindowGroup("HyperFetch") {
             MainWindow()
                 .environmentObject(appState)
                 .frame(minWidth: 850, minHeight: 550)
@@ -81,7 +81,7 @@ struct SwiftFlowApp: App {
 
         // Live status bar / menu bar companion
         MenuBarExtra {
-            Button("Open SwiftFlow") {
+            Button("Open HyperFetch") {
                 NSApp.activate(ignoringOtherApps: true)
                 for window in NSApp.windows where window.canBecomeMain {
                     window.makeKeyAndOrderFront(nil)
@@ -106,7 +106,7 @@ struct SwiftFlowApp: App {
 
             Divider()
 
-            Button("Quit SwiftFlow") {
+            Button("Quit HyperFetch") {
                 NSApp.terminate(nil)
             }
             .keyboardShortcut("q")

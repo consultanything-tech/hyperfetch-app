@@ -1,6 +1,6 @@
 //
 //  AppState.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import AppKit
@@ -496,7 +496,7 @@ public final class AppState: ObservableObject {
 
     // MARK: - Sample Demo Tasks
 
-    /// Sample demo tasks populated when launching SwiftFlow with an empty queue.
+    /// Sample demo tasks populated when launching HyperFetch with an empty queue.
     public static var sampleTasks: [DownloadTaskModel] {
         let chunkCount = 8
         let totalSize: Int64 = 3_435_973_836 // 3.2 GB

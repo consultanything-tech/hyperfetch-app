@@ -1,6 +1,6 @@
 //
 //  DownloadRowView.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import AppKit

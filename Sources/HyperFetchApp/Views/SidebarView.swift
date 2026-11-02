@@ -1,6 +1,6 @@
 //
 //  SidebarView.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import SwiftUI

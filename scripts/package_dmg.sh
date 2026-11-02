@@ -12,16 +12,16 @@ cd "$PROJECT_ROOT"
 SIGNING_IDENTITY="${1:-${SIGNING_IDENTITY:--}}"
 NOTARY_PROFILE="${2:-${NOTARY_PROFILE:-}}"
 
-echo "==> Packaging SwiftFlow DMG"
+echo "==> Packaging HyperFetch DMG"
 echo "    Signing Identity: $SIGNING_IDENTITY"
 if [ -n "$NOTARY_PROFILE" ]; then
     echo "    Notary Profile:   $NOTARY_PROFILE"
 fi
 
 BUILD_DIR="$PROJECT_ROOT/build"
-APP_BUNDLE="$BUILD_DIR/SwiftFlow.app"
+APP_BUNDLE="$BUILD_DIR/HyperFetch.app"
 DMG_STAGING="$BUILD_DIR/dmg_staging"
-DMG_OUTPUT="$BUILD_DIR/SwiftFlow.dmg"
+DMG_OUTPUT="$BUILD_DIR/HyperFetch.dmg"
 
 # Ensure clean build directory
 rm -rf "$BUILD_DIR"
@@ -38,15 +38,15 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 # 3. Copy binary
 echo "==> Copying binary..."
-cp "$PROJECT_ROOT/.build/release/SwiftFlowApp" "$APP_BUNDLE/Contents/MacOS/SwiftFlowApp"
-chmod +x "$APP_BUNDLE/Contents/MacOS/SwiftFlowApp"
+cp "$PROJECT_ROOT/.build/release/HyperFetch" "$APP_BUNDLE/Contents/MacOS/HyperFetch"
+chmod +x "$APP_BUNDLE/Contents/MacOS/HyperFetch"
 
 # 4. Copy Info.plist and AppIcon
 echo "==> Copying Info.plist and Resources..."
-cp "$PROJECT_ROOT/Sources/SwiftFlowApp/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
-if [ -f "$PROJECT_ROOT/Sources/SwiftFlowApp/Resources/AppIcon.icns" ]; then
+cp "$PROJECT_ROOT/Sources/HyperFetchApp/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+if [ -f "$PROJECT_ROOT/Sources/HyperFetchApp/Resources/AppIcon.icns" ]; then
     echo "==> Copying AppIcon.icns..."
-    cp "$PROJECT_ROOT/Sources/SwiftFlowApp/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    cp "$PROJECT_ROOT/Sources/HyperFetchApp/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
 
 # 5. Create PkgInfo with APPL????
@@ -81,7 +81,7 @@ fi
 # 8. Generate DMG using hdiutil create
 echo "==> Creating DMG..."
 rm -f "$DMG_OUTPUT"
-hdiutil create -volname "SwiftFlow" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_OUTPUT"
+hdiutil create -volname "HyperFetch" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_OUTPUT"
 
 # Clean up staging folder
 rm -rf "$DMG_STAGING"
@@ -101,6 +101,6 @@ fi
 # 11. Output success message with the path to the generated DMG
 echo ""
 echo "============================================================"
-echo "Successfully packaged SwiftFlow DMG:"
+echo "Successfully packaged HyperFetch DMG:"
 echo "$DMG_OUTPUT"
 echo "============================================================"

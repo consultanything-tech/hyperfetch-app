@@ -95,7 +95,7 @@ struct QueueManagerTests {
 
     private func createTempDir() throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SwiftFlowQueueTests-\(UUID().uuidString)")
+            .appendingPathComponent("HyperFetchQueueTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         return tempDir
     }

@@ -1,6 +1,6 @@
 //
 //  MainWindow.swift
-//  SwiftFlowApp
+//  HyperFetchApp
 //
 
 import AppKit
