@@ -20,8 +20,15 @@ let settings = {
 
 // Initialize settings from chrome.storage
 chrome.storage.local.get(['enabled', 'interceptAll'], (res) => {
-  if (res.enabled !== undefined) settings.enabled = res.enabled;
-  if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
+  const err = chrome.runtime.lastError;
+  if (err) {
+    console.warn('[HyperFetch] Error reading storage settings:', err);
+    return;
+  }
+  if (res) {
+    if (res.enabled !== undefined) settings.enabled = res.enabled;
+    if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
+  }
   updateBadge();
 });
 
@@ -32,12 +39,24 @@ chrome.storage.onChanged.addListener((changes) => {
 });
 
 function updateBadge() {
-  if (settings.enabled) {
-    chrome.action.setBadgeText({ text: 'ON' });
-    chrome.action.setBadgeBackgroundColor({ color: '#007AFF' });
-  } else {
-    chrome.action.setBadgeText({ text: 'OFF' });
-    chrome.action.setBadgeBackgroundColor({ color: '#8E8E93' });
+  try {
+    if (settings.enabled) {
+      chrome.action.setBadgeText({ text: 'ON' }, () => {
+        const _ = chrome.runtime.lastError;
+      });
+      chrome.action.setBadgeBackgroundColor({ color: '#007AFF' }, () => {
+        const _ = chrome.runtime.lastError;
+      });
+    } else {
+      chrome.action.setBadgeText({ text: 'OFF' }, () => {
+        const _ = chrome.runtime.lastError;
+      });
+      chrome.action.setBadgeBackgroundColor({ color: '#8E8E93' }, () => {
+        const _ = chrome.runtime.lastError;
+      });
+    }
+  } catch (e) {
+    // Ignore context invalidation
   }
 }
 
@@ -65,13 +84,34 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   // Intercept the download
   processedDownloadIds.add(downloadItem.id);
 
-  // Cancel native download immediately
-  chrome.downloads.cancel(downloadItem.id, () => {
-    chrome.downloads.erase({ id: downloadItem.id }, () => {
-      // Clean up after 10 seconds
+  // 1. Tell Chrome to complete filename determination so state transitions cleanly
+  if (typeof suggest === 'function') {
+    try {
+      suggest({ filename: filename || 'download' });
+    } catch (e) {
+      // Ignore if already suggested or closed
+    }
+  }
+
+  // 2. Cancel native browser download safely, clearing any runtime.lastError
+  try {
+    if (!downloadItem.state || downloadItem.state === 'in_progress') {
+      chrome.downloads.cancel(downloadItem.id, () => {
+        const cancelError = chrome.runtime.lastError;
+        if (!cancelError) {
+          chrome.downloads.erase({ id: downloadItem.id }, () => {
+            const eraseError = chrome.runtime.lastError;
+          });
+        }
+        // Clean up tracking ID after 10 seconds
+        setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
+      });
+    } else {
       setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
-    });
-  });
+    }
+  } catch (err) {
+    setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
+  }
 
   // Capture cookies and headers, then forward download request to HyperFetch
   (async () => {
@@ -97,15 +137,32 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
 
 async function getCookiesForUrl(url) {
   try {
-    const cookies = await chrome.cookies.getAll({ url: url });
+    if (!chrome.cookies || !chrome.cookies.getAll) {
+      return '';
+    }
+    const getCookies = (details) => new Promise((resolve) => {
+      chrome.cookies.getAll(details, (cookies) => {
+        const err = chrome.runtime.lastError;
+        if (err || !cookies) {
+          resolve([]);
+        } else {
+          resolve(cookies);
+        }
+      });
+    });
+
+    const cookies = await getCookies({ url: url });
     if (cookies && cookies.length > 0) {
       return cookies.map(c => `${c.name}=${c.value}`).join('; ');
     }
+
     // Fallback to domain
     const parsed = new URL(url);
-    const domainCookies = await chrome.cookies.getAll({ domain: parsed.hostname });
-    if (domainCookies && domainCookies.length > 0) {
-      return domainCookies.map(c => `${c.name}=${c.value}`).join('; ');
+    if (parsed.hostname) {
+      const domainCookies = await getCookies({ domain: parsed.hostname });
+      if (domainCookies && domainCookies.length > 0) {
+        return domainCookies.map(c => `${c.name}=${c.value}`).join('; ');
+      }
     }
   } catch (e) {
     console.warn('[HyperFetch] Could not get cookies:', e);
@@ -139,7 +196,7 @@ async function forwardDownloadToHyperFetch(payload) {
       });
 
       if (response.ok) {
-        console.log(`[HyperFetch] Successfully forwarded download to port ${port}:`, payload.filename);
+        console.log(`[HyperFetch] Successfully forwarded download to port ${port}:`, payload.filename || payload.url);
         showSuccessNotification(payload.filename || payload.url);
         return true;
       }
@@ -154,16 +211,25 @@ async function forwardDownloadToHyperFetch(payload) {
 }
 
 function showSuccessNotification(targetName) {
-  // Optional brief visual feedback if notifications permission allows
-  chrome.action.setBadgeText({ text: '✓' });
-  chrome.action.setBadgeBackgroundColor({ color: '#34C759' });
-  setTimeout(() => updateBadge(), 2500);
+  try {
+    chrome.action.setBadgeText({ text: '✓' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+    chrome.action.setBadgeBackgroundColor({ color: '#34C759' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+    setTimeout(() => updateBadge(), 2500);
+  } catch (e) {
+    // Ignore context invalidation
+  }
 }
 
 // Handle runtime messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'checkStatus') {
-    checkHyperFetchStatus().then(sendResponse);
+    checkHyperFetchStatus().then(sendResponse).catch(() => {
+      sendResponse({ connected: false });
+    });
     return true; // async
   }
 });

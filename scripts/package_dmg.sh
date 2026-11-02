@@ -48,6 +48,10 @@ if [ -f "$PROJECT_ROOT/Sources/HyperFetchApp/Resources/AppIcon.icns" ]; then
     echo "==> Copying AppIcon.icns..."
     cp "$PROJECT_ROOT/Sources/HyperFetchApp/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
+if [ -d "$PROJECT_ROOT/extensions" ]; then
+    echo "==> Copying extension resources..."
+    cp -R "$PROJECT_ROOT/extensions" "$APP_BUNDLE/Contents/Resources/"
+fi
 
 # 5. Create PkgInfo with APPL????
 echo "==> Creating PkgInfo..."

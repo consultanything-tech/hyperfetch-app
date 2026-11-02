@@ -13,10 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load saved preferences
   chrome.storage.local.get(['enabled', 'interceptAll'], (res) => {
-    if (res.enabled !== undefined) {
+    if (chrome.runtime.lastError) return;
+    if (res && res.enabled !== undefined) {
       interceptToggle.checked = res.enabled;
     }
-    if (res.interceptAll) {
+    if (res && res.interceptAll) {
       scopeAll.checked = true;
     } else {
       scopeFiltered.checked = true;
@@ -26,19 +27,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle toggle change
   interceptToggle.addEventListener('change', () => {
     const isEnabled = interceptToggle.checked;
-    chrome.storage.local.set({ enabled: isEnabled });
+    chrome.storage.local.set({ enabled: isEnabled }, () => {
+      const _ = chrome.runtime.lastError;
+    });
   });
 
   // Handle scope change
   scopeFiltered.addEventListener('change', () => {
     if (scopeFiltered.checked) {
-      chrome.storage.local.set({ interceptAll: false });
+      chrome.storage.local.set({ interceptAll: false }, () => {
+        const _ = chrome.runtime.lastError;
+      });
     }
   });
 
   scopeAll.addEventListener('change', () => {
     if (scopeAll.checked) {
-      chrome.storage.local.set({ interceptAll: true });
+      chrome.storage.local.set({ interceptAll: true }, () => {
+        const _ = chrome.runtime.lastError;
+      });
     }
   });
 
