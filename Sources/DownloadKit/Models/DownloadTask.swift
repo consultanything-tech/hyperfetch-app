@@ -24,6 +24,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public var createdAt: Date
     public var completedAt: Date?
     public var category: DownloadCategory
+    public var bytesPerSecond: Double
 
     /// Overall progress of the download, ranging from 0.0 to 1.0.
     public var progress: Double {
@@ -45,7 +46,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         supportsRange: Bool = false,
         createdAt: Date = Date(),
         completedAt: Date? = nil,
-        category: DownloadCategory? = nil
+        category: DownloadCategory? = nil,
+        bytesPerSecond: Double = 0.0
     ) {
         self.id = id
         self.url = url
@@ -61,5 +63,6 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.createdAt = createdAt
         self.completedAt = completedAt
         self.category = category ?? DownloadCategory.category(for: resolvedFilename)
+        self.bytesPerSecond = bytesPerSecond
     }
 }
