@@ -29,12 +29,50 @@ public enum LocalhostBridgeError: Error, LocalizedError, Sendable {
     }
 }
 
+/// Represents a structured download request received via HTTP.
+public struct DownloadRequest: Codable, Sendable {
+    public let url: String
+    public let filename: String?
+    public let autoStart: Bool?
+    public let headers: [String: String]?
+
+    public init(url: String, filename: String? = nil, autoStart: Bool? = nil, headers: [String: String]? = nil) {
+        self.url = url
+        self.filename = filename
+        self.autoStart = autoStart
+        self.headers = headers
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case url, filename, autoStart, headers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.url = try container.decode(String.self, forKey: .url)
+        self.filename = try container.decodeIfPresent(String.self, forKey: .filename)
+        if let boolVal = try? container.decodeIfPresent(Bool.self, forKey: .autoStart) {
+            self.autoStart = boolVal
+        } else if let strVal = try? container.decodeIfPresent(String.self, forKey: .autoStart) {
+            self.autoStart = (strVal.lowercased() != "false" && strVal != "0")
+        } else {
+            self.autoStart = nil
+        }
+        self.headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
+    }
+}
+
 /// A lightweight, embedded HTTP bridge that listens on loopback (127.0.0.1:31415 with fallback to 31416).
 ///
 /// It allows browser extensions, bookmarklets, and local CLI tools to communicate with HyperFetch
 /// and submit new download tasks seamlessly.
 public final class LocalhostBridge: @unchecked Sendable {
-    public typealias DownloadHandler = @Sendable (_ url: URL, _ filename: String?, _ autoStart: Bool) -> Void
+    public typealias DownloadHandler = @Sendable (
+        _ url: URL,
+        _ filename: String?,
+        _ autoStart: Bool,
+        _ headers: [String: String]?
+    ) -> Void
 
     public let preferredPort: UInt16
     public let fallbackPort: UInt16
@@ -351,33 +389,21 @@ public final class LocalhostBridge: @unchecked Sendable {
             return
         }
 
-        guard let jsonObject = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
-            sendErrorResponse(status: 400, message: "Invalid JSON payload", connection: connection)
-            return
-        }
-
-        guard let urlString = jsonObject["url"] as? String,
-              let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+        guard let request = try? JSONDecoder().decode(DownloadRequest.self, from: bodyData),
+              let url = URL(string: request.url.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               (scheme == "http" || scheme == "https") else {
             sendErrorResponse(status: 400, message: "Missing or invalid 'url' parameter (must be http/https)", connection: connection)
             return
         }
 
-        let filename = (jsonObject["filename"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filename = request.filename?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedFilename = (filename?.isEmpty == false) ? filename : nil
-
-        let autoStart: Bool
-        if let boolVal = jsonObject["autoStart"] as? Bool {
-            autoStart = boolVal
-        } else if let stringVal = jsonObject["autoStart"] as? String {
-            autoStart = (stringVal.lowercased() != "false" && stringVal != "0")
-        } else {
-            autoStart = true
-        }
+        let autoStart = request.autoStart ?? true
+        let headers = request.headers
 
         // Trigger download handler
-        onDownloadRequested?(url, resolvedFilename, autoStart)
+        onDownloadRequested?(url, resolvedFilename, autoStart, headers)
 
         sendJSONResponse(
             status: 200,
@@ -414,8 +440,15 @@ public final class LocalhostBridge: @unchecked Sendable {
             autoStart = true
         }
 
+        var headers: [String: String]? = nil
+        if let headersParam = queryDict["headers"],
+           let data = headersParam.data(using: .utf8),
+           let parsed = try? JSONDecoder().decode([String: String].self, from: data) {
+            headers = parsed
+        }
+
         // Trigger download handler
-        onDownloadRequested?(url, resolvedFilename, autoStart)
+        onDownloadRequested?(url, resolvedFilename, autoStart, headers)
 
         sendJSONResponse(
             status: 200,

@@ -102,7 +102,7 @@ public actor DownloadEngine {
 
             let probeResult: ProbeResult
             do {
-                probeResult = try await probe.probe(url: currentTask.url)
+                probeResult = try await probe.probe(url: currentTask.url, headers: currentTask.headers)
             } catch is CancellationError {
                 currentTask.status = .paused
                 taskStore[currentTask.id] = currentTask
@@ -190,6 +190,7 @@ public actor DownloadEngine {
         }
 
         let downloadURL = currentTask.url
+        let taskHeaders = currentTask.headers
         let downloader = self.downloader
         let chunksToDownload = currentTask.chunks
 
@@ -206,7 +207,8 @@ public actor DownloadEngine {
                         try await downloader.download(
                             chunk: &localChunk,
                             from: downloadURL,
-                            to: writer
+                            to: writer,
+                            headers: taskHeaders
                         ) { delta in
                             progressContinuation.yield((chunkIndex, delta))
                         }

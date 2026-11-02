@@ -58,11 +58,19 @@ public enum ProbeError: Error, LocalizedError, Equatable, Sendable {
 
 /// Defines an interface for probing remote HTTP endpoints prior to download.
 public protocol HTTPProbing: Sendable {
-    func probe(url: URL) async throws -> ProbeResult
+    func probe(url: URL, headers: [String: String]) async throws -> ProbeResult
+}
+
+extension HTTPProbing {
+    public func probe(url: URL) async throws -> ProbeResult {
+        try await probe(url: url, headers: [:])
+    }
 }
 
 /// Robust HTTP prober that discovers content size, range support, filename, and cache validators.
 public final class HTTPRangeProbe: HTTPProbing, Sendable {
+    public static let defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
     private let session: URLSession
     private let timeoutInterval: TimeInterval
 
@@ -71,14 +79,14 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         self.timeoutInterval = timeoutInterval
     }
 
-    public func probe(url: URL) async throws -> ProbeResult {
+    public func probe(url: URL, headers: [String: String] = [:]) async throws -> ProbeResult {
         // Validate URL scheme
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
             throw ProbeError.invalidURL(url)
         }
 
         do {
-            return try await performHeadProbe(url: url)
+            return try await performHeadProbe(url: url, headers: headers)
         } catch let error as ProbeError {
             throw error
         } catch is CancellationError {
@@ -92,9 +100,21 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
     // MARK: - Private Probe Execution
 
-    private func performHeadProbe(url: URL) async throws -> ProbeResult {
+    private func applyHeaders(to request: inout URLRequest, customHeaders: [String: String]) {
+        var resolved = customHeaders
+        let hasUserAgent = resolved.keys.contains { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }
+        if !hasUserAgent {
+            resolved["User-Agent"] = Self.defaultUserAgent
+        }
+        for (key, value) in resolved {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+    }
+
+    private func performHeadProbe(url: URL, headers: [String: String]) async throws -> ProbeResult {
         var headRequest = URLRequest(url: url, timeoutInterval: timeoutInterval)
         headRequest.httpMethod = "HEAD"
+        applyHeaders(to: &headRequest, customHeaders: headers)
         headRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let (_, response) = try await session.data(for: headRequest)
@@ -104,9 +124,9 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
         let finalURL = httpResponse.url ?? url
 
-        // Server does not support HEAD method -> fallback to GET Range
-        if httpResponse.statusCode == 405 || httpResponse.statusCode == 501 {
-            return try await performGetRangeProbe(url: finalURL, headResponse: httpResponse)
+        // Server does not support HEAD method or rejects HEAD (e.g. 401, 403, 405, 501, or redirect) -> fallback to GET Range
+        if [401, 403, 405, 501].contains(httpResponse.statusCode) || (httpResponse.statusCode >= 300 && httpResponse.statusCode < 400) {
+            return try await performGetRangeProbe(url: finalURL, headers: headers, headResponse: httpResponse)
         }
 
         // Handle other HTTP errors
@@ -122,7 +142,7 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
         // If Accept-Ranges is absent / not bytes, or Content-Length is missing, fallback to GET Range
         if !supportsRange || contentLength < 0 {
-            return try await performGetRangeProbe(url: finalURL, headResponse: httpResponse)
+            return try await performGetRangeProbe(url: finalURL, headers: headers, headResponse: httpResponse)
         }
 
         let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition")
@@ -140,9 +160,10 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         )
     }
 
-    private func performGetRangeProbe(url: URL, headResponse: HTTPURLResponse?) async throws -> ProbeResult {
+    private func performGetRangeProbe(url: URL, headers: [String: String], headResponse: HTTPURLResponse?) async throws -> ProbeResult {
         var getRequest = URLRequest(url: url, timeoutInterval: timeoutInterval)
         getRequest.httpMethod = "GET"
+        applyHeaders(to: &getRequest, customHeaders: headers)
         getRequest.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         getRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 

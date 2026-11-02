@@ -202,6 +202,58 @@ struct DownloadModelTests {
         #expect(decodedTask.supportsRange == originalTask.supportsRange)
         #expect(decodedTask.category == originalTask.category)
         #expect(decodedTask.completedAt == originalTask.completedAt)
+        #expect(decodedTask.headers == originalTask.headers)
+    }
+
+    @Test("DownloadTaskModel backwards compatibility: missing headers decodes to empty dictionary")
+    func testBackwardsCompatibilityMissingHeaders() throws {
+        let jsonWithoutHeaders = """
+        {
+            "id": "2808F840-E873-4ED7-B4E3-DBB7D09D70A0",
+            "url": "https://example.com/movie.mp4",
+            "filename": "movie.mp4",
+            "destinationURL": "file:///Users/test/Downloads/movie.mp4",
+            "totalBytes": -1,
+            "downloadedBytes": 0,
+            "status": { "idle": {} },
+            "chunks": [],
+            "supportsRange": false,
+            "createdAt": "2026-11-02T04:34:33Z",
+            "category": "Video",
+            "bytesPerSecond": 0
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let task = try decoder.decode(DownloadTaskModel.self, from: jsonWithoutHeaders)
+
+        #expect(task.filename == "movie.mp4")
+        #expect(task.headers == [:])
+        #expect(task.supportsRange == false)
+    }
+
+    @Test("DownloadTaskModel with custom headers preserves headers through Codable")
+    func testHeadersPreservedInCodable() throws {
+        let taskWithHeaders = DownloadTaskModel(
+            url: URL(string: "https://docs.google.com/export")!,
+            filename: "Doc.pdf",
+            headers: [
+                "Cookie": "test_cookie=123",
+                "Referer": "https://docs.google.com"
+            ]
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(taskWithHeaders)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(DownloadTaskModel.self, from: data)
+
+        #expect(decoded.headers["Cookie"] == "test_cookie=123")
+        #expect(decoded.headers["Referer"] == "https://docs.google.com")
     }
 
     @Test("DownloadStatus all cases Codable roundtrip")

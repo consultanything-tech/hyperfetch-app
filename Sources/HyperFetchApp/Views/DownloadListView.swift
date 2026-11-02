@@ -129,7 +129,26 @@ public struct DownloadListView: View {
         if !appState.searchText.isEmpty {
             return "magnifyingglass"
         }
-        switch appState.statusFilter {
+        if case .category(let category) = appState.sidebarSelection {
+            switch category {
+            case .all:
+                return "tray"
+            case .archives:
+                return "archivebox"
+            case .documents:
+                return "doc.text"
+            case .video:
+                return "film"
+            case .music:
+                return "music.note"
+            case .applications:
+                return "app"
+            case .other:
+                return "questionmark.folder"
+            }
+        }
+        let filter: StatusFilter = if case .status(let f) = appState.sidebarSelection { f } else { .all }
+        switch filter {
         case .all:
             return "arrow.down.circle"
         case .active:
@@ -147,7 +166,11 @@ public struct DownloadListView: View {
         if !appState.searchText.isEmpty {
             return "No Results Found"
         }
-        switch appState.statusFilter {
+        if case .category(let category) = appState.sidebarSelection {
+            return "No \(category.rawValue) Downloads"
+        }
+        let filter: StatusFilter = if case .status(let f) = appState.sidebarSelection { f } else { .all }
+        switch filter {
         case .all:
             return "No Downloads Yet"
         case .active:
@@ -165,6 +188,21 @@ public struct DownloadListView: View {
         if !appState.searchText.isEmpty {
             return "No downloads match your query '\(appState.searchText)'."
         }
-        return "Click '+' or press ⌘N to start downloading with multi-chunk acceleration."
+        if case .category(let category) = appState.sidebarSelection {
+            return "Downloaded files categorized as \(category.rawValue) will appear here."
+        }
+        let filter: StatusFilter = if case .status(let f) = appState.sidebarSelection { f } else { .all }
+        switch filter {
+        case .all:
+            return "Add a file URL or copy a download link to get started with multi-chunk acceleration."
+        case .active:
+            return "There are no downloads currently in progress."
+        case .completed:
+            return "Downloaded files will appear here once finished."
+        case .paused:
+            return "Paused downloads will appear here."
+        case .failed:
+            return "No failed download attempts recorded."
+        }
     }
 }

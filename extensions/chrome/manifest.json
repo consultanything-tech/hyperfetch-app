@@ -6,6 +6,7 @@
   "permissions": [
     "downloads",
     "webRequest",
+    "cookies",
     "storage"
   ],
   "host_permissions": [

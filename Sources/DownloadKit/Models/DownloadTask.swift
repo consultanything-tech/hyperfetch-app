@@ -25,6 +25,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public var completedAt: Date?
     public var category: DownloadCategory
     public var bytesPerSecond: Double
+    public var headers: [String: String]
 
     /// Overall progress of the download, ranging from 0.0 to 1.0.
     public var progress: Double {
@@ -47,7 +48,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         createdAt: Date = Date(),
         completedAt: Date? = nil,
         category: DownloadCategory? = nil,
-        bytesPerSecond: Double = 0.0
+        bytesPerSecond: Double = 0.0,
+        headers: [String: String] = [:]
     ) {
         self.id = id
         self.url = url
@@ -64,5 +66,47 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.completedAt = completedAt
         self.category = category ?? DownloadCategory.category(for: resolvedFilename)
         self.bytesPerSecond = bytesPerSecond
+        self.headers = headers
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, url, filename, destinationURL, totalBytes, downloadedBytes
+        case status, chunks, supportsRange, createdAt, completedAt, category, bytesPerSecond, headers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.url = try container.decode(URL.self, forKey: .url)
+        self.filename = try container.decode(String.self, forKey: .filename)
+        self.destinationURL = try container.decode(URL.self, forKey: .destinationURL)
+        self.totalBytes = try container.decode(Int64.self, forKey: .totalBytes)
+        self.downloadedBytes = try container.decode(Int64.self, forKey: .downloadedBytes)
+        self.status = try container.decode(DownloadStatus.self, forKey: .status)
+        self.chunks = try container.decode([Chunk].self, forKey: .chunks)
+        self.supportsRange = try container.decode(Bool.self, forKey: .supportsRange)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        self.category = try container.decode(DownloadCategory.self, forKey: .category)
+        self.bytesPerSecond = try container.decode(Double.self, forKey: .bytesPerSecond)
+        self.headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(url, forKey: .url)
+        try container.encode(filename, forKey: .filename)
+        try container.encode(destinationURL, forKey: .destinationURL)
+        try container.encode(totalBytes, forKey: .totalBytes)
+        try container.encode(downloadedBytes, forKey: .downloadedBytes)
+        try container.encode(status, forKey: .status)
+        try container.encode(chunks, forKey: .chunks)
+        try container.encode(supportsRange, forKey: .supportsRange)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
+        try container.encode(category, forKey: .category)
+        try container.encode(bytesPerSecond, forKey: .bytesPerSecond)
+        try container.encode(headers, forKey: .headers)
     }
 }

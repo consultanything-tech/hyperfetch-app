@@ -617,4 +617,85 @@ struct HTTPRangeProbeTests {
         #expect(ProbeError.networkError("timeout").errorDescription?.contains("Network failure") == true)
         #expect(ProbeError.cancelled.errorDescription?.contains("cancelled") == true)
     }
+
+    // MARK: - Headers and Cookies Verification
+
+    @Test("Headers and cookies are attached to probe requests and default browser User-Agent is used")
+    func testHeadersAndCookiesAttached() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://authenticated.example.com/file.zip")!
+        let session = makeSession()
+
+        MockURLProtocol.register(url: testURL) { request in
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "session_token=secret123")
+            #expect(request.value(forHTTPHeaderField: "Referer") == "https://authenticated.example.com/dashboard")
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == HTTPRangeProbe.defaultUserAgent)
+
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Length": "2048",
+                    "Accept-Ranges": "bytes",
+                    "Content-Disposition": "attachment; filename=\"file.zip\""
+                ]
+            )!
+            return (response, nil)
+        }
+
+        let probe = HTTPRangeProbe(session: session)
+        let headers = [
+            "Cookie": "session_token=secret123",
+            "Referer": "https://authenticated.example.com/dashboard"
+        ]
+        let result = try await probe.probe(url: testURL, headers: headers)
+        #expect(result.supportsRange == true)
+        #expect(result.totalBytes == 2048)
+        #expect(result.filename == "file.zip")
+    }
+
+    @Test("HEAD 401 falls back to GET Range with cookies and succeeds")
+    func testHead401FallsBackToGetWithCookies() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://docs.google.com/document/u/0/export?format=pdf")!
+        let session = makeSession()
+
+        MockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                // Google Docs export rejects HEAD with 401
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 401,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: nil
+                )!
+                return (response, nil)
+            } else {
+                #expect(request.httpMethod == "GET")
+                #expect(request.value(forHTTPHeaderField: "Cookie") == "SID=valid_cookie")
+                #expect(request.value(forHTTPHeaderField: "Range") == "bytes=0-0")
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "524288",
+                        "Content-Disposition": "attachment; filename=\"Document.pdf\""
+                    ]
+                )!
+                return (response, Data([0x25, 0x50, 0x44, 0x46]))
+            }
+        }
+
+        let probe = HTTPRangeProbe(session: session)
+        let headers = [
+            "Cookie": "SID=valid_cookie",
+            "User-Agent": "CustomAgent/1.0"
+        ]
+        let result = try await probe.probe(url: testURL, headers: headers)
+        #expect(result.supportsRange == false)
+        #expect(result.totalBytes == 524288)
+        #expect(result.filename == "Document.pdf")
+    }
 }

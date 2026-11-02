@@ -79,13 +79,15 @@ public actor QueueManager {
         url: URL,
         destinationURL: URL? = nil,
         filename: String? = nil,
+        headers: [String: String] = [:],
         autoStart: Bool = true
     ) async throws -> DownloadTaskModel {
         let task = DownloadTaskModel(
             url: url,
             filename: filename,
             destinationURL: destinationURL,
-            status: autoStart ? .idle : .paused
+            status: autoStart ? .idle : .paused,
+            headers: headers
         )
         return try await addTask(task, autoStart: autoStart)
     }

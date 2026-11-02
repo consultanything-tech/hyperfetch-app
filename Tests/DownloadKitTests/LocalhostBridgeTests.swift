@@ -85,7 +85,7 @@ struct LocalhostBridgeTests {
         }
         let box = CallbackBox()
 
-        bridge.onDownloadRequested = { url, filename, autoStart in
+        bridge.onDownloadRequested = { url, filename, autoStart, _ in
             box.url = url
             box.filename = filename
             box.autoStart = autoStart
@@ -155,7 +155,7 @@ struct LocalhostBridgeTests {
         }
         let box = CallbackBox()
 
-        bridge.onDownloadRequested = { url, filename, autoStart in
+        bridge.onDownloadRequested = { url, filename, autoStart, _ in
             box.url = url
             box.filename = filename
             box.autoStart = autoStart
@@ -202,5 +202,60 @@ struct LocalhostBridgeTests {
 
         #expect(secondBridge.isRunning)
         #expect(secondBridge.listeningPort == fallbackPort)
+    }
+
+    @Test("POST /add parses JSON payload with headers and passes to onDownloadRequested")
+    func testPostAddWithHeaders() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39215, fallbackPort: 39216)
+
+        final class CallbackBox: @unchecked Sendable {
+            var url: URL?
+            var filename: String?
+            var autoStart: Bool?
+            var headers: [String: String]?
+        }
+        let box = CallbackBox()
+
+        bridge.onDownloadRequested = { url, filename, autoStart, headers in
+            box.url = url
+            box.filename = filename
+            box.autoStart = autoStart
+            box.headers = headers
+        }
+
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "url": "https://docs.google.com/document/u/0/export?format=pdf",
+            "filename": "Proposal.pdf",
+            "autoStart": true,
+            "headers": [
+                "Cookie": "SID=abc123xyz; HSID=def456",
+                "User-Agent": "Mozilla/5.0 Chrome/131.0.0.0",
+                "Referer": "https://docs.google.com/"
+            ]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Issue.record("Expected HTTPURLResponse")
+            return
+        }
+
+        #expect(httpResponse.statusCode == 200)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(json?["status"] as? String == "ok")
+
+        #expect(box.url?.absoluteString == "https://docs.google.com/document/u/0/export?format=pdf")
+        #expect(box.filename == "Proposal.pdf")
+        #expect(box.autoStart == true)
+        #expect(box.headers?["Cookie"] == "SID=abc123xyz; HSID=def456")
+        #expect(box.headers?["User-Agent"] == "Mozilla/5.0 Chrome/131.0.0.0")
+        #expect(box.headers?["Referer"] == "https://docs.google.com/")
     }
 }

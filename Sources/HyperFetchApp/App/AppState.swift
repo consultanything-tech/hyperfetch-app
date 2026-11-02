@@ -157,12 +157,6 @@ public final class AppState: ObservableObject {
 
         notificationManager.requestAuthorization()
 
-        // Initialize with sample demo tasks if queue is empty
-        if self.tasks.isEmpty {
-            self.tasks = Self.sampleTasks
-            self.selectedTaskId = self.tasks.first?.id
-        }
-
         // Start listening to the QueueManager stream
         startListeningToQueue()
 
@@ -295,6 +289,7 @@ public final class AppState: ObservableObject {
         url: URL,
         destinationURL: URL? = nil,
         filename: String? = nil,
+        headers: [String: String] = [:],
         autoStart: Bool = true
     ) {
         Task {
@@ -303,6 +298,7 @@ public final class AppState: ObservableObject {
                     url: url,
                     destinationURL: destinationURL,
                     filename: filename,
+                    headers: headers,
                     autoStart: autoStart
                 )
                 self.selectedTaskId = newTask.id
@@ -336,11 +332,18 @@ public final class AppState: ObservableObject {
     /// Removes a task from the list and optionally deletes its file from disk.
     public func remove(id: UUID, deleteFile: Bool = false) {
         if selectedTaskId == id {
-            selectedTaskId = nil
+            selectedTaskId = tasks.first(where: { $0.id != id })?.id
         }
+        self.tasks.removeAll(where: { $0.id == id })
         Task {
             try? await queueManager.removeTask(id: id, deleteFile: deleteFile)
         }
+    }
+
+    /// Explicitly loads sample demo tasks into the queue for demonstration and visual testing.
+    public func loadDemoSampleTasks() {
+        self.tasks = Self.sampleTasks
+        self.selectedTaskId = self.tasks.first?.id
     }
 
     /// Prompts the delete confirmation sheet/dialog for the given or selected task.
@@ -449,12 +452,13 @@ public final class AppState: ObservableObject {
     }
 
     private func setupLocalhostBridge() {
-        localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart in
+        localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart, headers in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.handleIncomingDownload(
                     url: url,
                     filename: filename,
+                    headers: headers ?? [:],
                     autoStart: autoStart || self.autoStartCapturedDownloads
                 )
             }
@@ -489,9 +493,9 @@ public final class AppState: ObservableObject {
     }
 
     /// Handles an incoming download from localhost bridge, clipboard, or custom URL scheme.
-    public func handleIncomingDownload(url: URL, filename: String?, autoStart: Bool) {
+    public func handleIncomingDownload(url: URL, filename: String?, headers: [String: String] = [:], autoStart: Bool) {
         if autoStart || autoStartCapturedDownloads {
-            addTask(url: url, filename: filename, autoStart: true)
+            addTask(url: url, filename: filename, headers: headers, autoStart: true)
         } else {
             let name = filename ?? (url.path as NSString).lastPathComponent
             FloatingHUDController.shared.show(url: url, filename: name.isEmpty ? "download" : name, appState: self)
@@ -598,17 +602,6 @@ public final class AppState: ObservableObject {
     }
 
     private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
-        // If queue is empty on initial load, preserve or initialize sample demo tasks
-        if updatedTasks.isEmpty {
-            if self.tasks.isEmpty {
-                self.tasks = Self.sampleTasks
-                self.selectedTaskId = self.tasks.first?.id
-            }
-            if isInitialLoad {
-                return
-            }
-        }
-
         // Detect newly completed tasks to trigger notifications
         if !isInitialLoad {
             for task in updatedTasks {

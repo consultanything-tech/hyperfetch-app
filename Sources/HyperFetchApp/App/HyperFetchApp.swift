@@ -84,6 +84,12 @@ struct HyperFetchApp: App {
 
                 Toggle("Auto-Capture Clipboard Links", isOn: $appState.autoCaptureClipboard)
                 Toggle("Auto-Start Captured Downloads (Bypass HUD)", isOn: $appState.autoStartCapturedDownloads)
+
+                Divider()
+
+                Button("Load Sample Demo Downloads") {
+                    appState.loadDemoSampleTasks()
+                }
             }
         }
 

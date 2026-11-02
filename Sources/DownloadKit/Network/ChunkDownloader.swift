@@ -30,8 +30,30 @@ public protocol ChunkDownloading: Sendable {
         chunk: inout Chunk,
         from url: URL,
         to writer: FileWriting,
+        headers: [String: String],
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws
+}
+
+extension ChunkDownloading {
+    public func download(
+        chunk: inout Chunk,
+        from url: URL,
+        to writer: FileWriting,
+        headers: [String: String] = [:],
+        onProgress: @escaping @Sendable (Int64) -> Void
+    ) async throws {
+        try await download(chunk: &chunk, from: url, to: writer, headers: headers, onProgress: onProgress)
+    }
+
+    public func download(
+        chunk: inout Chunk,
+        from url: URL,
+        to writer: FileWriting,
+        onProgress: @escaping @Sendable (Int64) -> Void
+    ) async throws {
+        try await download(chunk: &chunk, from: url, to: writer, headers: [:], onProgress: onProgress)
+    }
 }
 
 /// Downloads a single chunk using URLSession and writes directly to FileWriting at exact offsets.
@@ -48,6 +70,7 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
         chunk: inout Chunk,
         from url: URL,
         to writer: FileWriting,
+        headers: [String: String] = [:],
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws {
         // If the chunk is already fully downloaded, mark completed and return
@@ -58,6 +81,16 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+
+        var resolvedHeaders = headers
+        let hasUserAgent = resolvedHeaders.keys.contains { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }
+        if !hasUserAgent {
+            resolvedHeaders["User-Agent"] = HTTPRangeProbe.defaultUserAgent
+        }
+        for (key, value) in resolvedHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let chunkStartOffset = chunk.startOffset

@@ -73,14 +73,45 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     });
   });
 
-  // Forward download request to HyperFetch Localhost Bridge
-  forwardDownloadToHyperFetch({
-    url: downloadItem.url,
-    filename: filename,
-    referrer: downloadItem.referrer || '',
-    autoStart: true
-  });
+  // Capture cookies and headers, then forward download request to HyperFetch
+  (async () => {
+    const cookieString = await getCookiesForUrl(downloadItem.url);
+    const headers = {
+      'User-Agent': navigator.userAgent,
+      'Referer': downloadItem.referrer || '',
+      'Accept': '*/*'
+    };
+    if (cookieString) {
+      headers['Cookie'] = cookieString;
+    }
+
+    forwardDownloadToHyperFetch({
+      url: downloadItem.url,
+      filename: filename,
+      referrer: downloadItem.referrer || '',
+      headers: headers,
+      autoStart: true
+    });
+  })();
 });
+
+async function getCookiesForUrl(url) {
+  try {
+    const cookies = await chrome.cookies.getAll({ url: url });
+    if (cookies && cookies.length > 0) {
+      return cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    }
+    // Fallback to domain
+    const parsed = new URL(url);
+    const domainCookies = await chrome.cookies.getAll({ domain: parsed.hostname });
+    if (domainCookies && domainCookies.length > 0) {
+      return domainCookies.map(c => `${c.name}=${c.value}`).join('; ');
+    }
+  } catch (e) {
+    console.warn('[HyperFetch] Could not get cookies:', e);
+  }
+  return '';
+}
 
 function getFileExtension(urlOrFilename) {
   try {
