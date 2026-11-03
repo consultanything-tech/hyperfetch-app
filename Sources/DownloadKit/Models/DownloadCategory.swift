@@ -10,6 +10,18 @@ public enum DownloadCategory: String, Codable, CaseIterable, Sendable {
     case applications = "Applications"
     case other = "Other"
 
+    /// The subfolder name under the downloads base directory for this category.
+    public var folderName: String {
+        switch self {
+        case .applications: return "Applications"
+        case .archives: return "Archives"
+        case .documents: return "Documents"
+        case .video: return "Video"
+        case .music: return "Music"
+        case .other, .all: return "Other"
+        }
+    }
+
     /// Automatically classifies a file into a `DownloadCategory` based on filename and extension.
     public static func category(for filename: String) -> DownloadCategory {
         let trimmed = filename.trimmingCharacters(in: .whitespacesAndNewlines)

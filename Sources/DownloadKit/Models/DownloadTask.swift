@@ -36,6 +36,23 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         return status == .completed ? 1.0 : 0.0
     }
 
+    /// Base directory for HyperFetch downloads under the user's Downloads directory (~/Downloads/HyperFetch/).
+    public static var defaultBaseDirectory: URL {
+        let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
+        return downloadsDir.appendingPathComponent("HyperFetch", isDirectory: true)
+    }
+
+    /// Computes the default destination URL under ~/Downloads/HyperFetch/<Category>/<Filename>.
+    public static func defaultDestinationURL(for filename: String, category: DownloadCategory? = nil) -> URL {
+        let cat = category ?? DownloadCategory.category(for: filename)
+        let folderName = cat.folderName
+        return defaultBaseDirectory
+            .appendingPathComponent(folderName, isDirectory: true)
+            .appendingPathComponent(filename)
+            .standardizedFileURL
+    }
+
     public init(
         id: UUID = UUID(),
         url: URL,
@@ -61,12 +78,13 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         let resolvedFilename = sanitized.isEmpty ? "download" : sanitized
         self.filename = resolvedFilename
 
-        let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
+        let resolvedCategory = category ?? DownloadCategory.category(for: resolvedFilename)
+        self.category = resolvedCategory
+
         if let explicitURL = destinationURL {
             self.destinationURL = explicitURL.standardizedFileURL
         } else {
-            self.destinationURL = downloadsDir.appendingPathComponent(resolvedFilename).standardizedFileURL
+            self.destinationURL = DownloadTaskModel.defaultDestinationURL(for: resolvedFilename, category: resolvedCategory)
         }
         self.totalBytes = totalBytes
         self.downloadedBytes = downloadedBytes
@@ -75,7 +93,6 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.supportsRange = supportsRange
         self.createdAt = createdAt
         self.completedAt = completedAt
-        self.category = category ?? DownloadCategory.category(for: resolvedFilename)
         self.bytesPerSecond = bytesPerSecond
         self.headers = headers
         self.preferredChunkCount = preferredChunkCount

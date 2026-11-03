@@ -44,6 +44,58 @@ struct DownloadModelTests {
         #expect(DownloadCategory.category(for: "") == .other)
     }
 
+    @Test("DownloadCategory folder names mapping")
+    func testCategoryFolderNames() {
+        #expect(DownloadCategory.applications.folderName == "Applications")
+        #expect(DownloadCategory.archives.folderName == "Archives")
+        #expect(DownloadCategory.documents.folderName == "Documents")
+        #expect(DownloadCategory.video.folderName == "Video")
+        #expect(DownloadCategory.music.folderName == "Music")
+        #expect(DownloadCategory.other.folderName == "Other")
+        #expect(DownloadCategory.all.folderName == "Other")
+    }
+
+    @Test("DownloadTaskModel assigns default destination to ~/Downloads/HyperFetch/<Category>/<Filename>")
+    func testDefaultDestinationCategorization() {
+        let baseDir = DownloadTaskModel.defaultBaseDirectory.standardizedFileURL
+
+        let appTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/installer.dmg")!
+        )
+        #expect(appTask.category == .applications)
+        #expect(appTask.destinationURL == baseDir.appendingPathComponent("Applications/installer.dmg").standardizedFileURL)
+
+        let archiveTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/data.tar.gz")!
+        )
+        #expect(archiveTask.category == .archives)
+        #expect(archiveTask.destinationURL == baseDir.appendingPathComponent("Archives/data.tar.gz").standardizedFileURL)
+
+        let docTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/paper.pdf")!
+        )
+        #expect(docTask.category == .documents)
+        #expect(docTask.destinationURL == baseDir.appendingPathComponent("Documents/paper.pdf").standardizedFileURL)
+
+        let videoTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/clip.mp4")!
+        )
+        #expect(videoTask.category == .video)
+        #expect(videoTask.destinationURL == baseDir.appendingPathComponent("Video/clip.mp4").standardizedFileURL)
+
+        let musicTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/song.mp3")!
+        )
+        #expect(musicTask.category == .music)
+        #expect(musicTask.destinationURL == baseDir.appendingPathComponent("Music/song.mp3").standardizedFileURL)
+
+        let otherTask = DownloadTaskModel(
+            url: URL(string: "https://example.com/blob.dat")!
+        )
+        #expect(otherTask.category == .other)
+        #expect(otherTask.destinationURL == baseDir.appendingPathComponent("Other/blob.dat").standardizedFileURL)
+    }
+
     // MARK: - Chunk Tests
 
     @Test("Chunk expected length and progress calculation")

@@ -32,8 +32,7 @@ public struct AddDownloadSheet: View {
         if let savedPath, !savedPath.isEmpty {
             defaultDownloads = URL(fileURLWithPath: savedPath)
         } else {
-            defaultDownloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+            defaultDownloads = DownloadTaskModel.defaultBaseDirectory
         }
         let savedChunks = UserDefaults.standard.integer(forKey: "com.hyperfetch.defaultChunkCount")
         let initialChunks = savedChunks > 0 ? savedChunks : 4
@@ -535,9 +534,7 @@ public struct AddDownloadSheet: View {
     }
 
     private var isDefaultDownloadsFolder: Bool {
-        let defaultURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
-        return destinationFolderURL.standardizedFileURL.path == defaultURL.standardizedFileURL.path
+        destinationFolderURL.standardizedFileURL.path == appState.defaultDownloadDirectoryURL.standardizedFileURL.path
     }
 
     private var availableDiskSpaceString: String {
@@ -627,12 +624,19 @@ public struct AddDownloadSheet: View {
 
         let trimmedName = customFilename.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalFilename = trimmedName.isEmpty ? nil : trimmedName
+        let resolvedFilename = finalFilename ?? (url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent)
+        let category = DownloadCategory.category(for: resolvedFilename)
 
-        let destinationFile: URL?
-        if let finalFilename {
-            destinationFile = destinationFolderURL.appendingPathComponent(finalFilename)
+        let destinationFile: URL
+        if destinationFolderURL.standardizedFileURL == appState.defaultDownloadDirectoryURL.standardizedFileURL {
+            destinationFile = destinationFolderURL
+                .appendingPathComponent(category.folderName, isDirectory: true)
+                .appendingPathComponent(resolvedFilename)
+                .standardizedFileURL
         } else {
-            destinationFile = destinationFolderURL.appendingPathComponent(url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent)
+            destinationFile = destinationFolderURL
+                .appendingPathComponent(resolvedFilename)
+                .standardizedFileURL
         }
 
         appState.defaultChunkCount = chunkCount

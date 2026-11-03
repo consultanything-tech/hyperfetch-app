@@ -318,8 +318,7 @@ public final class AppState: ObservableObject {
             if let savedPath = UserDefaults.standard.string(forKey: Self.defaultDownloadDirectoryKey), !savedPath.isEmpty {
                 return URL(fileURLWithPath: savedPath)
             }
-            return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+            return DownloadTaskModel.defaultBaseDirectory
         }
         set {
             objectWillChange.send()

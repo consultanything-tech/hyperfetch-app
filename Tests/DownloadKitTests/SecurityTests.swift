@@ -48,7 +48,11 @@ struct SecurityTests {
 
         // Destination URL should be standardized and confined to Downloads folder
         #expect(!task.destinationURL.path.contains(".."))
-        let expectedURL = downloadsDir.appendingPathComponent(".zshrc").standardizedFileURL
+        let expectedURL = downloadsDir
+            .appendingPathComponent("HyperFetch", isDirectory: true)
+            .appendingPathComponent("Other", isDirectory: true)
+            .appendingPathComponent(".zshrc")
+            .standardizedFileURL
         #expect(task.destinationURL == expectedURL)
 
         // Crucially, destinationURL must not point to ~/.zshrc directly

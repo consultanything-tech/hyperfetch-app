@@ -741,4 +741,75 @@ struct DownloadEngineTests {
             }
         }
     }
+
+    // MARK: - Test 10: Probe Filename and Category Rerouting
+
+    @Test("DownloadEngine probe discovering filename updates category and destinationURL appropriately")
+    func testProbeUpdatesCategoryAndDestinationURL() async throws {
+        struct FilenameProbe: HTTPProbing {
+            let discoveredFilename: String
+            func probe(url: URL, headers: [String: String]) async throws -> ProbeResult {
+                ProbeResult(
+                    totalBytes: 500,
+                    supportsRange: true,
+                    filename: discoveredFilename,
+                    finalURL: url
+                )
+            }
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [EngineMockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let testURL = URL(string: "https://engine.example.com/download?id=123")!
+        let chunkData = Data(repeating: 0x55, count: 500)
+
+        EngineMockURLProtocol.register(url: testURL) { _ in
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 206,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Range": "bytes 0-499/500",
+                    "Content-Length": "500"
+                ]
+            )!
+            return (response, chunkData)
+        }
+
+        // Case A: Task created with default HyperFetch base directory
+        let defaultTask = DownloadTaskModel(
+            url: testURL,
+            filename: "download"
+        )
+        #expect(defaultTask.category == .other)
+
+        let engine = DownloadEngine(
+            session: session,
+            probe: FilenameProbe(discoveredFilename: "video.mp4")
+        )
+
+        let updatedTask = try await engine.startDownload(task: defaultTask)
+        #expect(updatedTask.filename == "video.mp4")
+        #expect(updatedTask.category == .video)
+        let expectedVideoDest = DownloadTaskModel.defaultDestinationURL(for: "video.mp4", category: .video)
+        #expect(updatedTask.destinationURL == expectedVideoDest)
+
+        // Case B: Task created with custom external directory
+        let customDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let customTask = DownloadTaskModel(
+            url: testURL,
+            filename: "tempfile",
+            destinationURL: customDir.appendingPathComponent("tempfile")
+        )
+        let engine2 = DownloadEngine(
+            session: session,
+            probe: FilenameProbe(discoveredFilename: "archive.zip")
+        )
+        let updatedTask2 = try await engine2.startDownload(task: customTask)
+        #expect(updatedTask2.filename == "archive.zip")
+        #expect(updatedTask2.category == .archives)
+        #expect(updatedTask2.destinationURL == customDir.appendingPathComponent("archive.zip"))
+    }
 }

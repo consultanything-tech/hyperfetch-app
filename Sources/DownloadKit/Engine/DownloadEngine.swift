@@ -106,9 +106,17 @@ public actor DownloadEngine {
                 currentTask.supportsRange = probeResult.supportsRange
                 if !probeResult.filename.isEmpty {
                     currentTask.filename = probeResult.filename
-                    currentTask.category = DownloadCategory.category(for: probeResult.filename)
-                    let parentDir = currentTask.destinationURL.deletingLastPathComponent()
-                    currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
+                    let newCategory = DownloadCategory.category(for: probeResult.filename)
+                    currentTask.category = newCategory
+
+                    let oldDest = currentTask.destinationURL
+                    let base = DownloadTaskModel.defaultBaseDirectory.standardizedFileURL
+                    if oldDest.path.hasPrefix(base.path) {
+                        currentTask.destinationURL = DownloadTaskModel.defaultDestinationURL(for: probeResult.filename, category: newCategory)
+                    } else {
+                        let parentDir = oldDest.deletingLastPathComponent()
+                        currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
+                    }
                 }
             } catch is CancellationError {
                 currentTask.status = .paused
