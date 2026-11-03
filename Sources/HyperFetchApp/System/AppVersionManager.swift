@@ -153,7 +153,7 @@ public final class AppVersionManager: ObservableObject {
     }
 
     private static func performUpdateQuery(currentVersion: String) async -> CheckResult {
-        guard let url = URL(string: "https://api.github.com/repos/hyperfetch/hyperfetch/releases/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/consultanything-tech/hyperfetch/releases/latest") else {
             return .upToDate
         }
 

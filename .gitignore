@@ -4,3 +4,6 @@ build/
 *.xcodeproj
 *.xcworkspace
 .DS_Store
+*.png
+*.tiff
+
