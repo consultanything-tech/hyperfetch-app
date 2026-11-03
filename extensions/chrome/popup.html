@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperFetch</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <img src="icons/icon48.png" alt="HyperFetch Logo" class="brand-logo">
+        <div class="brand-text">
+          <h1>HyperFetch</h1>
+          <span class="subtitle">Download Interceptor</span>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge status-offline">
+        <span class="status-dot"></span>
+        <span id="statusText">Checking...</span>
+      </div>
+    </header>
+
+    <!-- Main Card -->
+    <main class="content">
+      <!-- Intercept Toggle Card -->
+      <div class="card toggle-card">
+        <div class="toggle-info">
+          <label for="interceptToggle" class="card-title">Auto-Intercept Downloads</label>
+          <p class="card-description">Redirect browser downloads to HyperFetch for multi-chunk speed acceleration.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="interceptToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Scope Filter Card -->
+      <div class="card filter-card">
+        <div class="card-title">Interception Scope</div>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="interceptScope" value="filtered" checked id="scopeFiltered">
+            <div class="radio-details">
+              <span class="radio-label">Media & Archives (Recommended)</span>
+              <span class="radio-hint">.zip, .dmg, .pkg, .iso, .mp4, .pdf, and 18+ types</span>
+            </div>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="interceptScope" value="all" id="scopeAll">
+            <div class="radio-details">
+              <span class="radio-label">All Downloads</span>
+              <span class="radio-hint">Intercept every file downloaded in this browser</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button id="openAppBtn" class="btn btn-secondary">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          Open HyperFetch
+        </button>
+        <button id="retryBtn" class="btn btn-ghost" title="Re-check connection">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"></path>
+            <path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path>
+          </svg>
+        </button>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>HyperFetch Local Bridge 127.0.0.1:31415</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
