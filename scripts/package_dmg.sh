@@ -78,6 +78,9 @@ fi
 echo "==> Verifying App Bundle signature..."
 codesign --verify --strict "$APP_BUNDLE"
 
+echo "==> Creating ZIP archive for fast auto-updates..."
+/usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$PROJECT_ROOT/build/HyperFetch.zip"
+
 # 7. Generate Retina DMG background image
 echo "==> Generating branded DMG background image..."
 APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PROJECT_ROOT/Sources/HyperFetchApp/Info.plist" 2>/dev/null || echo "1.0.0")

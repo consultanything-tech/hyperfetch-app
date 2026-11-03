@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import DownloadKit
 
 /// Modal sheet presenting update check progress, up-to-date confirmations, or available release details.
 public struct UpdateSheetView: View {
@@ -37,6 +38,18 @@ public struct UpdateSheetView: View {
                 case .updateAvailable(let newVersion, let currentVersion, let notes, let downloadURL, _):
                     updateAvailableView(newVersion: newVersion, currentVersion: currentVersion, notes: notes, downloadURL: downloadURL)
 
+                case .downloading(let newVersion, let progress, let bytesDownloaded, let totalBytes):
+                    downloadingView(newVersion: newVersion, progress: progress, bytesDownloaded: bytesDownloaded, totalBytes: totalBytes)
+
+                case .extracting(let newVersion):
+                    extractingView(newVersion: newVersion)
+
+                case .readyToInstall(let newVersion, let stagedAppURL):
+                    readyToInstallView(newVersion: newVersion, stagedAppURL: stagedAppURL)
+
+                case .installing:
+                    installingView
+
                 case .failed(let error):
                     failedView(error: error)
                 }
@@ -52,7 +65,7 @@ public struct UpdateSheetView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
         }
-        .frame(width: 460, height: 320)
+        .frame(width: 480, height: 340)
     }
 
     // MARK: - Header
@@ -144,10 +157,18 @@ public struct UpdateSheetView: View {
                 Spacer()
 
                 if let url = downloadURL {
-                    Button("Download Update") {
-                        NSWorkspace.shared.open(url)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Button("Update Now") {
+                            versionManager.downloadAndInstallUpdate(from: url, newVersion: newVersion)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Download manually from GitHub") {
+                            NSWorkspace.shared.open(url)
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption2)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             }
 
@@ -168,13 +189,96 @@ public struct UpdateSheetView: View {
         .frame(maxHeight: .infinity)
     }
 
+    private func downloadingView(newVersion: String, progress: Double, bytesDownloaded: Int64, totalBytes: Int64) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 38))
+                .foregroundStyle(.blue)
+
+            Text("Downloading HyperFetch \(newVersion)...")
+                .font(.headline)
+
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+                .frame(maxWidth: 320)
+
+            Text("Downloading update... \(ByteCountFormatter.string(fromByteCount: bytesDownloaded, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)) (\(Int(progress * 100))%)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Cancel") {
+                versionManager.cancelDownload()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.top, 4)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func extractingView(newVersion: String) -> some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .scaleEffect(1.2)
+
+            Text("Preparing update package...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func readyToInstallView(newVersion: String, stagedAppURL: URL) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 42))
+                .foregroundStyle(.green)
+
+            Text("Update Ready to Install")
+                .font(.title3.bold())
+
+            Text("HyperFetch \(newVersion) has been downloaded. Restart the application to apply the update.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+
+            HStack(spacing: 12) {
+                Button("Later") {
+                    versionManager.isUpdateSheetPresented = false
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Restart and Install") {
+                    versionManager.installAndRelaunch(stagedAppURL: stagedAppURL)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.top, 8)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var installingView: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .scaleEffect(1.2)
+
+            Text("Installing update and relaunching...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
     private func failedView(error: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.orange)
 
-            Text("Unable to Check for Updates")
+            Text("Unable to Update")
                 .font(.headline)
 
             Text(error)
@@ -194,21 +298,28 @@ public struct UpdateSheetView: View {
 
     private var footerView: some View {
         HStack {
-            if versionManager.state != .checking {
+            switch versionManager.state {
+            case .idle, .upToDate, .failed:
                 Button("Check Again") {
                     versionManager.checkForUpdates(userInitiated: true)
                 }
                 .buttonStyle(.bordered)
+            default:
+                EmptyView()
             }
 
             Spacer()
 
-            Button("Close") {
-                versionManager.isUpdateSheetPresented = false
-                dismiss()
+            if case .installing = versionManager.state {
+                // In the middle of relaunching, no close button
+            } else {
+                Button("Close") {
+                    versionManager.isUpdateSheetPresented = false
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.escape, modifiers: [])
             }
-            .keyboardShortcut(.defaultAction)
-            .keyboardShortcut(.escape, modifiers: [])
         }
     }
 }

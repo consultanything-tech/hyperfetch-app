@@ -8,15 +8,10 @@
 import AppKit
 import Foundation
 import SwiftUI
+import DownloadKit
 
-/// Update states reflecting the software version check lifecycle.
-public enum UpdateState: Equatable, Sendable {
-    case idle
-    case checking
-    case upToDate(currentVersion: String, lastChecked: Date)
-    case updateAvailable(newVersion: String, currentVersion: String, releaseNotes: String, downloadURL: URL?, publishedAt: Date?)
-    case failed(error: String)
-}
+/// Update states reflecting the software version check, auto-download, extraction, and in-place replacement lifecycle.
+public typealias UpdateState = DownloadKit.UpdateState
 
 /// Central manager overseeing application version inspection, automatic update checks, and update presentation.
 @MainActor
@@ -28,11 +23,11 @@ public final class AppVersionManager: ObservableObject {
     private static let updateChannelKey = "com.hyperfetch.updateChannel"
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.2"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "3"
     }
 
     public var fullVersionString: String {
@@ -70,6 +65,8 @@ public final class AppVersionManager: ObservableObject {
     }
 
     private var activeCheckTask: Task<Void, Never>?
+    private var downloadTask: URLSessionDownloadTask?
+    private var activeSession: URLSession?
 
     public init() {
         if let savedDate = UserDefaults.standard.object(forKey: Self.lastCheckedDateKey) as? Date {
@@ -140,9 +137,123 @@ public final class AppVersionManager: ObservableObject {
                 self.state = .upToDate(currentVersion: currentVer, lastChecked: now)
             case .failed:
                 // If user-initiated, allow showing upToDate for demo/offline fallback or error
-                // As per specification: if demo/offline, sets .upToDate
                 self.state = .upToDate(currentVersion: currentVer, lastChecked: now)
             }
+        }
+    }
+
+    /// Downloads and automatically extracts/verifies the update package.
+    public func downloadAndInstallUpdate(from url: URL, newVersion: String) {
+        state = .downloading(newVersion: newVersion, progress: 0.0, bytesDownloaded: 0, totalBytes: 0)
+        isUpdateSheetPresented = true
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let localArchiveURL: URL
+
+                if url.isFileURL {
+                    let tempDir = FileManager.default.temporaryDirectory
+                    let dest = tempDir.appendingPathComponent("\(UUID().uuidString)_\(url.lastPathComponent)")
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    localArchiveURL = dest
+                } else {
+                    localArchiveURL = try await self.performDownload(from: url, newVersion: newVersion)
+                }
+
+                await MainActor.run {
+                    self.state = .extracting(newVersion: newVersion)
+                }
+
+                let stagedApp = try await Task.detached {
+                    try UpdatePackageExtractor.extractAndVerify(
+                        archiveURL: localArchiveURL,
+                        newVersion: newVersion
+                    )
+                }.value
+
+                await MainActor.run {
+                    self.state = .readyToInstall(newVersion: newVersion, stagedAppURL: stagedApp)
+                }
+            } catch {
+                await MainActor.run {
+                    self.state = .failed(error: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// Replaces the currently running application with the verified staged update bundle and restarts.
+    public func installAndRelaunch(stagedAppURL: URL) {
+        state = .installing
+
+        let targetAppURL: URL
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            targetAppURL = Bundle.main.bundleURL
+        } else {
+            targetAppURL = URL(fileURLWithPath: "/Applications/HyperFetch.app")
+        }
+
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let stagingFolderURL = stagedAppURL.deletingLastPathComponent()
+
+        let script = """
+        (
+          while kill -0 \(currentPID) 2>/dev/null; do sleep 0.1; done
+          rm -rf "\(targetAppURL.path)"
+          /usr/bin/ditto "\(stagedAppURL.path)" "\(targetAppURL.path)"
+          rm -rf "\(stagingFolderURL.path)"
+          /usr/bin/open "\(targetAppURL.path)"
+        ) >/dev/null 2>&1 &
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        try? process.run()
+
+        NSApp.terminate(nil)
+    }
+
+    /// Cancels active download task if running.
+    public func cancelDownload() {
+        downloadTask?.cancel()
+        downloadTask = nil
+        activeSession?.invalidateAndCancel()
+        activeSession = nil
+        state = .idle
+    }
+
+    // MARK: - Private Download Engine
+
+    private func performDownload(from url: URL, newVersion: String) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let tracker = UpdateDownloadDelegate(
+                onProgress: { [weak self] progress, downloaded, total in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if case .downloading = self.state {
+                            self.state = .downloading(
+                                newVersion: newVersion,
+                                progress: progress,
+                                bytesDownloaded: downloaded,
+                                totalBytes: total
+                            )
+                        }
+                    }
+                },
+                continuation: continuation
+            )
+
+            let session = URLSession(configuration: .default, delegate: tracker, delegateQueue: nil)
+            self.activeSession = session
+
+            var request = URLRequest(url: url)
+            request.setValue("HyperFetch/\(self.currentVersion)", forHTTPHeaderField: "User-Agent")
+
+            let task = session.downloadTask(with: request)
+            self.downloadTask = task
+            task.resume()
         }
     }
 
@@ -205,8 +316,12 @@ public final class AppVersionManager: ObservableObject {
             let releaseVersion = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
 
             if isVersion(releaseVersion, newerThan: currentVersion) {
+                // Prefer .zip asset if present (HyperFetch.zip), else .dmg (HyperFetch.dmg)
+                let zipAsset = release.assets?.first(where: { $0.name.hasSuffix(".zip") })
                 let dmgAsset = release.assets?.first(where: { $0.name.hasSuffix(".dmg") })
-                let downloadURL = dmgAsset.flatMap { URL(string: $0.browserDownloadUrl) }
+                let targetAsset = zipAsset ?? dmgAsset
+
+                let downloadURL = targetAsset.flatMap { URL(string: $0.browserDownloadUrl) }
                     ?? release.htmlUrl.flatMap { URL(string: $0) }
 
                 let notes = release.body?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -235,21 +350,66 @@ public final class AppVersionManager: ObservableObject {
 
     /// Semantic version comparison returning true if `v1` is strictly greater than `v2`.
     public static func isVersion(_ v1: String, newerThan v2: String) -> Bool {
-        func parseVersion(_ v: String) -> [Int] {
-            let trimmed = v.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
-            let main = trimmed.components(separatedBy: "-").first ?? trimmed
-            return main.split(separator: ".").compactMap { Int($0) }
-        }
+        VersionComparator.isVersion(v1, newerThan: v2)
+    }
+}
 
-        let parts1 = parseVersion(v1)
-        let parts2 = parseVersion(v2)
-        let count = max(parts1.count, parts2.count)
-        for i in 0..<count {
-            let p1 = i < parts1.count ? parts1[i] : 0
-            let p2 = i < parts2.count ? parts2[i] : 0
-            if p1 > p2 { return true }
-            if p1 < p2 { return false }
+// MARK: - Download Progress Tracker Delegate
+
+private final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let onProgress: @Sendable (Double, Int64, Int64) -> Void
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var isCompleted = false
+    private let lock = NSLock()
+
+    init(
+        onProgress: @escaping @Sendable (Double, Int64, Int64) -> Void,
+        continuation: CheckedContinuation<URL, Error>
+    ) {
+        self.onProgress = onProgress
+        self.continuation = continuation
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : max(totalBytesWritten, 1)
+        let progress = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0.0
+        onProgress(min(1.0, max(0.0, progress)), totalBytesWritten, expected)
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isCompleted else { return }
+        isCompleted = true
+
+        let origName = downloadTask.originalRequest?.url?.lastPathComponent ?? "HyperFetchUpdate.zip"
+        let safeName = origName.isEmpty ? "HyperFetchUpdate.zip" : origName
+        let tempDir = FileManager.default.temporaryDirectory
+        let destination = tempDir.appendingPathComponent("\(UUID().uuidString)_\(safeName)")
+
+        do {
+            try FileManager.default.moveItem(at: location, to: destination)
+            continuation?.resume(returning: destination)
+        } catch {
+            continuation?.resume(throwing: error)
         }
-        return false
+        continuation = nil
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !isCompleted else { return }
+            isCompleted = true
+            continuation?.resume(throwing: error)
+            continuation = nil
+        }
     }
 }
