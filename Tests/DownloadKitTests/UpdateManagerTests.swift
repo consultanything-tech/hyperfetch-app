@@ -32,7 +32,7 @@ struct UpdateManagerTests {
             UpdateState.upToDate(currentVersion: "1.0.1", lastChecked: now)
         )
 
-        let updateURL = URL(string: "https://github.com/consultanything-tech/hyperfetch/releases/download/v1.1.0/HyperFetch.zip")
+        let updateURL = URL(string: "https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch.zip")
         #expect(
             UpdateState.updateAvailable(
                 newVersion: "1.1.0",

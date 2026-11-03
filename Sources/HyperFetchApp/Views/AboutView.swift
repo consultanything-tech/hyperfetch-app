@@ -63,14 +63,14 @@ public struct AboutView: View {
 
             // Links and Copyright
             HStack(spacing: 14) {
-                Link("GitHub Project", destination: URL(string: "https://github.com/consultanything-tech/hyperfetch")!)
+                Link("GitHub Project", destination: URL(string: "https://github.com/consultanything-tech/hyperfetch-app")!)
                     .font(.caption)
 
                 Text("•")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
 
-                Link("Release Notes", destination: URL(string: "https://github.com/consultanything-tech/hyperfetch/releases")!)
+                Link("Release Notes", destination: URL(string: "https://github.com/consultanything-tech/hyperfetch-app/releases")!)
                     .font(.caption)
 
                 Spacer()
