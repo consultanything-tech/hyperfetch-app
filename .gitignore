@@ -5,5 +5,7 @@ build/
 *.xcworkspace
 .DS_Store
 *.png
+!docs/assets/*.png
+!extensions/chrome/icons/*.png
 *.tiff
 
