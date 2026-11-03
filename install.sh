@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # HyperFetch macOS 1-Line Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch/main/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/main/install.sh | bash
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
-REPO="consultanything-tech/hyperfetch"
+REPO="consultanything-tech/hyperfetch-app"
 FALLBACK_TAG="v1.0.3"
 
 echo -e "${CYAN}→${RESET} Resolving latest release..."
@@ -91,4 +91,4 @@ echo -e "${CYAN}→${RESET} Launching HyperFetch..."
 open -a HyperFetch || open "${TARGET_APP}"
 
 echo -e "\n${BOLD}Thank you for installing HyperFetch!${RESET}"
-echo -e "Documentation & Chrome Extension: ${CYAN}https://consultanything-tech.github.io/hyperfetch/${RESET}\n"
+echo -e "Documentation & Chrome Extension: ${CYAN}https://consultanything-tech.github.io/hyperfetch-app/${RESET}\n"
