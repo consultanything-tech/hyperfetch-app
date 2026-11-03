@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Native High-Speed Multi-Chunk Download Manager for macOS</strong><br>
-  <em>The modern, ultra-lightweight alternative to Free Download Manager and Folx.</em>
+  <em>The best lightweight, high-speed native download manager for macOS.</em>
 </p>
 
 <p align="center">
