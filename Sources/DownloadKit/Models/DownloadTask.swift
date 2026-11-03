@@ -56,9 +56,18 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.id = id
         self.url = url
         let fallbackName = url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent
-        let resolvedFilename = filename ?? fallbackName
+        let rawName = filename ?? fallbackName
+        let sanitized = FilenameResolver.sanitize(rawName)
+        let resolvedFilename = sanitized.isEmpty ? "download" : sanitized
         self.filename = resolvedFilename
-        self.destinationURL = destinationURL ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?.appendingPathComponent(resolvedFilename) ?? URL(fileURLWithPath: resolvedFilename)
+
+        let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
+        if let explicitURL = destinationURL {
+            self.destinationURL = explicitURL.standardizedFileURL
+        } else {
+            self.destinationURL = downloadsDir.appendingPathComponent(resolvedFilename).standardizedFileURL
+        }
         self.totalBytes = totalBytes
         self.downloadedBytes = downloadedBytes
         self.status = status

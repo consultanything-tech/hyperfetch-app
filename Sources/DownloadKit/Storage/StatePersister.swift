@@ -42,11 +42,16 @@ public actor JSONStatePersister: StatePersisting {
         cachedTasks = tasks
         let parentDir = storageURL.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: parentDir.path) {
-            try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            try fileManager.createDirectory(
+                at: parentDir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
         }
 
         let data = try makeEncoder().encode(tasks)
-        try data.write(to: storageURL, options: [.atomic])
+        try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storageURL.path)
     }
 
     /// Loads tasks from disk, automatically converting interrupted downloads to paused state.

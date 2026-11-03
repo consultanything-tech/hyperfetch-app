@@ -638,4 +638,107 @@ struct DownloadEngineTests {
         let diskData = try Data(contentsOf: destinationURL)
         #expect(diskData == expectedData)
     }
+
+    // MARK: - Test 8: Probe Failure Fallback to Single Stream
+
+    @Test("DownloadEngine falls back to single-stream download when probing fails")
+    func testProbeFailureFallsBackToSingleStreamDownload() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/dynamic_report.php")!
+        let totalSize = 1024
+        let expectedData = Data(repeating: 0x42, count: totalSize)
+
+        struct FailingProbe: HTTPProbing {
+            func probe(url: URL, headers: [String: String]) async throws -> ProbeResult {
+                throw ProbeError.httpError(statusCode: 500, url: url)
+            }
+        }
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            #expect(request.httpMethod == "GET")
+            // No Range header in direct single stream
+            #expect(request.value(forHTTPHeaderField: "Range") == nil)
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Length": "\(totalSize)"
+                ]
+            )!
+            return (response, expectedData)
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("report.pdf")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            probe: FailingProbe()
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.supportsRange == false)
+        #expect(completedTask.downloadedBytes == Int64(totalSize))
+        #expect(completedTask.chunks.count == 1)
+        #expect(completedTask.chunks[0].endOffset == -1)
+
+        let diskData = try Data(contentsOf: destinationURL)
+        #expect(diskData == expectedData)
+    }
+
+    // MARK: - Test 9: ChunkDownloader Redirect Delegate
+
+    @Test("ChunkDownloader redirect delegate preserves Cookie, User-Agent, and Referer headers across redirects")
+    func testChunkDownloaderRedirectDelegatePreservesHeaders() async throws {
+        let (_, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        defer { continuation.finish() }
+
+        let delegate = DataTaskStreamDelegate(continuation: continuation) { _ in }
+
+        let originalURL = URL(string: "https://chat.google.com/download/file")!
+        var originalRequest = URLRequest(url: originalURL)
+        originalRequest.setValue("SID=secret_cookie; HSID=auth", forHTTPHeaderField: "Cookie")
+        originalRequest.setValue("Mozilla/5.0 HyperFetch", forHTTPHeaderField: "User-Agent")
+        originalRequest.setValue("https://chat.google.com/", forHTTPHeaderField: "Referer")
+        originalRequest.setValue("custom-val", forHTTPHeaderField: "X-Custom-Header")
+
+        let session = URLSession(configuration: .ephemeral)
+        let task = session.dataTask(with: originalRequest)
+
+        let redirectURL = URL(string: "https://chat.usercontent.google.com/download/file")!
+        let redirectResponse = HTTPURLResponse(
+            url: redirectURL,
+            statusCode: 302,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Location": redirectURL.absoluteString]
+        )!
+
+        // URLSession default behavior strips Cookie header on cross-domain redirect:
+        let newRequest = URLRequest(url: redirectURL)
+
+        await withCheckedContinuation { continuation in
+            delegate.urlSession(
+                session,
+                task: task,
+                willPerformHTTPRedirection: redirectResponse,
+                newRequest: newRequest
+            ) { resultRequest in
+                #expect(resultRequest?.value(forHTTPHeaderField: "Cookie") == "SID=secret_cookie; HSID=auth")
+                #expect(resultRequest?.value(forHTTPHeaderField: "User-Agent") == "Mozilla/5.0 HyperFetch")
+                #expect(resultRequest?.value(forHTTPHeaderField: "Referer") == "https://chat.google.com/")
+                #expect(resultRequest?.value(forHTTPHeaderField: "X-Custom-Header") == "custom-val")
+                continuation.resume()
+            }
+        }
+    }
 }

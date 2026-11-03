@@ -25,7 +25,7 @@ let package = Package(
             name: "HyperFetchApp",
             dependencies: ["DownloadKit"],
             path: "Sources/HyperFetchApp",
-            exclude: ["Info.plist", "Resources"]
+            exclude: ["Info.plist", "Resources", "HyperFetch.entitlements"]
         ),
         .testTarget(
             name: "DownloadKitTests",

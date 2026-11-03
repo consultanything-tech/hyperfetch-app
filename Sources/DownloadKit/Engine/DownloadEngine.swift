@@ -100,30 +100,32 @@ public actor DownloadEngine {
             progressHandler?(currentTask)
             try? await statePersister?.saveTask(currentTask)
 
-            let probeResult: ProbeResult
             do {
-                probeResult = try await probe.probe(url: currentTask.url, headers: currentTask.headers)
+                let probeResult = try await probe.probe(url: currentTask.url, headers: currentTask.headers)
+                currentTask.totalBytes = probeResult.totalBytes
+                currentTask.supportsRange = probeResult.supportsRange
+                if !probeResult.filename.isEmpty {
+                    currentTask.filename = probeResult.filename
+                    currentTask.category = DownloadCategory.category(for: probeResult.filename)
+                    let parentDir = currentTask.destinationURL.deletingLastPathComponent()
+                    currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
+                }
             } catch is CancellationError {
                 currentTask.status = .paused
                 taskStore[currentTask.id] = currentTask
                 try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
                 throw CancellationError()
-            } catch {
-                currentTask.status = .failed(reason: error.localizedDescription)
+            } catch ProbeError.cancelled {
+                currentTask.status = .paused
                 taskStore[currentTask.id] = currentTask
                 try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
-                throw error
-            }
-
-            currentTask.totalBytes = probeResult.totalBytes
-            currentTask.supportsRange = probeResult.supportsRange
-            if !probeResult.filename.isEmpty {
-                currentTask.filename = probeResult.filename
-                currentTask.category = DownloadCategory.category(for: probeResult.filename)
-                let parentDir = currentTask.destinationURL.deletingLastPathComponent()
-                currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
+                throw CancellationError()
+            } catch {
+                print("[DownloadEngine] Warning: probe failed for \(currentTask.url): \(error). Falling back to direct single-stream download.")
+                currentTask.supportsRange = false
+                currentTask.totalBytes = -1
             }
             taskStore[currentTask.id] = currentTask
             try? await statePersister?.saveTask(currentTask)
@@ -250,6 +252,8 @@ public actor DownloadEngine {
 
             if currentTask.totalBytes > 0 {
                 currentTask.downloadedBytes = currentTask.totalBytes
+            } else if currentTask.downloadedBytes > 0 {
+                currentTask.totalBytes = currentTask.downloadedBytes
             }
             currentTask.status = .completed
             currentTask.completedAt = Date()

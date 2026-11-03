@@ -388,15 +388,68 @@ public final class LocalhostBridge: @unchecked Sendable {
         let method = requestParts[0].uppercased()
         let target = requestParts[1]
 
+        // Parse HTTP headers into lowercase dictionary for case-insensitive lookup
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            let parts = line.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2 {
+                headers[parts[0].lowercased()] = parts[1]
+            }
+        }
+
+        // MARK: 1. Host Header Validation (DNS Rebinding Defense)
+        guard let hostHeader = headers["host"], isAuthorizedHost(hostHeader) else {
+            sendErrorResponse(
+                status: 403,
+                message: "Invalid or unauthorized Host header",
+                connection: connection
+            )
+            return
+        }
+
+        // MARK: 2. Origin & Referer Validation (Safe CORS & CSRF Defense)
+        var allowedOrigin: String? = nil
+        if let origin = headers["origin"] {
+            guard isAuthorizedOrigin(origin) else {
+                sendErrorResponse(
+                    status: 403,
+                    message: "Cross-origin access from external web origin prohibited",
+                    connection: connection
+                )
+                return
+            }
+            allowedOrigin = origin
+        } else if let referer = headers["referer"] {
+            guard isAuthorizedOrigin(referer) else {
+                sendErrorResponse(
+                    status: 403,
+                    message: "Cross-origin access from external web origin prohibited",
+                    connection: connection
+                )
+                return
+            }
+        }
+
+        if let secFetchSite = headers["sec-fetch-site"], secFetchSite.lowercased() == "cross-site" {
+            if allowedOrigin == nil {
+                sendErrorResponse(
+                    status: 403,
+                    message: "Cross-origin access from external web origin prohibited",
+                    connection: connection
+                )
+                return
+            }
+        }
+
         // Handle CORS Preflight OPTIONS
         if method == "OPTIONS" {
-            sendCORSPreflightResponse(connection: connection)
+            sendCORSPreflightResponse(allowedOrigin: allowedOrigin, connection: connection)
             return
         }
 
         // Parse path and query
         guard let urlComponents = URLComponents(string: target) else {
-            sendErrorResponse(status: 400, message: "Invalid request target", connection: connection)
+            sendErrorResponse(status: 400, message: "Invalid request target", allowedOrigin: allowedOrigin, connection: connection)
             return
         }
 
@@ -413,14 +466,15 @@ public final class LocalhostBridge: @unchecked Sendable {
                     "version": "1.0.0",
                     "port": Int(port)
                 ],
+                allowedOrigin: allowedOrigin,
                 connection: connection
             )
 
         case ("POST", "/add"), ("POST", "/download"):
-            handlePostAdd(bodyData: bodyData, connection: connection)
+            handlePostAdd(bodyData: bodyData, allowedOrigin: allowedOrigin, connection: connection)
 
         case ("GET", "/add"), ("GET", "/download"):
-            handleGetAdd(queryItems: urlComponents.queryItems ?? [], connection: connection)
+            handleGetAdd(queryItems: urlComponents.queryItems ?? [], allowedOrigin: allowedOrigin, connection: connection)
 
         case ("GET", "/sheet"), ("POST", "/sheet"):
             let queryDict = Dictionary((urlComponents.queryItems ?? []).compactMap { item in
@@ -429,7 +483,12 @@ public final class LocalhostBridge: @unchecked Sendable {
             let url = queryDict["url"]
             let filename = queryDict["filename"]
             onSheetRequested?(url, filename)
-            sendJSONResponse(status: 200, json: ["status": "ok", "message": "Sheet requested"], connection: connection)
+            sendJSONResponse(
+                status: 200,
+                json: ["status": "ok", "message": "Sheet requested"],
+                allowedOrigin: allowedOrigin,
+                connection: connection
+            )
 
         case ("GET", "/theme"), ("POST", "/theme"):
             let queryDict = Dictionary((urlComponents.queryItems ?? []).compactMap { item in
@@ -437,16 +496,21 @@ public final class LocalhostBridge: @unchecked Sendable {
             }, uniquingKeysWith: { first, _ in first })
             let mode = queryDict["mode"] ?? "dark"
             onAppearanceChangeRequested?(mode)
-            sendJSONResponse(status: 200, json: ["status": "ok", "theme": mode], connection: connection)
+            sendJSONResponse(
+                status: 200,
+                json: ["status": "ok", "theme": mode],
+                allowedOrigin: allowedOrigin,
+                connection: connection
+            )
 
         default:
-            sendErrorResponse(status: 404, message: "Route not found: \(path)", connection: connection)
+            sendErrorResponse(status: 404, message: "Route not found: \(path)", allowedOrigin: allowedOrigin, connection: connection)
         }
     }
 
-    private func handlePostAdd(bodyData: Data, connection: NWConnection) {
+    private func handlePostAdd(bodyData: Data, allowedOrigin: String?, connection: NWConnection) {
         guard !bodyData.isEmpty else {
-            sendErrorResponse(status: 400, message: "Empty request body", connection: connection)
+            sendErrorResponse(status: 400, message: "Empty request body", allowedOrigin: allowedOrigin, connection: connection)
             return
         }
 
@@ -454,12 +518,12 @@ public final class LocalhostBridge: @unchecked Sendable {
               let url = URL(string: request.url.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               (scheme == "http" || scheme == "https") else {
-            sendErrorResponse(status: 400, message: "Missing or invalid 'url' parameter (must be http/https)", connection: connection)
+            sendErrorResponse(status: 400, message: "Missing or invalid 'url' parameter (must be http/https)", allowedOrigin: allowedOrigin, connection: connection)
             return
         }
 
-        let filename = request.filename?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedFilename = (filename?.isEmpty == false) ? filename : nil
+        let sanitized = request.filename.map { FilenameResolver.sanitize($0) }
+        let resolvedFilename = (sanitized?.isEmpty == false) ? sanitized : nil
         let autoStart = request.autoStart ?? true
         let headers = request.headers
 
@@ -474,11 +538,12 @@ public final class LocalhostBridge: @unchecked Sendable {
                 "url": url.absoluteString,
                 "filename": resolvedFilename as Any
             ],
+            allowedOrigin: allowedOrigin,
             connection: connection
         )
     }
 
-    private func handleGetAdd(queryItems: [URLQueryItem], connection: NWConnection) {
+    private func handleGetAdd(queryItems: [URLQueryItem], allowedOrigin: String?, connection: NWConnection) {
         let queryDict = Dictionary(queryItems.compactMap { item in
             item.value != nil ? (item.name, item.value!) : nil
         }, uniquingKeysWith: { first, _ in first })
@@ -487,12 +552,12 @@ public final class LocalhostBridge: @unchecked Sendable {
               let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               (scheme == "http" || scheme == "https") else {
-            sendErrorResponse(status: 400, message: "Missing or invalid 'url' query parameter", connection: connection)
+            sendErrorResponse(status: 400, message: "Missing or invalid 'url' query parameter", allowedOrigin: allowedOrigin, connection: connection)
             return
         }
 
-        let filename = queryDict["filename"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedFilename = (filename?.isEmpty == false) ? filename : nil
+        let sanitized = queryDict["filename"].map { FilenameResolver.sanitize($0) }
+        let resolvedFilename = (sanitized?.isEmpty == false) ? sanitized : nil
 
         let autoStart: Bool
         if let autoParam = queryDict["autoStart"] {
@@ -519,42 +584,108 @@ public final class LocalhostBridge: @unchecked Sendable {
                 "url": url.absoluteString,
                 "filename": resolvedFilename as Any
             ],
+            allowedOrigin: allowedOrigin,
             connection: connection
         )
     }
 
+    // MARK: - Security & Authorization Helpers
+
+    /// Validates whether the incoming Host header represents a safe loopback address.
+    /// Prevents DNS rebinding attacks where external hostnames resolve to 127.0.0.1.
+    func isAuthorizedHost(_ rawHost: String) -> Bool {
+        let host = rawHost.trimmingCharacters(in: .whitespaces).lowercased()
+        if host == "127.0.0.1" || host == "localhost" {
+            return true
+        }
+        let parts = host.split(separator: ":", omittingEmptySubsequences: false)
+        if parts.count == 2 {
+            let hostname = parts[0]
+            let portStr = parts[1]
+            if (hostname == "127.0.0.1" || hostname == "localhost"), UInt16(portStr) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Validates whether an incoming Origin header belongs to an authorized browser extension or local origin.
+    /// Blocks cross-origin access from external web domains (e.g., https://malicious.com).
+    func isAuthorizedOrigin(_ rawOrigin: String) -> Bool {
+        let lower = rawOrigin.trimmingCharacters(in: .whitespaces).lowercased()
+        if lower.hasPrefix("chrome-extension://") ||
+           lower.hasPrefix("moz-extension://") ||
+           lower.hasPrefix("safari-web-extension://") {
+            return true
+        }
+
+        for prefix in ["http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost"] {
+            if lower == prefix {
+                return true
+            }
+            if lower.hasPrefix(prefix + ":") || lower.hasPrefix(prefix + "/") {
+                return true
+            }
+        }
+        return false
+    }
+
     // MARK: - HTTP Responses
 
-    private func sendCORSPreflightResponse(connection: NWConnection) {
-        let headers = [
-            "HTTP/1.1 204 No Content",
-            "Access-Control-Allow-Origin: *",
+    private func sendCORSPreflightResponse(allowedOrigin: String?, connection: NWConnection) {
+        var headerLines = [
+            "HTTP/1.1 204 No Content"
+        ]
+        if let allowedOrigin = allowedOrigin {
+            headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
+            headerLines.append("Vary: Origin")
+        }
+        headerLines.append(contentsOf: [
             "Access-Control-Allow-Methods: GET, POST, OPTIONS",
             "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With",
             "Access-Control-Max-Age: 86400",
             "Content-Length: 0",
             "Connection: close",
-            "\r\n"
-        ]
-        let responseString = headers.joined(separator: "\r\n")
+            "",
+            ""
+        ])
+        let responseString = headerLines.joined(separator: "\r\n")
         sendData(responseString.data(using: .utf8) ?? Data(), connection: connection)
     }
 
-    private func sendJSONResponse(status: Int, json: [String: Any], connection: NWConnection) {
-        let statusText = status == 200 ? "OK" : (status == 400 ? "Bad Request" : (status == 404 ? "Not Found" : "Error"))
+    private func sendJSONResponse(
+        status: Int,
+        json: [String: Any],
+        allowedOrigin: String? = nil,
+        connection: NWConnection
+    ) {
+        let statusText: String
+        switch status {
+        case 200: statusText = "OK"
+        case 204: statusText = "No Content"
+        case 400: statusText = "Bad Request"
+        case 403: statusText = "Forbidden"
+        case 404: statusText = "Not Found"
+        default: statusText = "Error"
+        }
         let jsonData = (try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])) ?? Data("{}".utf8)
 
-        let headerLines = [
+        var headerLines = [
             "HTTP/1.1 \(status) \(statusText)",
             "Content-Type: application/json; charset=utf-8",
-            "Content-Length: \(jsonData.count)",
-            "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With",
-            "Connection: close",
-            "",
-            ""
+            "Content-Length: \(jsonData.count)"
         ]
+
+        if let allowedOrigin = allowedOrigin {
+            headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
+            headerLines.append("Vary: Origin")
+            headerLines.append("Access-Control-Allow-Methods: GET, POST, OPTIONS")
+            headerLines.append("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With")
+        }
+
+        headerLines.append("Connection: close")
+        headerLines.append("")
+        headerLines.append("")
 
         let headerString = headerLines.joined(separator: "\r\n")
         var fullData = headerString.data(using: .utf8) ?? Data()
@@ -563,13 +694,19 @@ public final class LocalhostBridge: @unchecked Sendable {
         sendData(fullData, connection: connection)
     }
 
-    private func sendErrorResponse(status: Int, message: String, connection: NWConnection) {
+    private func sendErrorResponse(
+        status: Int,
+        message: String,
+        allowedOrigin: String? = nil,
+        connection: NWConnection
+    ) {
         sendJSONResponse(
             status: status,
             json: [
                 "status": "error",
                 "message": message
             ],
+            allowedOrigin: allowedOrigin,
             connection: connection
         )
     }

@@ -1141,13 +1141,15 @@ public final class AppState: ObservableObject {
             NSSound(named: "Pop")?.play()
         }
 
+        let safeFilename = filename.map { FilenameResolver.sanitize($0) }
+
         if autoStart || autoStartCapturedDownloads {
             if sidebarSelection != .status(.all) && sidebarSelection != .status(.active) {
                 sidebarSelection = .status(.active)
             }
-            addTask(url: url, filename: filename, headers: headers, autoStart: true)
+            addTask(url: url, filename: safeFilename, headers: headers, autoStart: true)
         } else {
-            let name = filename ?? (url.path as NSString).lastPathComponent
+            let name = safeFilename ?? (url.path as NSString).lastPathComponent
             FloatingHUDController.shared.show(url: url, filename: name.isEmpty ? "download" : name, appState: self)
         }
     }
@@ -1195,9 +1197,10 @@ public final class AppState: ObservableObject {
                let targetScheme = targetURL.scheme?.lowercased(),
                (targetScheme == "http" || targetScheme == "https") {
                 let filename = components.queryItems?.first(where: { $0.name.lowercased() == "filename" })?.value
-                let autoStart = components.queryItems?.first(where: { $0.name.lowercased() == "autostart" })?.value.map { $0.lowercased() != "false" && $0 != "0" } ?? true
-
-                handleIncomingDownload(url: targetURL, filename: filename, autoStart: autoStart)
+                let safeFilename = filename.map { FilenameResolver.sanitize($0) } ?? ""
+                presentAddSheet(url: targetURL.absoluteString, filename: safeFilename)
+                return
+            } else if components.queryItems?.contains(where: { $0.name.lowercased() == "url" }) == true || host == "add" || host == "download" {
                 return
             }
         }
@@ -1211,8 +1214,9 @@ public final class AppState: ObservableObject {
             if let targetURL = URL(string: normalized),
                let targetScheme = targetURL.scheme?.lowercased(),
                (targetScheme == "http" || targetScheme == "https") {
-                let filename = (targetURL.path as NSString).lastPathComponent
-                handleIncomingDownload(url: targetURL, filename: filename.isEmpty ? nil : filename, autoStart: true)
+                let rawName = (targetURL.path as NSString).lastPathComponent
+                let safeFilename = FilenameResolver.sanitize(rawName)
+                presentAddSheet(url: targetURL.absoluteString, filename: safeFilename)
             }
         }
     }

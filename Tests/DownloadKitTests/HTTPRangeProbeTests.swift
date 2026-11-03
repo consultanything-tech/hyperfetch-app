@@ -698,4 +698,120 @@ struct HTTPRangeProbeTests {
         #expect(result.totalBytes == 524288)
         #expect(result.filename == "Document.pdf")
     }
+
+    @Test("HEAD returns 500 (like Google Chat attachments), falls back to GET Range 206")
+    func testHead500FallsBackToGetRange206() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://chat.usercontent.google.com/download/attachment.zip")!
+        let session = makeSession()
+
+        MockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 500,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: nil
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" && request.value(forHTTPHeaderField: "Range") != nil {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 206,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Range": "bytes 0-0/10485760",
+                        "Content-Disposition": "attachment; filename=\"report.pdf\"",
+                        "ETag": "\"etag-attachment\""
+                    ]
+                )!
+                return (response, Data([0x25]))
+            } else {
+                fatalError("Unexpected request")
+            }
+        }
+
+        let probe = HTTPRangeProbe(session: session)
+        let result = try await probe.probe(url: testURL)
+
+        #expect(result.supportsRange == true)
+        #expect(result.totalBytes == 10_485_760)
+        #expect(result.filename == "report.pdf")
+        #expect(result.etag == "\"etag-attachment\"")
+    }
+
+    @Test("HEAD and GET Range both return 500, falls back to plain GET 200")
+    func testHeadAndGetRange500FallsBackToPlainGet200() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://example.com/reports_financial_profit_loss1.php")!
+        let session = makeSession()
+
+        MockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(url: testURL, statusCode: 500, httpVersion: "HTTP/1.1", headerFields: nil)!
+                return (response, nil)
+            } else if request.httpMethod == "GET" && request.value(forHTTPHeaderField: "Range") != nil {
+                let response = HTTPURLResponse(url: testURL, statusCode: 500, httpVersion: "HTTP/1.1", headerFields: nil)!
+                return (response, nil)
+            } else if request.httpMethod == "GET" && request.value(forHTTPHeaderField: "Range") == nil {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "2048",
+                        "Content-Disposition": "attachment; filename=\"profit_loss.xlsx\""
+                    ]
+                )!
+                return (response, Data(repeating: 0x50, count: 2048))
+            } else {
+                fatalError("Unexpected request")
+            }
+        }
+
+        let probe = HTTPRangeProbe(session: session)
+        let result = try await probe.probe(url: testURL)
+
+        #expect(result.supportsRange == false)
+        #expect(result.totalBytes == 2048)
+        #expect(result.filename == "profit_loss.xlsx")
+    }
+
+    @Test("HTTPRangeProbe redirect delegate preserves Cookie, User-Agent, and Referer across cross-domain redirects")
+    func testHTTPProbeRedirectDelegatePreservesHeaders() async throws {
+        let delegate = HTTPProbeRedirectDelegate()
+
+        let originalURL = URL(string: "https://chat.google.com/doc")!
+        var originalRequest = URLRequest(url: originalURL)
+        originalRequest.setValue("session_id=abc123", forHTTPHeaderField: "Cookie")
+        originalRequest.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        originalRequest.setValue("https://chat.google.com/", forHTTPHeaderField: "Referer")
+
+        let session = URLSession(configuration: .ephemeral)
+        let task = session.dataTask(with: originalRequest)
+
+        let redirectURL = URL(string: "https://chat.usercontent.google.com/doc")!
+        let redirectResponse = HTTPURLResponse(
+            url: redirectURL,
+            statusCode: 302,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Location": redirectURL.absoluteString]
+        )!
+
+        let newRequest = URLRequest(url: redirectURL)
+
+        await withCheckedContinuation { continuation in
+            delegate.urlSession(
+                session,
+                task: task,
+                willPerformHTTPRedirection: redirectResponse,
+                newRequest: newRequest
+            ) { resultRequest in
+                #expect(resultRequest?.value(forHTTPHeaderField: "Cookie") == "session_id=abc123")
+                #expect(resultRequest?.value(forHTTPHeaderField: "User-Agent") == "Mozilla/5.0")
+                #expect(resultRequest?.value(forHTTPHeaderField: "Referer") == "https://chat.google.com/")
+                continuation.resume()
+            }
+        }
+    }
 }

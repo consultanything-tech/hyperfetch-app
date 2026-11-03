@@ -68,10 +68,11 @@ printf "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 # 6. Codesign the .app bundle
 echo "==> Codesigning App Bundle..."
+ENTITLEMENTS="$PROJECT_ROOT/Sources/HyperFetchApp/HyperFetch.entitlements"
 if [ "$SIGNING_IDENTITY" = "-" ]; then
-    codesign --force --sign - "$APP_BUNDLE"
+    codesign --force --entitlements "$ENTITLEMENTS" --sign - "$APP_BUNDLE"
 else
-    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+    codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 fi
 
 echo "==> Verifying App Bundle signature..."

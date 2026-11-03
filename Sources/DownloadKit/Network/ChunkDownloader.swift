@@ -175,7 +175,7 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
 
 // MARK: - Streaming URLSession Delegate
 
-private final class DataTaskStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+final class DataTaskStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     private let onResponseReceived: @Sendable (HTTPURLResponse) throws -> Void
 
@@ -185,6 +185,24 @@ private final class DataTaskStreamDelegate: NSObject, URLSessionDataDelegate, @u
     ) {
         self.continuation = continuation
         self.onResponseReceived = onResponseReceived
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        var redirectedRequest = request
+        if let originalHeaders = task.originalRequest?.allHTTPHeaderFields {
+            for (k, v) in originalHeaders {
+                if redirectedRequest.value(forHTTPHeaderField: k) == nil {
+                    redirectedRequest.setValue(v, forHTTPHeaderField: k)
+                }
+            }
+        }
+        completionHandler(redirectedRequest)
     }
 
     func urlSession(

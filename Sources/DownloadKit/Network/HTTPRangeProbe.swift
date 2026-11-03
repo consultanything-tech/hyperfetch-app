@@ -67,14 +67,36 @@ extension HTTPProbing {
     }
 }
 
+/// Task delegate to preserve Cookie, User-Agent, and Referer headers across redirects (including cross-domain).
+final class HTTPProbeRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        var redirectedRequest = request
+        if let originalHeaders = task.originalRequest?.allHTTPHeaderFields {
+            for (k, v) in originalHeaders {
+                if redirectedRequest.value(forHTTPHeaderField: k) == nil {
+                    redirectedRequest.setValue(v, forHTTPHeaderField: k)
+                }
+            }
+        }
+        completionHandler(redirectedRequest)
+    }
+}
+
 /// Robust HTTP prober that discovers content size, range support, filename, and cache validators.
 public final class HTTPRangeProbe: HTTPProbing, Sendable {
     public static let defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
     private let session: URLSession
     private let timeoutInterval: TimeInterval
+    private let redirectDelegate = HTTPProbeRedirectDelegate()
 
-    public init(session: URLSession = .shared, timeoutInterval: TimeInterval = 15.0) {
+    public init(session: URLSession = .shared, timeoutInterval: TimeInterval = 60.0) {
         self.session = session
         self.timeoutInterval = timeoutInterval
     }
@@ -117,21 +139,16 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         applyHeaders(to: &headRequest, customHeaders: headers)
         headRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
-        let (_, response) = try await session.data(for: headRequest)
+        let (_, response) = try await session.data(for: headRequest, delegate: redirectDelegate)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ProbeError.invalidResponse
         }
 
         let finalURL = httpResponse.url ?? url
 
-        // Server does not support HEAD method or rejects HEAD (e.g. 401, 403, 405, 501, or redirect) -> fallback to GET Range
-        if [401, 403, 405, 501].contains(httpResponse.statusCode) || (httpResponse.statusCode >= 300 && httpResponse.statusCode < 400) {
+        // Server does not support HEAD method or rejects HEAD (e.g. 401, 403, 405, 500, 501, or redirect) -> fallback to GET Range
+        if httpResponse.statusCode >= 300 {
             return try await performGetRangeProbe(url: finalURL, headers: headers, headResponse: httpResponse)
-        }
-
-        // Handle other HTTP errors
-        if httpResponse.statusCode >= 400 {
-            throw ProbeError.httpError(statusCode: httpResponse.statusCode, url: finalURL)
         }
 
         let acceptRanges = httpResponse.value(forHTTPHeaderField: "Accept-Ranges")
@@ -167,7 +184,7 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         getRequest.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         getRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
-        let (_, response) = try await session.data(for: getRequest)
+        let (_, response) = try await session.data(for: getRequest, delegate: redirectDelegate)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ProbeError.invalidResponse
         }
@@ -237,7 +254,47 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
                     finalURL: finalURL
                 )
             }
-            throw ProbeError.httpError(statusCode: 416, url: finalURL)
+            return try await performPlainGetProbe(url: finalURL, headers: headers, headResponse: headResponse ?? httpResponse)
+        } else if httpResponse.statusCode >= 400 {
+            // Server returned 4xx or 5xx to Range GET -> try plain GET without Range
+            return try await performPlainGetProbe(url: finalURL, headers: headers, headResponse: headResponse ?? httpResponse)
+        } else {
+            throw ProbeError.httpError(statusCode: httpResponse.statusCode, url: finalURL)
+        }
+    }
+
+    private func performPlainGetProbe(url: URL, headers: [String: String], headResponse: HTTPURLResponse?) async throws -> ProbeResult {
+        var plainRequest = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        plainRequest.httpMethod = "GET"
+        applyHeaders(to: &plainRequest, customHeaders: headers)
+        // Range header is deliberately omitted
+        plainRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+
+        let (_, response) = try await session.data(for: plainRequest, delegate: redirectDelegate)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ProbeError.invalidResponse
+        }
+
+        let finalURL = httpResponse.url ?? url
+
+        if httpResponse.statusCode == 200 {
+            let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length")
+            let totalBytes = contentLengthStr.flatMap { Int64($0) } ?? -1
+
+            let disposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition")
+                ?? headResponse?.value(forHTTPHeaderField: "Content-Disposition")
+            let filename = FilenameResolver.resolve(contentDisposition: disposition, finalURL: finalURL)
+            let etag = httpResponse.value(forHTTPHeaderField: "ETag") ?? headResponse?.value(forHTTPHeaderField: "ETag")
+            let lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified") ?? headResponse?.value(forHTTPHeaderField: "Last-Modified")
+
+            return ProbeResult(
+                totalBytes: totalBytes,
+                supportsRange: false,
+                filename: filename,
+                etag: etag,
+                lastModified: lastModified,
+                finalURL: finalURL
+            )
         } else {
             throw ProbeError.httpError(statusCode: httpResponse.statusCode, url: finalURL)
         }
@@ -256,8 +313,8 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
 // MARK: - Filename Resolution
 
-internal enum FilenameResolver {
-    static func resolve(contentDisposition: String?, finalURL: URL) -> String {
+public enum FilenameResolver: Sendable {
+    public static func resolve(contentDisposition: String?, finalURL: URL) -> String {
         if let disposition = contentDisposition,
            let filename = parseContentDisposition(disposition),
            !filename.isEmpty {
@@ -266,7 +323,7 @@ internal enum FilenameResolver {
         return fallbackFilename(from: finalURL)
     }
 
-    static func parseContentDisposition(_ header: String) -> String? {
+    public static func parseContentDisposition(_ header: String) -> String? {
         // 1. Try RFC 5987: filename*=UTF-8''... (higher precedence per RFC 6266)
         if let rfcFilename = parseRFC5987(header) {
             let sanitized = sanitize(rfcFilename)
@@ -345,7 +402,7 @@ internal enum FilenameResolver {
         }
     }
 
-    static func fallbackFilename(from url: URL) -> String {
+    public static func fallbackFilename(from url: URL) -> String {
         var pathComponent = url.lastPathComponent
         if let decoded = pathComponent.removingPercentEncoding, !decoded.isEmpty {
             pathComponent = decoded
@@ -357,13 +414,15 @@ internal enum FilenameResolver {
         return sanitized
     }
 
-    static func sanitize(_ filename: String) -> String {
+    public static func sanitize(_ filename: String) -> String {
         var name = filename.trimmingCharacters(in: .whitespacesAndNewlines)
         name = name.replacingOccurrences(of: "\0", with: "")
         name = name.replacingOccurrences(of: "\\", with: "/")
 
         if let last = name.split(separator: "/").last {
             name = String(last).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            name = ""
         }
 
         if name == "." || name == ".." || name == "/" {

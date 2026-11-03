@@ -524,4 +524,31 @@ struct StatePersistenceTests {
         #expect(finalTask?.status == .completed)
         #expect(finalTask?.downloadedBytes == Int64(totalSize))
     }
+
+    // MARK: - Test 7: State File Permissions Are Restricted
+
+    @Test("State file permissions are restricted to owner read/write (0o600)")
+    func testStateFilePermissionsAreRestricted() async throws {
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storageURL = tempDir.appendingPathComponent("secure_state.json")
+        let persister = JSONStatePersister(storageURL: storageURL)
+
+        let task = DownloadTaskModel(
+            url: URL(string: "https://example.com/secure.zip")!,
+            filename: "secure.zip"
+        )
+        try await persister.save(tasks: [task])
+
+        #expect(FileManager.default.fileExists(atPath: storageURL.path))
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: storageURL.path)
+        guard let permissions = attributes[.posixPermissions] as? NSNumber else {
+            Issue.record("POSIX permissions attribute missing on state file")
+            return
+        }
+
+        #expect((permissions.intValue & 0o777) == 0o600)
+    }
 }

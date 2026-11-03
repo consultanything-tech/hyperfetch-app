@@ -63,6 +63,20 @@ function updateBadge() {
 // Track recently cancelled downloads to avoid double-processing
 const processedDownloadIds = new Set();
 
+function cancelBrowserDownload(downloadId) {
+  try {
+    chrome.downloads.cancel(downloadId, () => {
+      const _ = chrome.runtime.lastError;
+      chrome.downloads.erase({ id: downloadId }, () => {
+        const _ = chrome.runtime.lastError;
+      });
+      setTimeout(() => processedDownloadIds.delete(downloadId), 10000);
+    });
+  } catch (e) {
+    setTimeout(() => processedDownloadIds.delete(downloadId), 10000);
+  }
+}
+
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   if (!settings.enabled) {
     return; // Pass through to browser
@@ -72,9 +86,10 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     return;
   }
 
+  const targetUrl = downloadItem.finalUrl || downloadItem.url;
   const filename = downloadItem.filename || '';
-  const fallbackName = getFilenameFromUrl(downloadItem.url) || 'download';
-  const ext = getFileExtension(filename || downloadItem.url);
+  const fallbackName = getFilenameFromUrl(targetUrl) || getFilenameFromUrl(downloadItem.url) || 'download';
+  const ext = getFileExtension(filename || targetUrl || downloadItem.url);
 
   const shouldIntercept = settings.interceptAll || (ext && DOWNLOADABLE_EXTENSIONS.has(ext));
 
@@ -95,39 +110,25 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   }
 
   // 2. Cancel native browser download safely, clearing any runtime.lastError
-  try {
-    if (!downloadItem.state || downloadItem.state === 'in_progress') {
-      chrome.downloads.cancel(downloadItem.id, () => {
-        const cancelError = chrome.runtime.lastError;
-        if (!cancelError) {
-          chrome.downloads.erase({ id: downloadItem.id }, () => {
-            const eraseError = chrome.runtime.lastError;
-          });
-        }
-        // Clean up tracking ID after 10 seconds
-        setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
-      });
-    } else {
-      setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
-    }
-  } catch (err) {
-    setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
-  }
+  cancelBrowserDownload(downloadItem.id);
 
   // Capture cookies and headers, then forward download request to HyperFetch
   (async () => {
-    const cookieString = await getCookiesForUrl(downloadItem.url);
+    const cookieString = await getMergedCookies(targetUrl, downloadItem.url);
     const headers = {
       'User-Agent': navigator.userAgent,
       'Referer': downloadItem.referrer || '',
-      'Accept': '*/*'
+      'Accept': '*/*',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'cross-site'
     };
     if (cookieString) {
       headers['Cookie'] = cookieString;
     }
 
     const payload = {
-      url: downloadItem.url,
+      url: targetUrl,
       filename: filename || fallbackName,
       referrer: downloadItem.referrer || '',
       headers: headers,
@@ -144,6 +145,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
           filename: payload.filename || undefined,
           saveAs: false
         }, (downloadId) => {
+          const _ = chrome.runtime.lastError;
           if (downloadId) {
             processedDownloadIds.add(downloadId);
           }
@@ -154,6 +156,35 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     }
   })();
 });
+
+async function getMergedCookies(url1, url2) {
+  const cookieMap = new Map();
+  const urls = [url1];
+  if (url2 && url2 !== url1) {
+    urls.push(url2);
+  }
+
+  for (const target of urls) {
+    if (!target) continue;
+    const cookieStr = await getCookiesForUrl(target);
+    if (cookieStr) {
+      const parts = cookieStr.split('; ');
+      for (const part of parts) {
+        const eqIdx = part.indexOf('=');
+        if (eqIdx !== -1) {
+          const name = part.substring(0, eqIdx).trim();
+          const val = part.substring(eqIdx + 1).trim();
+          if (name && !cookieMap.has(name)) {
+            cookieMap.set(name, val);
+          }
+        }
+      }
+    }
+  }
+
+  if (cookieMap.size === 0) return '';
+  return Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+}
 
 async function getCookiesForUrl(url) {
   try {
