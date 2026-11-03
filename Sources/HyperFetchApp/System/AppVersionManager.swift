@@ -23,11 +23,11 @@ public final class AppVersionManager: ObservableObject {
     private static let updateChannelKey = "com.hyperfetch.updateChannel"
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.2"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.3"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "3"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "4"
     }
 
     public var fullVersionString: String {
@@ -196,23 +196,56 @@ public final class AppVersionManager: ObservableObject {
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let stagingFolderURL = stagedAppURL.deletingLastPathComponent()
+        let updaterScriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("hyperfetch_relaunch_\(UUID().uuidString).sh")
 
         let script = """
-        (
-          while kill -0 \(currentPID) 2>/dev/null; do sleep 0.1; done
-          rm -rf "\(targetAppURL.path)"
-          /usr/bin/ditto "\(stagedAppURL.path)" "\(targetAppURL.path)"
-          rm -rf "\(stagingFolderURL.path)"
-          /usr/bin/open "\(targetAppURL.path)"
-        ) >/dev/null 2>&1 &
+        #!/bin/bash
+        # Wait up to 5 seconds for current process to exit
+        for i in $(seq 1 50); do
+            if ! kill -0 \(currentPID) 2>/dev/null; then
+                break
+            fi
+            sleep 0.1
+        done
+
+        # Force kill if still lingering
+        if kill -0 \(currentPID) 2>/dev/null; then
+            kill -9 \(currentPID) 2>/dev/null
+            sleep 0.2
+        fi
+
+        # Replace existing app bundle with the verified staged bundle
+        rm -rf "\(targetAppURL.path)"
+        /usr/bin/ditto "\(stagedAppURL.path)" "\(targetAppURL.path)"
+
+        # Clean up staging directory and updater script
+        rm -rf "\(stagingFolderURL.path)"
+        rm -f "\(updaterScriptURL.path)"
+
+        # Launch the updated application
+        /usr/bin/open "\(targetAppURL.path)"
         """
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script]
-        try? process.run()
+        do {
+            try script.write(to: updaterScriptURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: updaterScriptURL.path)
 
-        NSApp.terminate(nil)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [updaterScriptURL.path]
+            try process.run()
+        } catch {
+            print("[AppVersionManager] Failed to launch updater script: \(error)")
+        }
+
+        // Dismiss modal sheet
+        isUpdateSheetPresented = false
+
+        // Unconditionally terminate the process so the updater script executes immediately
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NSApp.terminate(nil)
+            exit(0)
+        }
     }
 
     /// Cancels active download task if running.
