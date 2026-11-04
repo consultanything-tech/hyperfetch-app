@@ -342,6 +342,13 @@ public final class AppState: ObservableObject {
     public let notificationManager = NotificationManager.shared
     public let localhostBridge: LocalhostBridge
     public let clipboardMonitor: ClipboardMonitor
+    public let launchAtLoginController: LaunchAtLoginController
+
+    /// Whether HyperFetch automatically launches on system login.
+    @Published public var launchAtLogin: Bool
+
+    /// System status of the Launch at Login registration.
+    @Published public var launchAtLoginStatus: LaunchAtLoginStatus
 
     private var updatesTask: Task<Void, Never>?
     private var previouslyCompletedTaskIds: Set<UUID> = []
@@ -350,8 +357,14 @@ public final class AppState: ObservableObject {
     public init(
         queueManager: QueueManager? = nil,
         localhostBridge: LocalhostBridge? = nil,
-        clipboardMonitor: ClipboardMonitor? = nil
+        clipboardMonitor: ClipboardMonitor? = nil,
+        launchAtLoginController: LaunchAtLoginController? = nil
     ) {
+        let lalc = launchAtLoginController ?? LaunchAtLoginController()
+        lalc.sync(defaultIfUnset: true)
+        self.launchAtLoginController = lalc
+        self.launchAtLogin = lalc.isEnabledInPreferences
+        self.launchAtLoginStatus = lalc.status
         let savedMax = UserDefaults.standard.integer(forKey: Self.maxConcurrentDownloadsKey)
         let effectiveMax = savedMax > 0 ? max(1, min(8, savedMax)) : 4
         self.maxConcurrentDownloads = effectiveMax
@@ -954,6 +967,19 @@ public final class AppState: ObservableObject {
         Task {
             await queueManager.setSpeedLimit(preset.bytesPerSecond)
         }
+    }
+
+    // MARK: - Launch at Login Management
+
+    /// Toggles Launch at Login and updates system registration and stored preference.
+    public func setLaunchAtLogin(_ enabled: Bool) {
+        self.launchAtLogin = enabled
+        self.launchAtLoginStatus = launchAtLoginController.setLaunchAtLogin(enabled: enabled)
+    }
+
+    /// Opens the macOS System Settings app directly to Login Items & Extensions.
+    public func openLoginItemsSettings() {
+        launchAtLoginController.openSystemSettings()
     }
 
     // MARK: - System & Finder Helpers

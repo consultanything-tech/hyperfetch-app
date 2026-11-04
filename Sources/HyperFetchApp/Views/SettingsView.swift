@@ -70,6 +70,36 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("System Startup") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Launch HyperFetch at login", isOn: Binding(
+                        get: { appState.launchAtLogin },
+                        set: { appState.setLaunchAtLogin($0) }
+                    ))
+
+                    Text("Automatically start HyperFetch when you turn on or log in to your Mac so browser capture and clipboard monitoring are always active.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if appState.launchAtLoginStatus == .requiresApproval {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.yellow)
+                            Text("Approval required in macOS System Settings.")
+                                .font(.caption)
+                            Spacer()
+                            Button("Open System Settings") {
+                                appState.openLoginItemsSettings()
+                            }
+                            .font(.caption)
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.1)))
+                    }
+                }
+            }
+
             Section("Default Download Location") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
