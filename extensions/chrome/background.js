@@ -8,42 +8,39 @@ const FALLBACK_PORT = 31416;
 
 const DOWNLOADABLE_EXTENSIONS = new Set([
   // Archives
-  'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar', 'bz2', 'xz', 'zst', 'lz4', 'cab', 'wim', 'jar',
+  'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'lz4', 'cab', 'wim', 'jar', 'war', 'ear', 'z',
   // Video
-  'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv', 'm4v', '3gp', 'ts',
+  'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv', 'm4v', '3gp', 'ts', 'mts', 'm2ts', 'vob', 'ogv',
   // Audio
-  'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma',
-  // Documents & Spreadsheets
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub', 'txt', 'md',
+  'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'aiff', 'alac', 'mid', 'midi',
+  // Documents
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub', 'txt', 'md', 'tex', 'pages', 'numbers', 'key',
   // Data & Code
-  'json', 'xml', 'yaml', 'yml', 'sql', 'sqlite', 'db', 'py', 'js', 'ts', 'html', 'css', 'sh', 'c', 'cpp', 'h', 'rs', 'go', 'swift',
+  'json', 'xml', 'yaml', 'yml', 'sql', 'sqlite', 'db', 'sqlite3', 'parquet', 'avro', 'arrow', 'feather', 'py', 'js', 'ts', 'sh', 'c', 'cpp', 'h', 'rs', 'go', 'swift', 'java', 'kt', 'rb', 'php', 'cs',
   // Images
-  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tiff', 'bmp', 'heic', 'ico', 'psd', 'ai',
-  // Executables & Installers
-  'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm', 'apk', 'ipa', 'crx', 'xpi'
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tiff', 'bmp', 'heic', 'heif', 'ico', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'dng',
+  // Installers
+  'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm', 'apk', 'aab', 'ipa'
 ]);
 
-function isInternalOrBlobScheme(urlStr) {
+function isNetworkHttpUrl(urlStr) {
   if (!urlStr || typeof urlStr !== 'string') return false;
   const lower = urlStr.trim().toLowerCase();
-  return (
-    lower.startsWith('blob:') ||
-    lower.startsWith('data:') ||
-    lower.startsWith('filesystem:') ||
-    lower.startsWith('chrome:') ||
-    lower.startsWith('chrome-extension:') ||
-    lower.startsWith('about:') ||
-    lower.startsWith('javascript:')
-  );
+  return lower.startsWith('http://') || lower.startsWith('https://');
 }
 
 function isDownloadableMime(mime) {
   if (!mime || typeof mime !== 'string') return false;
   const m = mime.toLowerCase().trim();
   if (m.startsWith('video/') || m.startsWith('audio/')) return true;
-  if (m.includes('octet-stream') || m.includes('zip') || m.includes('tar') || m.includes('compressed') || m.includes('pdf')) return true;
-  if (m.includes('spreadsheet') || m.includes('excel') || m.includes('word') || m.includes('presentation') || m.includes('document')) return true;
-  return false;
+  const keywords = [
+    'octet-stream', 'binary', 'zip', 'tar', 'compressed', 'pdf',
+    'spreadsheet', 'excel', 'word', 'presentation', 'document',
+    'csv', 'tab-separated', 'diskimage', 'apple-diskimage',
+    'gzip', 'bzip', 'x-xz', '7z', 'android.package', 'iso9660',
+    'msdownload', 'installer'
+  ];
+  return keywords.some(k => m.includes(k));
 }
 
 // In-memory cache of settings
@@ -115,22 +112,42 @@ function cancelBrowserDownload(downloadId) {
 }
 
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+  let suggested = false;
+  const safeSuggest = (opts) => {
+    if (suggested) return;
+    suggested = true;
+    try {
+      if (opts) {
+        suggest(opts);
+      } else if (downloadItem && downloadItem.filename) {
+        suggest({ filename: downloadItem.filename });
+      } else {
+        suggest();
+      }
+    } catch (e) {
+      // Ignore already suggested or context closed
+    }
+  };
+
   if (!settings.enabled) {
-    return; // Pass through to browser natively
+    safeSuggest();
+    return;
   }
 
   const rawUrl = (downloadItem.url || '').trim();
   const finalUrl = (downloadItem.finalUrl || '').trim();
   const targetUrl = finalUrl || rawUrl;
 
-  // Never intercept in-memory blobs, data URIs, or browser-internal schemes.
-  // Web apps (ChatGPT, Claude, etc.) generate client-side downloads as in-memory
-  // blobs that cannot be fetched over network by HyperFetch.
-  if (isInternalOrBlobScheme(rawUrl) || isInternalOrBlobScheme(finalUrl)) {
-    return; // Pass through to browser natively
+  // Never intercept non-network HTTP/HTTPS URLs (such as blob:, data:, chrome:, etc.).
+  // Immediately safeSuggest() allows in-memory blobs (e.g. ChatGPT Data Analysis exports)
+  // to complete natively before client-side object URL revocation occurs.
+  if (!isNetworkHttpUrl(rawUrl) || !isNetworkHttpUrl(targetUrl)) {
+    safeSuggest();
+    return;
   }
 
   if (processedDownloadIds.has(downloadItem.id)) {
+    safeSuggest();
     return;
   }
 
@@ -138,20 +155,33 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   const fallbackName = getFilenameFromUrl(targetUrl) || getFilenameFromUrl(rawUrl) || 'download';
   const ext = getFileExtension(filename || targetUrl || rawUrl);
 
+  // Chrome web store and Firefox extension packages should never be intercepted
+  if (ext === 'crx' || ext === 'xpi') {
+    safeSuggest();
+    return;
+  }
+
+  // HTML pages should be saved directly by browser
+  if (ext === 'html' || ext === 'htm') {
+    safeSuggest();
+    return;
+  }
+
   const isExtMatch = Boolean(ext && DOWNLOADABLE_EXTENSIONS.has(ext));
   const isMimeMatch = isDownloadableMime(downloadItem.mime);
-  const isLargeFile = Boolean(downloadItem.fileSize && downloadItem.fileSize > 5 * 1024 * 1024);
+  const isLargeFile = Boolean(downloadItem.fileSize && downloadItem.fileSize > 1024 * 1024);
 
   const shouldIntercept = settings.interceptAll || isExtMatch || isMimeMatch || isLargeFile;
 
   if (!shouldIntercept) {
-    return; // Pass through to browser natively
+    safeSuggest();
+    return;
   }
 
   // Intercept the download asynchronously without cancelling browser download upfront.
   // In MV3, returning true allows async handling. If HyperFetch succeeds, we cancel
-  // the browser download; if it fails/rejects, we call suggest() so the browser's
-  // original download proceeds smoothly without interruption or restarted tokens.
+  // the browser download; if it fails/rejects, safeSuggest() lets the browser
+  // continue natively without freezing.
   processedDownloadIds.add(downloadItem.id);
 
   (async () => {
@@ -179,24 +209,19 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
 
       const success = await forwardDownloadToHyperFetch(payload);
       if (success) {
-        // HyperFetch accepted download: cancel and erase the native browser task
+        // HyperFetch accepted download: call safeSuggest and cancel/erase native browser task
+        safeSuggest();
         cancelBrowserDownload(downloadItem.id);
       } else {
         console.warn('[HyperFetch] Native app unreachable or rejected, resuming browser download:', payload.url);
         showErrorBadge();
         // Resolve filename so the browser's original in-flight download continues cleanly
-        try {
-          suggest({ filename: filename || fallbackName });
-        } catch (e) {
-          // Ignore if already suggested or closed
-        }
+        safeSuggest({ filename: filename || fallbackName });
         setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
       }
     } catch (err) {
       console.error('[HyperFetch] Error during async interception:', err);
-      try {
-        suggest({ filename: filename || fallbackName });
-      } catch (e) {}
+      safeSuggest({ filename: filename || fallbackName });
       setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
     }
   })();
