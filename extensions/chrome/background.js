@@ -49,11 +49,12 @@ function isDownloadableMime(mime) {
 // In-memory cache of settings
 let settings = {
   enabled: true,
-  interceptAll: false
+  interceptAll: false,
+  bridgeToken: ''
 };
 
 // Initialize settings from chrome.storage
-chrome.storage.local.get(['enabled', 'interceptAll'], (res) => {
+chrome.storage.local.get(['enabled', 'interceptAll', 'bridgeToken'], (res) => {
   const err = chrome.runtime.lastError;
   if (err) {
     console.warn('[HyperFetch] Error reading storage settings:', err);
@@ -62,6 +63,7 @@ chrome.storage.local.get(['enabled', 'interceptAll'], (res) => {
   if (res) {
     if (res.enabled !== undefined) settings.enabled = res.enabled;
     if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
+    if (res.bridgeToken !== undefined) settings.bridgeToken = res.bridgeToken;
   }
   updateBadge();
 });
@@ -69,6 +71,7 @@ chrome.storage.local.get(['enabled', 'interceptAll'], (res) => {
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.enabled) settings.enabled = changes.enabled.newValue;
   if (changes.interceptAll) settings.interceptAll = changes.interceptAll.newValue;
+  if (changes.bridgeToken) settings.bridgeToken = changes.bridgeToken.newValue;
   updateBadge();
 });
 
@@ -285,11 +288,16 @@ async function forwardDownloadToHyperFetch(payload) {
 
   for (const port of ports) {
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-HyperFetch-Client': 'extension'
+      };
+      if (settings.bridgeToken) {
+        headers['X-HyperFetch-Token'] = settings.bridgeToken;
+      }
       const response = await fetch(`http://127.0.0.1:${port}/add`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         body: JSON.stringify(payload)
       });
 
@@ -336,7 +344,16 @@ async function checkHyperFetchStatus() {
   const ports = [PRIMARY_PORT, FALLBACK_PORT];
   for (const port of ports) {
     try {
-      const resp = await fetch(`http://127.0.0.1:${port}/status`, { method: 'GET' });
+      const headers = {
+        'X-HyperFetch-Client': 'extension'
+      };
+      if (settings.bridgeToken) {
+        headers['X-HyperFetch-Token'] = settings.bridgeToken;
+      }
+      const resp = await fetch(`http://127.0.0.1:${port}/status`, {
+        method: 'GET',
+        headers: headers
+      });
       if (resp.ok) {
         const data = await resp.json();
         return { connected: true, port: port, version: data.version || '1.0.0' };

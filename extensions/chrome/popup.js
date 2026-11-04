@@ -83,7 +83,10 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const resp = await fetch(`http://127.0.0.1:${port}/status`, {
           method: 'GET',
-          cache: 'no-store'
+          cache: 'no-store',
+          headers: {
+            'X-HyperFetch-Client': 'extension'
+          }
         });
         if (resp.ok) {
           setConnected(port);
