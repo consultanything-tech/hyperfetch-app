@@ -267,6 +267,12 @@ public actor DownloadEngine {
             currentTask.completedAt = Date()
             currentTask.bytesPerSecond = 0.0
 
+            // Scrub sensitive session credentials and authentication tokens upon download completion (CWE-312)
+            currentTask.headers.removeValue(forKey: "Cookie")
+            currentTask.headers.removeValue(forKey: "cookie")
+            currentTask.headers.removeValue(forKey: "Authorization")
+            currentTask.headers.removeValue(forKey: "authorization")
+
             taskStore[currentTask.id] = currentTask
             try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)

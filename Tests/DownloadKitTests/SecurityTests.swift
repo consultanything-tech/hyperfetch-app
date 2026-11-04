@@ -3,7 +3,65 @@ import Foundation
 import Network
 @testable import DownloadKit
 
-@Suite("Security Tests")
+private final class SecurityTestMockURLProtocol: URLProtocol, @unchecked Sendable {
+    typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data?)
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
+
+    static func reset() {
+        lock.withLock {
+            handlers.removeAll()
+        }
+    }
+
+    static func register(url: URL, handler: @escaping Handler) {
+        lock.withLock {
+            handlers[url.absoluteString] = handler
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url?.absoluteString else { return false }
+        return lock.withLock { handlers[url] != nil }
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+
+        let handler: Handler? = SecurityTestMockURLProtocol.lock.withLock {
+            SecurityTestMockURLProtocol.handlers[url.absoluteString]
+        }
+
+        guard let handler = handler else {
+            let error = URLError(.badServerResponse)
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if let data = data {
+                client?.urlProtocol(self, didLoad: data)
+            }
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+@Suite("Security Tests", .serialized)
 struct SecurityTests {
 
     // MARK: - Filename Sanitization & Path Traversal
@@ -120,6 +178,7 @@ struct SecurityTests {
         var postRequest = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
         postRequest.httpMethod = "POST"
         postRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        postRequest.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
         let payload1: [String: Any] = [
             "url": "https://example.com/test.dmg",
             "filename": "../../../var/root/.bashrc"
@@ -321,5 +380,197 @@ struct SecurityTests {
         let (_, resp2) = try await URLSession.shared.data(for: req2)
         let httpResp2 = try #require(resp2 as? HTTPURLResponse)
         #expect(httpResp2.statusCode == 403)
+    }
+
+    // MARK: - Symlink Traversal Defense (CWE-59)
+
+    @Test("FileWriter rejects destination path if it is a symbolic link (CWE-59)")
+    func testFileWriterRejectsSymlink() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("symlink_test_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let targetFile = tempDir.appendingPathComponent("target.txt")
+        try "sensitive file content".write(to: targetFile, atomically: true, encoding: .utf8)
+
+        let symlinkURL = tempDir.appendingPathComponent("symlink.txt")
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: targetFile)
+
+        let writer = FileWriter(destinationURL: symlinkURL)
+        do {
+            try await writer.allocate(totalBytes: 1024)
+            Issue.record("Expected allocate to fail for symlink destination")
+        } catch let FileWriteError.fileCreationFailed(message) {
+            #expect(message.contains("symbolic link and will not be followed"))
+        } catch {
+            Issue.record("Unexpected error thrown: \(error)")
+        }
+    }
+
+    // MARK: - Sensitive Session Credential Purging (CWE-312)
+
+    @Test("DownloadEngine scrubs Cookie and Authorization headers upon task completion (CWE-312)")
+    func testCompletedDownloadScrubsSensitiveHeaders() async throws {
+        let testURL = URL(string: "https://security.example.com/files/secure_download.bin")!
+        let totalSize = 64 * 1024 // 64 KB
+        let expectedData = Data((0..<totalSize).map { UInt8($0 & 0xFF) })
+
+        SecurityTestMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes"
+                    ]
+                )!
+                return (response, nil)
+            } else {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Length": "\(totalSize)"]
+                )!
+                return (response, expectedData)
+            }
+        }
+        defer {
+            SecurityTestMockURLProtocol.reset()
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SecurityTestMockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: tempDir.appendingPathComponent("secure_download.bin"),
+            headers: [
+                "Cookie": "session_id=secret_cookie_token_12345",
+                "cookie": "legacy_cookie=xyz",
+                "Authorization": "Bearer super_secret_bearer_token",
+                "authorization": "Basic dXNlcjpwYXNz",
+                "User-Agent": "HyperFetch/1.0",
+                "X-Custom-Header": "KeepThisHeader"
+            ]
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 1,
+            minChunkSize: 64 * 1024
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.headers["Cookie"] == nil)
+        #expect(completedTask.headers["cookie"] == nil)
+        #expect(completedTask.headers["Authorization"] == nil)
+        #expect(completedTask.headers["authorization"] == nil)
+        #expect(completedTask.headers["User-Agent"] == "HyperFetch/1.0")
+        #expect(completedTask.headers["X-Custom-Header"] == "KeepThisHeader")
+    }
+
+    // MARK: - Client Identification & Bridge Token Authentication (CWE-346)
+
+    @Test("LocalhostBridge rejects extension origin request lacking X-HyperFetch-Client header with 403 Forbidden")
+    func testExtensionOriginRequiresClientHeader() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39335, fallbackPort: 39336)
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req.setValue("chrome-extension://abcdefghijklmnop", forHTTPHeaderField: "Origin")
+        // No X-HyperFetch-Client header
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let httpResp = try #require(resp as? HTTPURLResponse)
+        #expect(httpResp.statusCode == 403)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(json?["status"] as? String == "error")
+        #expect((json?["message"] as? String)?.contains("Client authentication required") == true)
+    }
+
+    @Test("LocalhostBridge accepts extension origin request with valid X-HyperFetch-Client header")
+    func testExtensionOriginWithClientHeaderAccepted() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39345, fallbackPort: 39346)
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req.setValue("chrome-extension://abcdefghijklmnop", forHTTPHeaderField: "Origin")
+        req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let httpResp = try #require(resp as? HTTPURLResponse)
+        #expect(httpResp.statusCode == 200)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(json?["status"] as? String == "ok")
+    }
+
+    @Test("LocalhostBridge rejects POST request lacking client identification header")
+    func testPostRequestLackingClientHeaderRejected() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39355, fallbackPort: 39356)
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = ["url": "https://example.com/file.dmg"]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        let httpResp = try #require(resp as? HTTPURLResponse)
+        #expect(httpResp.statusCode == 403)
+    }
+
+    @Test("LocalhostBridge with bridgeToken enforces secret token check")
+    func testBridgeTokenAuthentication() async throws {
+        let secretToken = "hf_secret_token_98765"
+        let bridge = LocalhostBridge(preferredPort: 39365, fallbackPort: 39366, bridgeToken: secretToken)
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        // Request without token -> 403
+        let req1 = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        let (_, resp1) = try await URLSession.shared.data(for: req1)
+        let httpResp1 = try #require(resp1 as? HTTPURLResponse)
+        #expect(httpResp1.statusCode == 403)
+
+        // Request with wrong token -> 403
+        var req2 = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req2.setValue("wrong_token", forHTTPHeaderField: "X-HyperFetch-Token")
+        let (_, resp2) = try await URLSession.shared.data(for: req2)
+        let httpResp2 = try #require(resp2 as? HTTPURLResponse)
+        #expect(httpResp2.statusCode == 403)
+
+        // Request with correct X-HyperFetch-Token -> 200
+        var req3 = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req3.setValue(secretToken, forHTTPHeaderField: "X-HyperFetch-Token")
+        let (data3, resp3) = try await URLSession.shared.data(for: req3)
+        let httpResp3 = try #require(resp3 as? HTTPURLResponse)
+        #expect(httpResp3.statusCode == 200)
+        let json3 = try JSONSerialization.jsonObject(with: data3) as? [String: Any]
+        #expect(json3?["status"] as? String == "ok")
+
+        // Request with correct Authorization Bearer token -> 200
+        var req4 = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req4.setValue("Bearer \(secretToken)", forHTTPHeaderField: "Authorization")
+        let (data4, resp4) = try await URLSession.shared.data(for: req4)
+        let httpResp4 = try #require(resp4 as? HTTPURLResponse)
+        #expect(httpResp4.statusCode == 200)
+        let json4 = try JSONSerialization.jsonObject(with: data4) as? [String: Any]
+        #expect(json4?["status"] as? String == "ok")
     }
 }

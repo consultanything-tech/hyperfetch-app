@@ -23,11 +23,11 @@ public final class AppVersionManager: ObservableObject {
     private static let updateChannelKey = "com.hyperfetch.updateChannel"
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.5"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.6"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "6"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "7"
     }
 
     public var fullVersionString: String {

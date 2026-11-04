@@ -62,11 +62,15 @@ public actor FileWriter: FileWriting {
                 try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
             }
 
-            let descriptor = Darwin.open(path, O_RDWR | O_CREAT, 0o644)
+            let descriptor = Darwin.open(path, O_RDWR | O_CREAT | O_NOFOLLOW, 0o644)
             if descriptor < 0 {
                 let err = errno
-                let msg = String(cString: strerror(err))
-                self.initError = .fileCreationFailed("Failed to open file at \(path) (errno \(err)): \(msg)")
+                if err == ELOOP {
+                    self.initError = .fileCreationFailed("Destination file path is a symbolic link and will not be followed: \(path)")
+                } else {
+                    let msg = String(cString: strerror(err))
+                    self.initError = .fileCreationFailed("Failed to open file at \(path) (errno \(err)): \(msg)")
+                }
                 self.fd = -1
             } else {
                 self.fd = descriptor

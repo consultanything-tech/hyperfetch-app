@@ -78,6 +78,7 @@ public final class LocalhostBridge: @unchecked Sendable {
 
     public let preferredPort: UInt16
     public let fallbackPort: UInt16
+    public let bridgeToken: String?
     private let lock = NSLock()
     private var _onDownloadRequested: DownloadHandler?
     private var _onSheetRequested: SheetHandler?
@@ -143,10 +144,12 @@ public final class LocalhostBridge: @unchecked Sendable {
     public init(
         preferredPort: UInt16 = 31415,
         fallbackPort: UInt16 = 31416,
+        bridgeToken: String? = nil,
         onDownloadRequested: DownloadHandler? = nil
     ) {
         self.preferredPort = preferredPort
         self.fallbackPort = fallbackPort
+        self.bridgeToken = bridgeToken
         self.onDownloadRequested = onDownloadRequested
     }
 
@@ -455,6 +458,17 @@ public final class LocalhostBridge: @unchecked Sendable {
 
         let path = urlComponents.path.lowercased()
 
+        // MARK: 3. Client Identification & Shared Secret Authentication (CWE-346)
+        guard isAuthorizedClient(headers: headers, method: method, path: path, origin: headers["origin"]) else {
+            sendErrorResponse(
+                status: 403,
+                message: "Client authentication required: missing or invalid client token or header",
+                allowedOrigin: allowedOrigin,
+                connection: connection
+            )
+            return
+        }
+
         switch (method, path) {
         case ("GET", "/status"), ("GET", "/"), ("GET", "/health"):
             let port = currentPort ?? preferredPort
@@ -463,7 +477,7 @@ public final class LocalhostBridge: @unchecked Sendable {
                 json: [
                     "status": "ok",
                     "app": "HyperFetch",
-                    "version": "1.0.5",
+                    "version": "1.0.6",
                     "port": Int(port)
                 ],
                 allowedOrigin: allowedOrigin,
@@ -613,9 +627,7 @@ public final class LocalhostBridge: @unchecked Sendable {
     /// Blocks cross-origin access from external web domains (e.g., https://malicious.com).
     func isAuthorizedOrigin(_ rawOrigin: String) -> Bool {
         let lower = rawOrigin.trimmingCharacters(in: .whitespaces).lowercased()
-        if lower.hasPrefix("chrome-extension://") ||
-           lower.hasPrefix("moz-extension://") ||
-           lower.hasPrefix("safari-web-extension://") {
+        if isExtensionOrigin(lower) {
             return true
         }
 
@@ -630,19 +642,76 @@ public final class LocalhostBridge: @unchecked Sendable {
         return false
     }
 
+    /// Checks whether the raw origin represents a recognized browser extension scheme.
+    func isExtensionOrigin(_ rawOrigin: String) -> Bool {
+        let lower = rawOrigin.trimmingCharacters(in: .whitespaces).lowercased()
+        return lower.hasPrefix("chrome-extension://") ||
+               lower.hasPrefix("moz-extension://") ||
+               lower.hasPrefix("safari-web-extension://")
+    }
+
+    /// Validates client identification and shared secret token authentication (CWE-346).
+    /// Requires requests with extension Origin or state-modifying POST requests to supply proper identification.
+    func isAuthorizedClient(
+        headers: [String: String],
+        method: String,
+        path: String,
+        origin: String?
+    ) -> Bool {
+        // 1. Shared secret token enforcement if configured on this bridge
+        if let requiredToken = bridgeToken, !requiredToken.isEmpty {
+            if let tokenHeader = headers["x-hyperfetch-token"], tokenHeader == requiredToken {
+                return true
+            }
+            if let authHeader = headers["authorization"] {
+                let trimmed = authHeader.replacingOccurrences(of: "Bearer ", with: "").trimmingCharacters(in: .whitespaces)
+                if trimmed == requiredToken {
+                    return true
+                }
+            }
+            return false
+        }
+
+        // 2. Client identification check:
+        // Any request with X-HyperFetch-Client: extension or an Authorization / Token header is authorized
+        let hasClientHeader = headers["x-hyperfetch-client"]?.lowercased() == "extension"
+        let hasAuth = headers["authorization"] != nil || headers["x-hyperfetch-token"] != nil
+
+        if hasClientHeader || hasAuth {
+            return true
+        }
+
+        // 3. Requests with Origin: chrome-extension://... (or other extension origins) MUST provide client identification
+        if let origin = origin, isExtensionOrigin(origin) {
+            return false
+        }
+
+        // 4. State-modifying POST requests MUST provide client identification
+        if method == "POST" {
+            return false
+        }
+
+        // Non-POST requests without extension origin (e.g. GET /status from local CLI or browser probe)
+        return true
+    }
+
     // MARK: - HTTP Responses
 
     private func sendCORSPreflightResponse(allowedOrigin: String?, connection: NWConnection) {
         var headerLines = [
             "HTTP/1.1 204 No Content"
         ]
+        headerLines.append("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'")
+        headerLines.append("X-Frame-Options: DENY")
+        headerLines.append("X-Content-Type-Options: nosniff")
+        headerLines.append("Referrer-Policy: no-referrer")
         if let allowedOrigin = allowedOrigin {
             headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
             headerLines.append("Vary: Origin")
         }
         headerLines.append(contentsOf: [
             "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With",
+            "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HyperFetch-Client, X-HyperFetch-Token",
             "Access-Control-Max-Age: 86400",
             "Content-Length: 0",
             "Connection: close",
@@ -676,11 +745,16 @@ public final class LocalhostBridge: @unchecked Sendable {
             "Content-Length: \(jsonData.count)"
         ]
 
+        headerLines.append("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'")
+        headerLines.append("X-Frame-Options: DENY")
+        headerLines.append("X-Content-Type-Options: nosniff")
+        headerLines.append("Referrer-Policy: no-referrer")
+
         if let allowedOrigin = allowedOrigin {
             headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
             headerLines.append("Vary: Origin")
             headerLines.append("Access-Control-Allow-Methods: GET, POST, OPTIONS")
-            headerLines.append("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With")
+            headerLines.append("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HyperFetch-Client, X-HyperFetch-Token")
         }
 
         headerLines.append("Connection: close")

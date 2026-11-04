@@ -122,6 +122,7 @@ struct LocalhostBridgeTests {
         for origin in allowedOrigins {
             var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
             req.setValue(origin, forHTTPHeaderField: "Origin")
+            req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
             let (_, resp) = try await URLSession.shared.data(for: req)
             let httpResp = try #require(resp as? HTTPURLResponse)
             #expect(httpResp.statusCode == 200)
@@ -164,7 +165,7 @@ struct LocalhostBridgeTests {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         #expect(json?["status"] as? String == "ok")
         #expect(json?["app"] as? String == "HyperFetch")
-        #expect(json?["version"] as? String == "1.0.5")
+        #expect(json?["version"] as? String == "1.0.6")
         #expect(json?["port"] as? Int == Int(port))
     }
 
@@ -191,6 +192,7 @@ struct LocalhostBridgeTests {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
         let payload: [String: Any] = [
             "url": "https://example.com/downloads/installer.dmg",
             "filename": "custom_installer.dmg",
@@ -222,6 +224,7 @@ struct LocalhostBridgeTests {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
         let payload: [String: Any] = [
             "filename": "no_url.zip"
         ]
@@ -323,6 +326,7 @@ struct LocalhostBridgeTests {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
         let payload: [String: Any] = [
             "url": "https://docs.google.com/document/u/0/export?format=pdf",
             "filename": "Proposal.pdf",
