@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HyperFetch Download Interceptor",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "Intercepts browser downloads and transfers them to HyperFetch for accelerated multi-chunk downloading.",
   "permissions": [
     "downloads",
