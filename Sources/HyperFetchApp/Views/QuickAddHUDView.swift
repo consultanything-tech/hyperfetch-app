@@ -16,21 +16,25 @@ public struct QuickAddHUDView: View {
     public let onDownloadNow: () -> Void
     public let onCustomize: () -> Void
     public let onDismiss: () -> Void
+    public let onHoverChanged: ((Bool) -> Void)?
 
     @ViewState private var isHovering: Bool = false
+    @ViewState private var progress: CGFloat = 1.0
 
     public init(
         url: URL,
         filename: String,
         onDownloadNow: @escaping () -> Void,
         onCustomize: @escaping () -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onHoverChanged: ((Bool) -> Void)? = nil
     ) {
         self.url = url
         self.filename = filename
         self.onDownloadNow = onDownloadNow
         self.onCustomize = onCustomize
         self.onDismiss = onDismiss
+        self.onHoverChanged = onHoverChanged
     }
 
     public var body: some View {
@@ -138,8 +142,29 @@ public struct QuickAddHUDView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
         )
+        .overlay(alignment: .bottom) {
+            // Countdown progress bar at bottom of card
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.1))
+                    Rectangle()
+                        .fill(Theme.accent)
+                        .frame(width: geo.size.width * progress)
+                        .animation(.linear(duration: 10.0), value: progress)
+                }
+            }
+            .frame(height: 2)
+            .clipShape(RoundedRectangle(cornerRadius: 1))
+            .padding(.horizontal, 14)
+            .padding(.bottom, 4)
+        }
         .onHover { hovering in
             isHovering = hovering
+            onHoverChanged?(hovering)
+        }
+        .onAppear {
+            progress = 0.0
         }
     }
 

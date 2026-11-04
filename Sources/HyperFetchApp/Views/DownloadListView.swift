@@ -377,16 +377,28 @@ public struct DownloadListView: View {
                     .frame(maxWidth: 320)
             }
 
-            Button {
-                appState.isAddSheetPresented = true
-            } label: {
-                Label("Add Download", systemImage: "plus")
-                    .padding(.horizontal, 6)
+            if !appState.searchText.isEmpty {
+                Button {
+                    appState.searchText = ""
+                } label: {
+                    Label("Clear Search Filter", systemImage: "xmark.circle")
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(Theme.accent)
+            } else {
+                Button {
+                    appState.isAddSheetPresented = true
+                } label: {
+                    Label("Add Download", systemImage: "plus")
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(Theme.accent)
+                .keyboardShortcut("n", modifiers: .command)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .tint(Theme.accent)
-            .keyboardShortcut("n", modifiers: .command)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(32)
@@ -512,7 +524,7 @@ public struct DownloadListView: View {
                     .foregroundStyle(Theme.textSecondary)
 
                 Button {
-                    // Quick refresh / sync
+                    appState.refreshStatus()
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 10))

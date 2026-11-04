@@ -222,7 +222,7 @@ public struct AddDownloadSheet: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.success)
                     }
-                } else {
+                } else if !isURLFocused {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 10))

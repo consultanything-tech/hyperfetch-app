@@ -18,6 +18,20 @@ public final class FloatingHUDController: NSObject {
     private var autoDismissTask: Task<Void, Never>?
     private let autoDismissTimeout: TimeInterval = 10.0
 
+    public func pauseDismissTimer() {
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
+    }
+
+    public func resumeDismissTimer(seconds: TimeInterval = 4.0) {
+        autoDismissTask?.cancel()
+        autoDismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.dismiss()
+        }
+    }
+
     private override init() {
         super.init()
     }
@@ -74,6 +88,13 @@ public final class FloatingHUDController: NSObject {
             },
             onDismiss: { [weak self] in
                 self?.dismiss()
+            },
+            onHoverChanged: { [weak self] isHovered in
+                if isHovered {
+                    self?.pauseDismissTimer()
+                } else {
+                    self?.resumeDismissTimer(seconds: 4.0)
+                }
             }
         )
 

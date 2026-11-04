@@ -214,7 +214,7 @@ public struct ChunkVisualizer: View {
                     Capsule()
                         .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary.opacity(0.3)))
                         .frame(width: geo.size.width * progressRatio, height: 5)
-                        .animation(.linear(duration: 0.2), value: chunk.progress)
+                        .animation(.spring(), value: chunk.progress)
                 }
             }
             .frame(height: 5)

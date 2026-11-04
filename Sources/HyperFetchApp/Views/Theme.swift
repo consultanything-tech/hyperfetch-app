@@ -157,83 +157,83 @@ public enum Theme {
             return FileBadgeStyle(
                 label: ext.isEmpty ? "ZIP" : ext.uppercased(),
                 systemIcon: "archivebox.fill",
-                gradientTop: Color(hex: 0x1e3a8a).opacity(0.7),
-                gradientBottom: Color(hex: 0x172554).opacity(0.85),
-                tintColor: Color(hex: 0x60a5fa),
-                borderColor: Color(hex: 0x3b82f6).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x1e3a8a, alpha: 0.7), light: NSColor(hex: 0xDBEAFE)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x172554, alpha: 0.85), light: NSColor(hex: 0xBFDBFE)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x60a5fa), light: NSColor(hex: 0x1D4ED8)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x3b82f6, alpha: 0.35), light: NSColor(hex: 0x3B82F6, alpha: 0.25))
             )
         case "iso", "img":
             return FileBadgeStyle(
                 label: "ISO",
                 systemIcon: "opticaldisc.fill",
-                gradientTop: Color(hex: 0x451a03).opacity(0.7),
-                gradientBottom: Color(hex: 0x7c2d12).opacity(0.85),
-                tintColor: Color(hex: 0xfbbf24),
-                borderColor: Color(hex: 0xf59e0b).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x451a03, alpha: 0.7), light: NSColor(hex: 0xFEF3C7)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x7c2d12, alpha: 0.85), light: NSColor(hex: 0xFDE68A)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0xfbbf24), light: NSColor(hex: 0xB45309)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0xf59e0b, alpha: 0.35), light: NSColor(hex: 0xF59E0B, alpha: 0.25))
             )
         case "pkg", "mpkg":
             return FileBadgeStyle(
                 label: "PKG",
                 systemIcon: "shippingbox.fill",
-                gradientTop: Color(hex: 0x064e3b).opacity(0.7),
-                gradientBottom: Color(hex: 0x042f2e).opacity(0.85),
-                tintColor: Color(hex: 0x34d399),
-                borderColor: Color(hex: 0x10b981).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x064e3b, alpha: 0.7), light: NSColor(hex: 0xD1FAE5)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x042f2e, alpha: 0.85), light: NSColor(hex: 0xA7F3D0)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x34d399), light: NSColor(hex: 0x047857)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x10b981, alpha: 0.35), light: NSColor(hex: 0x10B981, alpha: 0.25))
             )
         case "dmg":
             return FileBadgeStyle(
                 label: "DMG",
                 systemIcon: "externaldrive.fill.badge.plus",
-                gradientTop: Color(hex: 0x312e81).opacity(0.7),
-                gradientBottom: Color(hex: 0x1e1b4b).opacity(0.85),
-                tintColor: Color(hex: 0x818cf8),
-                borderColor: Color(hex: 0x6366f1).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x312e81, alpha: 0.7), light: NSColor(hex: 0xE0E7FF)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x1e1b4b, alpha: 0.85), light: NSColor(hex: 0xC7D2FE)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x818cf8), light: NSColor(hex: 0x4338CA)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x6366f1, alpha: 0.35), light: NSColor(hex: 0x6366F1, alpha: 0.25))
             )
         case "pdf", "doc", "docx", "txt", "rtf", "pages":
             return FileBadgeStyle(
                 label: ext.isEmpty ? "DOC" : ext.uppercased(),
                 systemIcon: "doc.fill",
-                gradientTop: Color(hex: 0x1e293b).opacity(0.7),
-                gradientBottom: Color(hex: 0x0f172a).opacity(0.85),
-                tintColor: Color(hex: 0x38bdf8),
-                borderColor: Color(hex: 0x0ea5e9).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x1e293b, alpha: 0.7), light: NSColor(hex: 0xE0F2FE)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x0f172a, alpha: 0.85), light: NSColor(hex: 0xBAE6FD)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x38bdf8), light: NSColor(hex: 0x0369A1)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x0ea5e9, alpha: 0.35), light: NSColor(hex: 0x0EA5E9, alpha: 0.25))
             )
         case "mp4", "mov", "mkv", "avi", "webm", "m4v":
             return FileBadgeStyle(
                 label: ext.isEmpty ? "VID" : ext.uppercased(),
                 systemIcon: "film.fill",
-                gradientTop: Color(hex: 0x3b0764).opacity(0.7),
-                gradientBottom: Color(hex: 0x2e1065).opacity(0.85),
-                tintColor: Color(hex: 0xc084fc),
-                borderColor: Color(hex: 0xa855f7).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x3b0764, alpha: 0.7), light: NSColor(hex: 0xF3E8FF)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x2e1065, alpha: 0.85), light: NSColor(hex: 0xE9D5FF)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0xc084fc), light: NSColor(hex: 0x7E22CE)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0xa855f7, alpha: 0.35), light: NSColor(hex: 0xA855F7, alpha: 0.25))
             )
         case "mp3", "m4a", "flac", "wav", "aac", "ogg":
             return FileBadgeStyle(
                 label: ext.isEmpty ? "AUD" : ext.uppercased(),
                 systemIcon: "music.note",
-                gradientTop: Color(hex: 0x831843).opacity(0.7),
-                gradientBottom: Color(hex: 0x500724).opacity(0.85),
-                tintColor: Color(hex: 0xf472b6),
-                borderColor: Color(hex: 0xec4899).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x831843, alpha: 0.7), light: NSColor(hex: 0xFCE7F3)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x500724, alpha: 0.85), light: NSColor(hex: 0xFBCFE8)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0xf472b6), light: NSColor(hex: 0xBE185D)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0xec4899, alpha: 0.35), light: NSColor(hex: 0xEC4899, alpha: 0.25))
             )
         case "app":
             return FileBadgeStyle(
                 label: "APP",
                 systemIcon: "app.fill",
-                gradientTop: Color(hex: 0x1e3a8a).opacity(0.7),
-                gradientBottom: Color(hex: 0x172554).opacity(0.85),
-                tintColor: Color(hex: 0x60a5fa),
-                borderColor: Color(hex: 0x3b82f6).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x1e3a8a, alpha: 0.7), light: NSColor(hex: 0xDBEAFE)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x172554, alpha: 0.85), light: NSColor(hex: 0xBFDBFE)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x60a5fa), light: NSColor(hex: 0x1D4ED8)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x3b82f6, alpha: 0.35), light: NSColor(hex: 0x3B82F6, alpha: 0.25))
             )
         default:
             let defaultLabel = ext.isEmpty ? "FILE" : (ext.count <= 4 ? ext.uppercased() : String(ext.prefix(4)).uppercased())
             return FileBadgeStyle(
                 label: defaultLabel,
                 systemIcon: "doc.fill",
-                gradientTop: Color(hex: 0x1f2937).opacity(0.7),
-                gradientBottom: Color(hex: 0x111827).opacity(0.85),
-                tintColor: Color(hex: 0x9ca3af),
-                borderColor: Color(hex: 0x6b7280).opacity(0.35)
+                gradientTop: Color.dynamic(dark: NSColor(hex: 0x1f2937, alpha: 0.7), light: NSColor(hex: 0xE5E7EB)),
+                gradientBottom: Color.dynamic(dark: NSColor(hex: 0x111827, alpha: 0.85), light: NSColor(hex: 0xD1D5DB)),
+                tintColor: Color.dynamic(dark: NSColor(hex: 0x9ca3af), light: NSColor(hex: 0x4B5563)),
+                borderColor: Color.dynamic(dark: NSColor(hex: 0x6b7280, alpha: 0.35), light: NSColor(hex: 0x6B7280, alpha: 0.25))
             )
         }
     }

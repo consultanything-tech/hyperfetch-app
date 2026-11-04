@@ -350,7 +350,9 @@ public final class AppState: ObservableObject {
     /// System status of the Launch at Login registration.
     @Published public var launchAtLoginStatus: LaunchAtLoginStatus
 
+    @Published public var speedHistory: [Double] = Array(repeating: 0.0, count: 8)
     private var updatesTask: Task<Void, Never>?
+    private var speedSamplerTask: Task<Void, Never>?
     private var previouslyCompletedTaskIds: Set<UUID> = []
     nonisolated(unsafe) private var themeObserver: (any NSObjectProtocol)?
 
@@ -440,6 +442,16 @@ public final class AppState: ObservableObject {
         // Start listening to the QueueManager stream
         startListeningToQueue()
 
+        speedSamplerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self else { return }
+                let current = self.totalDownloadSpeed
+                self.speedHistory.removeFirst()
+                self.speedHistory.append(current)
+            }
+        }
+
         // Setup background bridges and clipboard monitoring
         setupLocalhostBridge()
         setupClipboardMonitor()
@@ -463,6 +475,7 @@ public final class AppState: ObservableObject {
 
     deinit {
         updatesTask?.cancel()
+        speedSamplerTask?.cancel()
         localhostBridge.stop()
         if let themeObserver {
             DistributedNotificationCenter.default().removeObserver(themeObserver)
@@ -730,6 +743,21 @@ public final class AppState: ObservableObject {
             return max(16, Int(info.resident_size / (1024 * 1024)))
         }
         return 48
+    }
+
+    public var availableDiskSpaceString: String {
+        do {
+            let values = try defaultDownloadDirectoryURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            if let capacity = values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity.map({ Int64($0) }) {
+                return "\(Self.formatBytes(capacity)) free"
+            }
+        } catch {}
+        return "Available"
+    }
+
+    public func refreshStatus() {
+        refreshBridgeStatus()
+        objectWillChange.send()
     }
 
     /// Total bytes downloaded today across all completed and active tasks.

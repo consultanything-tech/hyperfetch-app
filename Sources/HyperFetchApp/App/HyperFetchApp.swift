@@ -208,6 +208,21 @@ struct HyperFetchApp: App {
 
             Text("Active: \(appState.activeDownloadCount)  •  \(appState.formattedTotalSpeed)")
 
+            if appState.activeDownloadCount > 0 {
+                Divider()
+                ForEach(appState.tasks.filter { $0.status == .downloading || $0.status == .probing }.prefix(3)) { task in
+                    Button("⏸ \(task.filename) (\(Int(task.progress * 100))% • \(AppState.formatSpeed(task.bytesPerSecond)))") {
+                        appState.pause(id: task.id)
+                    }
+                }
+            } else {
+                ForEach(appState.tasks.filter { $0.status == .paused }.prefix(2)) { task in
+                    Button("▶ \(task.filename) (\(Int(task.progress * 100))%)") {
+                        appState.resume(id: task.id)
+                    }
+                }
+            }
+
             Divider()
 
             Button("Pause All") {

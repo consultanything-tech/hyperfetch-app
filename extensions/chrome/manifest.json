@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HyperFetch Download Interceptor",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Intercepts browser downloads and transfers them to HyperFetch for accelerated multi-chunk downloading.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq+ubFYTg1EUHyt1etYE1QBnOPwYGTdMLOp5XogeJoQtwGL1JXfzsJtrsJWQg923IZShzr9fQ18DbMa+MiY036IsVXLkwA8wl7q9s0AKuPO2tW3IYYoLsbRzG26uCOkFbVRXhaoPzbZQChUrVMNqLK92q0KzCT8HJ4zoFDUQLBxevjvdDEoOgvALepdK1mGUDcYdpMMW5Qxp4Z3pCODOvWwDMDg5D2JCrSuUkGaHfrMW1VK/uO0JSLeMWQfsRqZLmvJXIjcpj3yt2+1AJEccHBNLIIjwPfYUBh+twl3oN0rmpDFZFVtpgtp66s/d+DSI+dz/cHJWvLccu78kSwq8l1QIDAQAB",
   "permissions": [

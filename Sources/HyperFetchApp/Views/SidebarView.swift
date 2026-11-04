@@ -144,11 +144,14 @@ public struct SidebarView: View {
 
                     // Disk Status Line
                     HStack {
-                        Text("Disk: APFS (Encrypted)")
+                        Image(systemName: "internaldrive")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textTertiary)
+                        Text("Disk Storage:")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.textTertiary)
                         Spacer()
-                        Text("OK")
+                        Text(appState.availableDiskSpaceString)
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.success)
                     }
@@ -195,30 +198,31 @@ public struct SidebarView: View {
     }
 
     private var sparklineView: some View {
+        let maxSpeed = max(1024 * 512, (appState.speedHistory.max() ?? 0))
         let isActive = appState.activeDownloadCount > 0
-        let heights: [CGFloat] = isActive
-            ? [0.40, 0.55, 0.45, 0.70, 0.65, 0.85, 0.95, 0.90]
-            : [0.15, 0.20, 0.12, 0.18, 0.15, 0.22, 0.14, 0.16]
 
         return HStack(alignment: .bottom, spacing: 3) {
             ForEach(0..<8, id: \.self) { i in
+                let speed = i < appState.speedHistory.count ? appState.speedHistory[i] : 0.0
+                let normalized = isActive ? CGFloat(min(1.0, max(0.12, speed / maxSpeed))) : 0.12
+
                 RoundedRectangle(cornerRadius: 2)
                     .fill(
-                        isActive
+                        isActive && speed > 0
                             ? LinearGradient(
                                 colors: [Color.blue.opacity(0.5 + Double(i) * 0.06), Theme.accent],
                                 startPoint: .bottom,
                                 endPoint: .top
                             )
                             : LinearGradient(
-                                colors: [Theme.textTertiary.opacity(0.2), Theme.textTertiary.opacity(0.3)],
+                                colors: [Theme.textTertiary.opacity(0.2), Theme.textTertiary.opacity(0.25)],
                                 startPoint: .bottom,
                                 endPoint: .top
                             )
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 22 * heights[i])
-                    .animation(.easeInOut(duration: 0.3), value: isActive)
+                    .frame(height: max(3, 22 * normalized))
+                    .animation(.easeInOut(duration: 0.3), value: normalized)
             }
         }
     }

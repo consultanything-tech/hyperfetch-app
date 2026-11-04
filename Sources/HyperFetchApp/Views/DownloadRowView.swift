@@ -140,8 +140,12 @@ public struct DownloadRowView: View {
         .onHover { isHovered = $0 }
         .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
         .onTapGesture {
-            // Single tap selects this task as active
             appState.selectedTaskId = task.id
+            if NSEvent.modifierFlags.contains(.command) {
+                appState.toggleSelection(id: task.id)
+            } else if !appState.selectedTaskIDs.contains(task.id) {
+                appState.selectedTaskIDs = [task.id]
+            }
         }
         .onTapGesture(count: 2) {
             if task.status == .completed {
@@ -183,14 +187,8 @@ public struct DownloadRowView: View {
                 Text(style.label)
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
                     .foregroundStyle(style.tintColor)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(style.gradientBottom.opacity(0.95), in: RoundedRectangle(cornerRadius: 3))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(style.borderColor, lineWidth: 0.8)
-                    )
-                    .offset(y: 4)
+                    .padding(.horizontal, 3)
+                    .padding(.bottom, 2)
             }
         }
     }
@@ -291,7 +289,7 @@ public struct DownloadRowView: View {
                 Capsule()
                     .fill(progressGradient)
                     .frame(width: fillWidth, height: 7)
-                    .animation(.linear(duration: 0.25), value: task.progress)
+                    .animation(.spring(), value: task.progress)
             }
         }
         .frame(height: 7)

@@ -482,26 +482,6 @@ public struct MainWindow: View {
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
-
-                Divider()
-                    .overlay(Theme.separator)
-                    .padding(.vertical, 2)
-
-                HStack {
-                    Text("Integrity Check:")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Theme.textTertiary)
-
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 12))
-                        Text("SHA-256 Validated")
-                            .font(.system(size: 11.5, weight: .medium))
-                    }
-                    .foregroundStyle(Theme.success)
-                }
             }
         }
         .padding(14)
