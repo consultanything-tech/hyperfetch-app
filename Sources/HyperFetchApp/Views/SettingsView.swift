@@ -378,11 +378,13 @@ private struct AutomationSettingsTab: View {
     private var extensionGrid: some View {
         let archives = [".zip", ".dmg", ".pkg", ".iso", ".tar", ".gz", ".7z", ".rar"]
         let media = [".mp4", ".mkv", ".avi", ".mov", ".mp3", ".wav", ".flac"]
-        let installers = [".pdf", ".exe", ".msi", ".deb", ".rpm", ".app", ".bin"]
+        let documents = [".pdf", ".docx", ".xlsx", ".csv", ".pptx", ".txt", ".epub"]
+        let installers = [".exe", ".msi", ".deb", ".rpm", ".app", ".bin", ".apk"]
 
         return VStack(alignment: .leading, spacing: 6) {
             extensionRow(title: "Archives", items: archives)
             extensionRow(title: "Media", items: media)
+            extensionRow(title: "Documents", items: documents)
             extensionRow(title: "Installers", items: installers)
         }
         .padding(8)
@@ -397,7 +399,7 @@ private struct AutomationSettingsTab: View {
             Text("\(title):")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 65, alignment: .leading)
+                .frame(width: 75, alignment: .leading)
 
             Text(items.joined(separator: "  "))
                 .font(.system(size: 11, design: .monospaced))

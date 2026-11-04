@@ -270,7 +270,9 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         // Range header is deliberately omitted
         plainRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
-        let (_, response) = try await session.data(for: plainRequest, delegate: redirectDelegate)
+        // Use session.bytes rather than session.data to read response headers immediately
+        // without buffering large/infinite response bodies into RAM.
+        let (_, response) = try await session.bytes(for: plainRequest, delegate: redirectDelegate)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ProbeError.invalidResponse
         }

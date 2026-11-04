@@ -24,9 +24,20 @@ public final class ClipboardMonitor: ObservableObject {
 
     /// Standard set of recognized downloadable file extensions.
     public static let downloadableExtensions: Set<String> = [
-        "zip", "dmg", "pkg", "iso", "tar", "gz", "tgz", "7z", "rar",
-        "mp4", "mkv", "avi", "mov", "mp3", "wav", "flac",
-        "pdf", "exe", "msi", "bin", "app", "xip", "deb", "rpm"
+        // Archives
+        "zip", "dmg", "pkg", "iso", "tar", "gz", "tgz", "7z", "rar", "bz2", "xz", "zst", "lz4", "cab", "wim", "jar",
+        // Video
+        "mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v", "3gp", "ts",
+        // Audio
+        "mp3", "wav", "flac", "m4a", "aac", "ogg", "opus", "wma",
+        // Documents & Spreadsheets
+        "pdf", "doc", "docx", "xls", "xlsx", "csv", "tsv", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "txt", "md",
+        // Data & Code
+        "json", "xml", "yaml", "yml", "sql", "sqlite", "db", "py", "js", "ts", "html", "css", "sh", "c", "cpp", "h", "rs", "go", "swift",
+        // Images
+        "png", "jpg", "jpeg", "webp", "gif", "svg", "tiff", "bmp", "heic", "ico", "psd", "ai",
+        // Executables & Installers
+        "exe", "msi", "bin", "app", "xip", "deb", "rpm", "apk", "ipa", "crx", "xpi"
     ]
 
     private var monitorTask: Task<Void, Never>?

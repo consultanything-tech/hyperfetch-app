@@ -7,10 +7,44 @@ const PRIMARY_PORT = 31415;
 const FALLBACK_PORT = 31416;
 
 const DOWNLOADABLE_EXTENSIONS = new Set([
-  'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar',
-  'mp4', 'mkv', 'avi', 'mov', 'mp3', 'wav', 'flac',
-  'pdf', 'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm'
+  // Archives
+  'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar', 'bz2', 'xz', 'zst', 'lz4', 'cab', 'wim', 'jar',
+  // Video
+  'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv', 'm4v', '3gp', 'ts',
+  // Audio
+  'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma',
+  // Documents & Spreadsheets
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub', 'txt', 'md',
+  // Data & Code
+  'json', 'xml', 'yaml', 'yml', 'sql', 'sqlite', 'db', 'py', 'js', 'ts', 'html', 'css', 'sh', 'c', 'cpp', 'h', 'rs', 'go', 'swift',
+  // Images
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tiff', 'bmp', 'heic', 'ico', 'psd', 'ai',
+  // Executables & Installers
+  'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm', 'apk', 'ipa', 'crx', 'xpi'
 ]);
+
+function isInternalOrBlobScheme(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  const lower = urlStr.trim().toLowerCase();
+  return (
+    lower.startsWith('blob:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('filesystem:') ||
+    lower.startsWith('chrome:') ||
+    lower.startsWith('chrome-extension:') ||
+    lower.startsWith('about:') ||
+    lower.startsWith('javascript:')
+  );
+}
+
+function isDownloadableMime(mime) {
+  if (!mime || typeof mime !== 'string') return false;
+  const m = mime.toLowerCase().trim();
+  if (m.startsWith('video/') || m.startsWith('audio/')) return true;
+  if (m.includes('octet-stream') || m.includes('zip') || m.includes('tar') || m.includes('compressed') || m.includes('pdf')) return true;
+  if (m.includes('spreadsheet') || m.includes('excel') || m.includes('word') || m.includes('presentation') || m.includes('document')) return true;
+  return false;
+}
 
 // In-memory cache of settings
 let settings = {
@@ -79,90 +113,100 @@ function cancelBrowserDownload(downloadId) {
 
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   if (!settings.enabled) {
-    return; // Pass through to browser
+    return; // Pass through to browser natively
+  }
+
+  const rawUrl = (downloadItem.url || '').trim();
+  const finalUrl = (downloadItem.finalUrl || '').trim();
+  const targetUrl = finalUrl || rawUrl;
+
+  // Never intercept in-memory blobs, data URIs, or browser-internal schemes.
+  // Web apps (ChatGPT, Claude, etc.) generate client-side downloads as in-memory
+  // blobs that cannot be fetched over network by HyperFetch.
+  if (isInternalOrBlobScheme(rawUrl) || isInternalOrBlobScheme(finalUrl)) {
+    return; // Pass through to browser natively
   }
 
   if (processedDownloadIds.has(downloadItem.id)) {
     return;
   }
 
-  const targetUrl = downloadItem.finalUrl || downloadItem.url;
   const filename = downloadItem.filename || '';
-  const fallbackName = getFilenameFromUrl(targetUrl) || getFilenameFromUrl(downloadItem.url) || 'download';
-  const ext = getFileExtension(filename || targetUrl || downloadItem.url);
+  const fallbackName = getFilenameFromUrl(targetUrl) || getFilenameFromUrl(rawUrl) || 'download';
+  const ext = getFileExtension(filename || targetUrl || rawUrl);
 
-  const shouldIntercept = settings.interceptAll || (ext && DOWNLOADABLE_EXTENSIONS.has(ext));
+  const isExtMatch = Boolean(ext && DOWNLOADABLE_EXTENSIONS.has(ext));
+  const isMimeMatch = isDownloadableMime(downloadItem.mime);
+  const isLargeFile = Boolean(downloadItem.fileSize && downloadItem.fileSize > 5 * 1024 * 1024);
+
+  const shouldIntercept = settings.interceptAll || isExtMatch || isMimeMatch || isLargeFile;
 
   if (!shouldIntercept) {
-    return;
+    return; // Pass through to browser natively
   }
 
-  // Intercept the download
+  // Intercept the download asynchronously without cancelling browser download upfront.
+  // In MV3, returning true allows async handling. If HyperFetch succeeds, we cancel
+  // the browser download; if it fails/rejects, we call suggest() so the browser's
+  // original download proceeds smoothly without interruption or restarted tokens.
   processedDownloadIds.add(downloadItem.id);
 
-  // 1. Tell Chrome to complete filename determination so state transitions cleanly
-  if (typeof suggest === 'function') {
-    try {
-      suggest({ filename: filename || fallbackName });
-    } catch (e) {
-      // Ignore if already suggested or closed
-    }
-  }
-
-  // 2. Cancel native browser download safely, clearing any runtime.lastError
-  cancelBrowserDownload(downloadItem.id);
-
-  // Capture cookies and headers, then forward download request to HyperFetch
   (async () => {
-    const cookieString = await getMergedCookies(targetUrl, downloadItem.url);
-    const headers = {
-      'User-Agent': navigator.userAgent,
-      'Referer': downloadItem.referrer || '',
-      'Accept': '*/*',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'cross-site'
-    };
-    if (cookieString) {
-      headers['Cookie'] = cookieString;
-    }
-
-    const payload = {
-      url: targetUrl,
-      filename: filename || fallbackName,
-      referrer: downloadItem.referrer || '',
-      headers: headers,
-      autoStart: true
-    };
-
-    const success = await forwardDownloadToHyperFetch(payload);
-    if (!success) {
-      console.warn('[HyperFetch] Native app unreachable, falling back to browser download for:', payload.url);
-      showErrorBadge();
-      try {
-        chrome.downloads.download({
-          url: payload.url,
-          filename: payload.filename || undefined,
-          saveAs: false
-        }, (downloadId) => {
-          const _ = chrome.runtime.lastError;
-          if (downloadId) {
-            processedDownloadIds.add(downloadId);
-          }
-        });
-      } catch (fallbackErr) {
-        console.error('[HyperFetch] Failed to re-trigger fallback download:', fallbackErr);
+    try {
+      const cookieString = await getMergedCookies(targetUrl, rawUrl, downloadItem.referrer);
+      const headers = {
+        'User-Agent': navigator.userAgent,
+        'Referer': downloadItem.referrer || '',
+        'Accept': '*/*',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site'
+      };
+      if (cookieString) {
+        headers['Cookie'] = cookieString;
       }
+
+      const payload = {
+        url: targetUrl,
+        filename: filename || fallbackName,
+        referrer: downloadItem.referrer || '',
+        headers: headers,
+        autoStart: true
+      };
+
+      const success = await forwardDownloadToHyperFetch(payload);
+      if (success) {
+        // HyperFetch accepted download: cancel and erase the native browser task
+        cancelBrowserDownload(downloadItem.id);
+      } else {
+        console.warn('[HyperFetch] Native app unreachable or rejected, resuming browser download:', payload.url);
+        showErrorBadge();
+        // Resolve filename so the browser's original in-flight download continues cleanly
+        try {
+          suggest({ filename: filename || fallbackName });
+        } catch (e) {
+          // Ignore if already suggested or closed
+        }
+        setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
+      }
+    } catch (err) {
+      console.error('[HyperFetch] Error during async interception:', err);
+      try {
+        suggest({ filename: filename || fallbackName });
+      } catch (e) {}
+      setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
     }
   })();
+
+  return true; // Keep suggest callback active for async determination
 });
 
-async function getMergedCookies(url1, url2) {
+async function getMergedCookies(url1, url2, referrer) {
   const cookieMap = new Map();
-  const urls = [url1];
-  if (url2 && url2 !== url1) {
-    urls.push(url2);
-  }
+  const urls = [];
+  if (url1) urls.push(url1);
+  if (url2 && !urls.includes(url2)) urls.push(url2);
+  if (referrer && !urls.includes(referrer)) urls.push(referrer);
 
   for (const target of urls) {
     if (!target) continue;
@@ -189,6 +233,9 @@ async function getMergedCookies(url1, url2) {
 async function getCookiesForUrl(url) {
   try {
     if (!chrome.cookies || !chrome.cookies.getAll) {
+      return '';
+    }
+    if (!url || typeof url !== 'string' || !url.startsWith('http')) {
       return '';
     }
     const getCookies = (details) => new Promise((resolve) => {
