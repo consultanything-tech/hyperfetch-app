@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.0.4"><img src="https://img.shields.io/badge/Release-v1.0.4-0071E3?style=flat-square&logo=apple" alt="Release v1.0.4" /></a>
+  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.0.5"><img src="https://img.shields.io/badge/Release-v1.0.5-0071E3?style=flat-square&logo=apple" alt="Release v1.0.5" /></a>
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-14%2B%20Sonoma%20%7C%20Sequoia-00D2FF?style=flat-square&logo=apple" alt="macOS 14+ Sonoma / Sequoia" /></a>
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.0-F05138?style=flat-square&logo=swift" alt="Swift 6.0" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-30D158?style=flat-square" alt="License MIT" /></a>
@@ -38,8 +38,9 @@ curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/
 
 | Package | Format | Compatibility | Link |
 | :--- | :--- | :--- | :--- |
-| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.4/HyperFetch.dmg) |
-| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.4/HyperFetch.zip) |
+| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.5/HyperFetch.dmg) |
+| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.5/HyperFetch.zip) |
+| **HyperFetch Chrome Extension** | `.zip` | Chromium Browsers (Chrome, Edge, Brave, Arc) | [**Download HyperFetch-Chrome-Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.5/HyperFetch-Chrome-Extension.zip) |
 
 All official releases and checksums are available on the [**GitHub Releases Page**](https://github.com/consultanything-tech/hyperfetch-app/releases).
 
@@ -75,15 +76,16 @@ The companion extension intercepts browser downloads and seamlessly passes them 
 Works on **Google Chrome**, **Brave**, **Arc**, **Microsoft Edge**, and **Vivaldi**.
 
 ### Setup Instructions
-1. Clone or download this repository.
-2. In your browser, open the Extensions page by visiting:
+1. Download [**HyperFetch-Chrome-Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.5/HyperFetch-Chrome-Extension.zip) (or use bundled extension in HyperFetch Settings > Browser).
+2. Unzip the downloaded archive.
+3. In your browser, open the Extensions page by visiting:
    ```text
    chrome://extensions
    ```
-3. Enable **Developer mode** via the toggle switch in the upper-right corner.
-4. Click **Load unpacked** in the top-left toolbar.
-5. Select the [`extensions/chrome`](extensions/chrome) directory in this repo.
-6. Done! Any initiated download will be routed into HyperFetch automatically.
+4. Enable **Developer mode** via the toggle switch in the upper-right corner.
+5. Click **Load unpacked** in the top-left toolbar.
+6. Select the extracted `extensions/chrome` directory (or from this repo).
+7. Done! Any initiated download will be routed into HyperFetch automatically.
    > **Pro Tip**: Hold the `Alt` (or `Option ⌥`) key while clicking a download link to temporarily bypass HyperFetch and use the browser's default download mechanism.
 
 ---
