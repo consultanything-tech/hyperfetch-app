@@ -61,7 +61,7 @@ struct HyperFetchApp: App {
     @StateObject private var versionManager = AppVersionManager.shared
 
     private struct BrowserGuideMenuButton: View {
-        @EnvironmentObject private var appState: AppState
+        let appState: AppState
         @Environment(\.openSettings) private var openSettings
 
         var body: some View {
@@ -110,7 +110,7 @@ struct HyperFetchApp: App {
             }
 
             CommandGroup(after: .appSettings) {
-                BrowserGuideMenuButton()
+                BrowserGuideMenuButton(appState: appState)
             }
 
             CommandGroup(replacing: .newItem) {
@@ -188,7 +188,7 @@ struct HyperFetchApp: App {
 
                 Divider()
 
-                BrowserGuideMenuButton()
+                BrowserGuideMenuButton(appState: appState)
             }
         }
 

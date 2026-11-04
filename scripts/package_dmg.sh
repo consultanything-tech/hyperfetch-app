@@ -81,6 +81,10 @@ codesign --verify --strict "$APP_BUNDLE"
 echo "==> Creating ZIP archive for fast auto-updates..."
 /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$PROJECT_ROOT/build/HyperFetch.zip"
 
+echo "==> Creating Chrome Extension ZIP archive..."
+rm -f "$BUILD_DIR/HyperFetch-Chrome-Extension.zip"
+(cd "$PROJECT_ROOT" && zip -r -q -X "$BUILD_DIR/HyperFetch-Chrome-Extension.zip" extensions/chrome)
+
 # 7. Generate Retina DMG background image
 echo "==> Generating branded DMG background image..."
 APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PROJECT_ROOT/Sources/HyperFetchApp/Info.plist" 2>/dev/null || echo "1.0.0")
@@ -195,9 +199,11 @@ if [ -n "$NOTARY_PROFILE" ]; then
     xcrun stapler staple "$DMG_OUTPUT"
 fi
 
-# 16. Output success message with the path to the generated DMG
+# 16. Output success message with the paths to the generated assets
 echo ""
 echo "============================================================"
-echo "Successfully packaged HyperFetch DMG:"
-echo "$DMG_OUTPUT"
+echo "Successfully packaged HyperFetch release assets:"
+echo "  - $DMG_OUTPUT"
+echo "  - $PROJECT_ROOT/build/HyperFetch.zip"
+echo "  - $PROJECT_ROOT/build/HyperFetch-Chrome-Extension.zip"
 echo "============================================================"
