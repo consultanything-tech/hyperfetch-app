@@ -49,6 +49,11 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 echo "==> Copying binary..."
 cp "$PROJECT_ROOT/.build/release/HyperFetch" "$APP_BUNDLE/Contents/MacOS/HyperFetch"
 chmod +x "$APP_BUNDLE/Contents/MacOS/HyperFetch"
+if [ -f "$PROJECT_ROOT/.build/release/hyperfetch-host" ]; then
+    echo "==> Copying hyperfetch-host binary..."
+    cp "$PROJECT_ROOT/.build/release/hyperfetch-host" "$APP_BUNDLE/Contents/MacOS/hyperfetch-host"
+    chmod +x "$APP_BUNDLE/Contents/MacOS/hyperfetch-host"
+fi
 
 # 4. Copy Info.plist and Resources
 echo "==> Copying Info.plist and Resources..."
@@ -69,6 +74,15 @@ printf "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 # 6. Codesign the .app bundle
 echo "==> Codesigning App Bundle..."
 ENTITLEMENTS="$PROJECT_ROOT/Sources/HyperFetchApp/HyperFetch.entitlements"
+if [ -f "$APP_BUNDLE/Contents/MacOS/hyperfetch-host" ]; then
+    echo "==> Codesigning hyperfetch-host binary..."
+    if [ "$SIGNING_IDENTITY" = "-" ]; then
+        codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/hyperfetch-host"
+    else
+        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_BUNDLE/Contents/MacOS/hyperfetch-host"
+    fi
+fi
+
 if [ "$SIGNING_IDENTITY" = "-" ]; then
     codesign --force --entitlements "$ENTITLEMENTS" --sign - "$APP_BUNDLE"
 else

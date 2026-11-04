@@ -15,6 +15,10 @@ let package = Package(
             name: "HyperFetch",
             targets: ["HyperFetchApp"]
         ),
+        .executable(
+            name: "hyperfetch-host",
+            targets: ["HyperFetchNativeHost"]
+        ),
     ],
     targets: [
         .target(
@@ -26,6 +30,10 @@ let package = Package(
             dependencies: ["DownloadKit"],
             path: "Sources/HyperFetchApp",
             exclude: ["Info.plist", "Resources", "HyperFetch.entitlements"]
+        ),
+        .executableTarget(
+            name: "HyperFetchNativeHost",
+            path: "Sources/HyperFetchNativeHost"
         ),
         .testTarget(
             name: "DownloadKitTests",

@@ -1071,6 +1071,9 @@ public final class AppState: ObservableObject {
     }
 
     public func setupLocalhostBridge() {
+        // Register native messaging host manifests for Chromium browsers
+        NativeHostManager.registerManifests()
+
         localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart, headers in
             Task { @MainActor [weak self] in
                 guard let self else { return }
