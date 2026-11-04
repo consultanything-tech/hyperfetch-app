@@ -307,37 +307,163 @@ function getFileExtension(urlOrFilename) {
   return '';
 }
 
+async function tryPostDownload(port, payload) {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-HyperFetch-Client': 'extension'
+    };
+    if (settings.bridgeToken) {
+      headers['X-HyperFetch-Token'] = settings.bridgeToken;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const response = await fetch(`http://127.0.0.1:${port}/add`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      console.log(`[HyperFetch] Successfully forwarded download to port ${port}:`, payload.filename || payload.url);
+      showSuccessNotification(payload.filename || payload.url);
+      return true;
+    }
+  } catch (err) {
+    // Port unreachable or refused
+  }
+  return false;
+}
+
+async function checkPortStatus(port) {
+  try {
+    const headers = {
+      'X-HyperFetch-Client': 'extension'
+    };
+    if (settings.bridgeToken) {
+      headers['X-HyperFetch-Token'] = settings.bridgeToken;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 400);
+    const resp = await fetch(`http://127.0.0.1:${port}/status`, {
+      method: 'GET',
+      headers: headers,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return resp.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function tryLaunchViaNativeMessaging() {
+  return new Promise((resolve) => {
+    if (!chrome.runtime.sendNativeMessage) {
+      console.warn('[HyperFetch] chrome.runtime.sendNativeMessage not available');
+      resolve(false);
+      return;
+    }
+    try {
+      chrome.runtime.sendNativeMessage('com.hyperfetch.native', { action: 'launch' }, (response) => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          console.warn('[HyperFetch] Native messaging launch failed:', err.message);
+          resolve(false);
+        } else {
+          console.log('[HyperFetch] Native messaging launch succeeded:', response);
+          resolve(true);
+        }
+      });
+    } catch (err) {
+      console.warn('[HyperFetch] sendNativeMessage error:', err);
+      resolve(false);
+    }
+  });
+}
+
+function tryLaunchViaProtocol() {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.create({ url: 'hyperfetch://open', active: false }, (tab) => {
+        const err = chrome.runtime.lastError;
+        if (err || !tab) {
+          console.warn('[HyperFetch] URL protocol launch failed:', err);
+          resolve(false);
+          return;
+        }
+        setTimeout(() => {
+          if (tab.id) {
+            chrome.tabs.remove(tab.id, () => {
+              const _ = chrome.runtime.lastError;
+            });
+          }
+        }, 1500);
+        resolve(true);
+      });
+    } catch (err) {
+      console.warn('[HyperFetch] Protocol launch error:', err);
+      resolve(false);
+    }
+  });
+}
+
+function showLaunchingBadge() {
+  try {
+    chrome.action.setBadgeText({ text: '...' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+    chrome.action.setBadgeBackgroundColor({ color: '#FF9500' }, () => {
+      const _ = chrome.runtime.lastError;
+    });
+  } catch (e) {
+    // Ignore context invalidation
+  }
+}
+
 async function forwardDownloadToHyperFetch(payload) {
-  // Try primary port first, then fallback port
   const ports = [PRIMARY_PORT, FALLBACK_PORT];
 
+  // 1. Try immediate post on available ports
   for (const port of ports) {
-    try {
-      const headers = {
-        'Content-Type': 'application/json',
-        'X-HyperFetch-Client': 'extension'
-      };
-      if (settings.bridgeToken) {
-        headers['X-HyperFetch-Token'] = settings.bridgeToken;
-      }
-      const response = await fetch(`http://127.0.0.1:${port}/add`, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        console.log(`[HyperFetch] Successfully forwarded download to port ${port}:`, payload.filename || payload.url);
-        showSuccessNotification(payload.filename || payload.url);
-        return true;
-      }
-    } catch (err) {
-      // Port unreachable or refused, try next
-      console.warn(`[HyperFetch] Failed to connect on port ${port}:`, err.message);
+    const success = await tryPostDownload(port, payload);
+    if (success) {
+      return true;
     }
   }
 
-  console.error('[HyperFetch] Could not reach HyperFetch app on ports', ports);
+  // 2. Desktop app unreachable: attempt auto-launch
+  console.log('[HyperFetch] Desktop app not responding. Attempting auto-start...');
+  showLaunchingBadge();
+
+  const launchedNative = await tryLaunchViaNativeMessaging();
+  if (!launchedNative) {
+    console.log('[HyperFetch] Falling back to hyperfetch:// protocol launch...');
+    await tryLaunchViaProtocol();
+  }
+
+  // Poll http://127.0.0.1:31415/status (and 31416) every 200ms for up to 3500ms (17 attempts)
+  const maxAttempts = 17;
+  const pollIntervalMs = 200;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+    for (const port of ports) {
+      const isOnline = await checkPortStatus(port);
+      if (isOnline) {
+        console.log(`[HyperFetch] Desktop app online on port ${port} after ${attempt + 1} checks. Posting download...`);
+        const posted = await tryPostDownload(port, payload);
+        if (posted) {
+          return true;
+        }
+      }
+    }
+  }
+
+  console.error('[HyperFetch] Timed out waiting for HyperFetch to launch (3.5s elapsed).');
   return false;
 }
 
