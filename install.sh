@@ -22,7 +22,7 @@ if [[ "$(uname)" != "Darwin" ]]; then
 fi
 
 REPO="consultanything-tech/hyperfetch-app"
-FALLBACK_TAG="v1.0.3"
+FALLBACK_TAG="v1.0.4"
 
 echo -e "${CYAN}→${RESET} Resolving latest release..."
 

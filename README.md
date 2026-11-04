@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.0.3"><img src="https://img.shields.io/badge/Release-v1.0.3-0071E3?style=flat-square&logo=apple" alt="Release v1.0.3" /></a>
+  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.0.4"><img src="https://img.shields.io/badge/Release-v1.0.4-0071E3?style=flat-square&logo=apple" alt="Release v1.0.4" /></a>
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-14%2B%20Sonoma%20%7C%20Sequoia-00D2FF?style=flat-square&logo=apple" alt="macOS 14+ Sonoma / Sequoia" /></a>
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.0-F05138?style=flat-square&logo=swift" alt="Swift 6.0" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-30D158?style=flat-square" alt="License MIT" /></a>
@@ -38,8 +38,8 @@ curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/
 
 | Package | Format | Compatibility | Link |
 | :--- | :--- | :--- | :--- |
-| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.3/HyperFetch.dmg) |
-| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.3/HyperFetch.zip) |
+| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.4/HyperFetch.dmg) |
+| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.4/HyperFetch.zip) |
 
 All official releases and checksums are available on the [**GitHub Releases Page**](https://github.com/consultanything-tech/hyperfetch-app/releases).
 
@@ -59,6 +59,7 @@ All official releases and checksums are available on the [**GitHub Releases Page
 - **⚡ Direct POSIX Zero-Copy I/O**: Pre-allocates disk files instantly using low-level POSIX `ftruncate` and parallel concurrent `pwrite` calls without temporary `.part` concatenation delays.
 - **🎨 Real-Time Chunk Visualizer**: Watch chunks download in parallel through animated, color-coded segmented progress strips inspired by retro download managers and modernized for Apple glassmorphism.
 - **🛡️ Bulletproof Browser Interception**: Local DNS-rebinding-protected HTTP bridge (`http://127.0.0.1:31415`) validates Origin, Host, and `Sec-Fetch-Site` to guard against web-based exploit attempts.
+- **🚀 Native macOS Login Autostart**: Modern Apple `SMAppService.mainApp` background management launches HyperFetch on system boot for uninterrupted browser and clipboard capture.
 - **🎛️ Dual Token-Bucket Rate Limiter**: Effortlessly set custom speed limits (or toggle Unlimited mode) with sub-millisecond precision.
 - **📁 Smart Category Routing**: Automatically files completed downloads into `Applications`, `Archives`, `Documents`, `Video`, or `Music` based on MIME type and file extension.
 - **🔄 In-App Auto-Updates**: Seamless version checks against GitHub Releases with background downloading and instant in-place self-update.
