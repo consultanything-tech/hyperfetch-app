@@ -455,7 +455,9 @@ public final class AppState: ObservableObject {
         // Setup background bridges and clipboard monitoring
         setupLocalhostBridge()
         setupClipboardMonitor()
-        applyAppearance()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyAppearance()
+        }
 
         HyperFetchServiceProvider.shared.appState = self
 
@@ -518,8 +520,9 @@ public final class AppState: ObservableObject {
             targetAppearance = NSAppearance(named: .aqua)
         }
 
-        NSApp.appearance = targetAppearance
-        for window in NSApp.windows {
+        guard let app = NSApp else { return }
+        app.appearance = targetAppearance
+        for window in app.windows {
             window.appearance = targetAppearance
             window.invalidateShadow()
             window.viewsNeedDisplay = true
