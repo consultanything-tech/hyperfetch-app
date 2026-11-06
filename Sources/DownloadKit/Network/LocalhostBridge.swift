@@ -477,7 +477,7 @@ public final class LocalhostBridge: @unchecked Sendable {
                 json: [
                     "status": "ok",
                     "app": "HyperFetch",
-                    "version": "1.0.10",
+                    "version": "1.0.11",
                     "port": Int(port)
                 ],
                 allowedOrigin: allowedOrigin,
