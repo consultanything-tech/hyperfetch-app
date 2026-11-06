@@ -46,16 +46,26 @@ public struct AboutView: View {
                         .fill(Color(nsColor: .controlBackgroundColor))
                 )
 
-            // Check for updates button
-            Button {
-                versionManager.isAboutSheetPresented = false
-                versionManager.checkForUpdates(userInitiated: true)
-            } label: {
-                Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(minWidth: 160)
+            // Check for updates & support buttons
+            VStack(spacing: 8) {
+                Button {
+                    versionManager.isAboutSheetPresented = false
+                    versionManager.checkForUpdates(userInitiated: true)
+                } label: {
+                    Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(minWidth: 160)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+
+                Link(destination: URL(string: "https://ko-fi.com/consultanythingtech")!) {
+                    Label("Support on Ko-fi", systemImage: "cup.and.saucer.fill")
+                        .frame(minWidth: 160)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .controlSize(.regular)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
 
             Spacer()
 
@@ -85,7 +95,7 @@ public struct AboutView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
         }
-        .frame(width: 380, height: 340)
+        .frame(width: 380, height: 380)
     }
 
     private var appIconView: some View {

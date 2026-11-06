@@ -204,6 +204,14 @@ struct HyperFetchApp: App {
                 Divider()
 
                 BrowserGuideMenuButton(appState: appState)
+
+                Divider()
+
+                Button("Support HyperFetch (Ko-fi)...") {
+                    if let url = URL(string: "https://ko-fi.com/consultanythingtech") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
         }
 

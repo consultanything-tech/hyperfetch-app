@@ -43,7 +43,7 @@ public struct SettingsView: View {
                 }
                 .tag(SettingsTab.updates)
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 560, height: 520)
         .preferredColorScheme(appState.preferredColorScheme)
     }
 }
@@ -202,6 +202,21 @@ private struct GeneralSettingsTab: View {
                     Text("Global rate limiter caps aggregate download bandwidth across all active tasks.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Support") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HyperFetch is free and open-source.")
+                            .font(.subheadline)
+                        Text("If you find it useful, consider supporting development on Ko-fi.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Link("Support on Ko-fi ☕", destination: URL(string: "https://ko-fi.com/consultanythingtech")!)
+                        .font(.subheadline.weight(.medium))
                 }
             }
         }
