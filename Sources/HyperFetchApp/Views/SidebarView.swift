@@ -169,6 +169,48 @@ public struct SidebarView: View {
                         .stroke(Theme.cardBorder, lineWidth: 1)
                 )
 
+                // Support HyperFetch (Ko-fi)
+                Link(destination: URL(string: "https://ko-fi.com/consultanythingtech")!) {
+                    HStack(spacing: 9) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.orange.opacity(0.18))
+                                .frame(width: 26, height: 26)
+                            Image(systemName: "cup.and.saucer.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.orange)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1.5) {
+                            Text("Support HyperFetch")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("Buy us a coffee on Ko-fi")
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.forward")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.orange.opacity(0.8))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadiusSmall, style: .continuous)
+                            .fill(Color.orange.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadiusSmall, style: .continuous)
+                            .stroke(Color.orange.opacity(0.25), lineWidth: 0.8)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Support HyperFetch development on Ko-fi")
+
                 // Version & Update Check
                 HStack {
                     Text("HyperFetch \(versionManager.fullVersionString)")

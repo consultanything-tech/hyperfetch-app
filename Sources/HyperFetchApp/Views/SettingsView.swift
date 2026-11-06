@@ -42,6 +42,12 @@ public struct SettingsView: View {
                     Label("Updates", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .tag(SettingsTab.updates)
+
+            SupportSettingsTab()
+                .tabItem {
+                    Label("Support", systemImage: "cup.and.saucer.fill")
+                }
+                .tag(SettingsTab.support)
         }
         .frame(width: 560, height: 520)
         .preferredColorScheme(appState.preferredColorScheme)
@@ -202,21 +208,6 @@ private struct GeneralSettingsTab: View {
                     Text("Global rate limiter caps aggregate download bandwidth across all active tasks.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Support") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("HyperFetch is free and open-source.")
-                            .font(.subheadline)
-                        Text("If you find it useful, consider supporting development on Ko-fi.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Link("Support on Ko-fi ☕", destination: URL(string: "https://ko-fi.com/consultanythingtech")!)
-                        .font(.subheadline.weight(.medium))
                 }
             }
         }
@@ -736,5 +727,61 @@ private struct UpdatesSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(8)
+    }
+}
+
+// MARK: - 5. Support Tab
+
+private struct SupportSettingsTab: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "cup.and.saucer.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+            }
+
+            VStack(spacing: 6) {
+                Text("Support HyperFetch")
+                    .font(.title2.bold())
+                    .foregroundStyle(Theme.textPrimary)
+
+                Text("HyperFetch is 100% free and open-source.\nIf it saves you time or boosts your workflow, consider supporting ongoing development with a coffee!")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
+
+            Link(destination: URL(string: "https://ko-fi.com/consultanythingtech")!) {
+                HStack(spacing: 8) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Buy Us a Coffee on Ko-fi")
+                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "arrow.up.forward")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(Color.orange, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .shadow(color: Color.orange.opacity(0.3), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(.plain)
+
+            Text("Thank you for helping keep HyperFetch fast, private, and free for everyone! ❤️")
+                .font(.caption)
+                .foregroundStyle(Theme.textTertiary)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
     }
 }

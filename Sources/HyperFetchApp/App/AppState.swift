@@ -92,6 +92,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable 
     case automation = "Automation"
     case browser = "Browser"
     case updates = "Updates"
+    case support = "Support"
 
     public var id: String { rawValue }
 }
