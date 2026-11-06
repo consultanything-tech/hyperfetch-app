@@ -68,6 +68,19 @@ private struct GeneralSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("List View Style", selection: $appState.viewMode) {
+                        ForEach(DownloadListViewMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.iconName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(viewModeDescription(for: appState.viewMode))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("System Startup") {
@@ -204,6 +217,15 @@ private struct GeneralSettingsTab: View {
             return "Obsidian Sequoia theme optimized for low-light environments."
         case .light:
             return "Clean Apple native light appearance."
+        }
+    }
+
+    private func viewModeDescription(for mode: DownloadListViewMode) -> String {
+        switch mode {
+        case .comfortable:
+            return "Default cards with file format badges, dual-layer progress bar, and metrics strip."
+        case .compact:
+            return "High-density row list maximizing vertical screen real estate for large queues."
         }
     }
 

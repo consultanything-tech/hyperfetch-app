@@ -573,7 +573,7 @@ public struct DownloadRowView: View {
     }
 }
 
-private struct DragCompletedModifier: ViewModifier {
+struct DragCompletedModifier: ViewModifier {
     let task: DownloadTaskModel
 
     func body(content: Content) -> some View {

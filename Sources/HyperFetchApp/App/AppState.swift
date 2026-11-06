@@ -113,6 +113,21 @@ public enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Presentation style for the download tasks list.
+public enum DownloadListViewMode: String, CaseIterable, Identifiable, Sendable {
+    case comfortable = "Comfortable" // Default card view
+    case compact = "Compact"         // High-density compact row view
+
+    public var id: String { rawValue }
+
+    public var iconName: String {
+        switch self {
+        case .comfortable: return "rectangle.grid.1x2"
+        case .compact: return "list.bullet"
+        }
+    }
+}
+
 /// Central application state managing download tasks, user selections, and system integrations.
 @MainActor
 public final class AppState: ObservableObject {
@@ -148,6 +163,11 @@ public final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
             applyAppearance()
+        }
+    }
+    @Published public var viewMode: DownloadListViewMode {
+        didSet {
+            UserDefaults.standard.set(viewMode.rawValue, forKey: Self.viewModeKey)
         }
     }
 
@@ -208,6 +228,7 @@ public final class AppState: ObservableObject {
     private static let defaultChunkCountKey = "com.hyperfetch.defaultChunkCount"
     private static let sortOptionKey = "com.hyperfetch.sortOption"
     private static let appearanceModeKey = "com.hyperfetch.appearanceMode"
+    private static let viewModeKey = "com.hyperfetch.viewMode"
     private static let maxConcurrentDownloadsKey = "com.hyperfetch.maxConcurrentDownloads"
     private static let speedLimitPresetKey = "com.hyperfetch.speedLimitPreset"
     private static let autoCaptureClipboardKey = "com.hyperfetch.autoCaptureClipboard"
@@ -418,6 +439,13 @@ public final class AppState: ObservableObject {
             self.appearanceMode = mode
         } else {
             self.appearanceMode = .system
+        }
+
+        if let savedViewMode = UserDefaults.standard.string(forKey: Self.viewModeKey),
+           let mode = DownloadListViewMode(rawValue: savedViewMode) {
+            self.viewMode = mode
+        } else {
+            self.viewMode = .comfortable
         }
 
         let speedBytes = initialSpeed.bytesPerSecond

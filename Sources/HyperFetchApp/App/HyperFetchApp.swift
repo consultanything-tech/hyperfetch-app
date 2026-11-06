@@ -175,6 +175,21 @@ struct HyperFetchApp: App {
                         }
                     }
                 }
+
+                Menu("List View Style") {
+                    ForEach(DownloadListViewMode.allCases) { mode in
+                        Button {
+                            appState.viewMode = mode
+                        } label: {
+                            HStack {
+                                Text(mode.rawValue)
+                                if appState.viewMode == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             CommandGroup(replacing: .help) {
@@ -262,6 +277,21 @@ struct HyperFetchApp: App {
                         HStack {
                             Text(mode.rawValue)
                             if appState.appearanceMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("List View Style") {
+                ForEach(DownloadListViewMode.allCases) { mode in
+                    Button {
+                        appState.viewMode = mode
+                    } label: {
+                        HStack {
+                            Text(mode.rawValue)
+                            if appState.viewMode == mode {
                                 Image(systemName: "checkmark")
                             }
                         }

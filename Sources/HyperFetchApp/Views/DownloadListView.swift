@@ -263,15 +263,28 @@ public struct DownloadListView: View {
 
     private var taskCardsScrollView: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(spacing: 12) {
-                ForEach(appState.filteredTasks) { task in
-                    DownloadRowView(task: task)
-                        .contextMenu {
-                            rowContextMenu(for: task)
-                        }
+            if appState.viewMode == .compact {
+                LazyVStack(spacing: 2) {
+                    ForEach(appState.filteredTasks) { task in
+                        CompactDownloadRowView(task: task)
+                            .contextMenu {
+                                rowContextMenu(for: task)
+                            }
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(appState.filteredTasks) { task in
+                        DownloadRowView(task: task)
+                            .contextMenu {
+                                rowContextMenu(for: task)
+                            }
+                    }
+                }
+                .padding(16)
             }
-            .padding(16)
         }
     }
 

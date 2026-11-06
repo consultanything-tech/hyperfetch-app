@@ -1,0 +1,388 @@
+//
+//  CompactDownloadRowView.swift
+//  HyperFetchApp
+//
+//  High-density compact row view maximizing vertical space efficiency.
+//
+
+import AppKit
+import SwiftUI
+import UniformTypeIdentifiers
+import DownloadKit
+
+/// Dedicated high-density row view (~36pt height) representing an accelerated download task.
+public struct CompactDownloadRowView: View {
+    public let task: DownloadTaskModel
+    @EnvironmentObject private var appState: AppState
+
+    @ViewState private var isHovered: Bool = false
+    @ViewState private var isActionHovered: Bool = false
+    @ViewState private var isFinderHovered: Bool = false
+    @ViewState private var isMoreHovered: Bool = false
+
+    public init(task: DownloadTaskModel) {
+        self.task = task
+    }
+
+    public var body: some View {
+        let isSelected = appState.selectedTaskIDs.contains(task.id)
+
+        HStack(alignment: .center, spacing: 8) {
+            // Leading selection checkbox
+            checkboxView(isSelected: isSelected)
+
+            // Compact file format badge squircle
+            fileFormatBadge
+
+            // Filename and verification indicator
+            filenameView
+
+            Spacer(minLength: 12)
+
+            // Inline mini progress bar
+            if showProgressBar {
+                miniProgressBar
+            }
+
+            // Metrics / Status text
+            statusAndMetricsView
+                .frame(minWidth: 120, alignment: .trailing)
+
+            // Trailing compact action buttons
+            compactActionButtons
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.2 : 0.8)
+        )
+        .onHover { isHovered = $0 }
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .onTapGesture {
+            appState.selectedTaskId = task.id
+            if NSEvent.modifierFlags.contains(.command) {
+                appState.toggleSelection(id: task.id)
+            } else if !appState.selectedTaskIDs.contains(task.id) {
+                appState.selectedTaskIDs = [task.id]
+            }
+        }
+        .onTapGesture(count: 2) {
+            if task.status == .completed {
+                appState.openFile(task: task)
+            } else {
+                appState.togglePause(id: task.id)
+            }
+        }
+        .modifier(DragCompletedModifier(task: task))
+    }
+
+    // MARK: - Subviews
+
+    private func checkboxView(isSelected: Bool) -> some View {
+        Button {
+            appState.toggleSelection(id: task.id)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .stroke(isSelected ? Theme.accent : Theme.cardBorder.opacity(2.0), lineWidth: 1.2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                            .fill(isSelected ? Theme.accent : Color.white.opacity(0.001))
+                    )
+                    .frame(width: 14, height: 14)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .help(isSelected ? "Deselect" : "Select")
+        .accessibilityLabel(isSelected ? "Deselect \(task.filename)" : "Select \(task.filename)")
+    }
+
+    private var fileFormatBadge: some View {
+        let ext = (task.filename as NSString).pathExtension
+        let style = Theme.fileBadge(for: ext)
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [style.gradientTop, style.gradientBottom],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(style.borderColor, lineWidth: 0.8)
+                )
+
+            Image(systemName: style.systemIcon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(style.tintColor)
+        }
+        .frame(width: 24, height: 24)
+        .help(style.label)
+    }
+
+    private var filenameView: some View {
+        HStack(spacing: 5) {
+            Text(task.filename)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(task.filename)
+
+            if task.status == .completed {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.success)
+                    .help("Integrity Verified")
+            }
+        }
+    }
+
+    private var showProgressBar: Bool {
+        switch task.status {
+        case .downloading, .probing, .paused:
+            return true
+        case .completed, .failed, .idle:
+            return false
+        }
+    }
+
+    private var miniProgressBar: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Theme.canvasBackground)
+                .overlay(
+                    Capsule()
+                        .stroke(Theme.cardBorder, lineWidth: 0.8)
+                )
+                .frame(width: 70, height: 4)
+
+            let fillRatio = max(0.0, min(1.0, task.progress))
+            let fillWidth = max(0.0, min(70.0, 70.0 * CGFloat(fillRatio)))
+
+            Capsule()
+                .fill(progressGradient)
+                .frame(width: fillWidth, height: 4)
+                .animation(.spring(), value: task.progress)
+        }
+        .frame(width: 70, height: 4)
+    }
+
+    private var progressGradient: LinearGradient {
+        switch task.status {
+        case .downloading:
+            return LinearGradient(
+                colors: [Color.blue, Color(hex: 0x38bdf8), Color(hex: 0x818cf8)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .probing:
+            return LinearGradient(
+                colors: [Color.purple, Color(hex: 0xa855f7)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .completed:
+            return LinearGradient(
+                colors: [Theme.success, Color(hex: 0x47e266)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .paused:
+            return LinearGradient(
+                colors: [Theme.warning, Color(hex: 0xfbbf24)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .failed:
+            return LinearGradient(
+                colors: [Theme.critical, Color.pink],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .idle:
+            return LinearGradient(
+                colors: [Theme.textTertiary.opacity(0.4), Theme.textTertiary.opacity(0.6)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
+
+    private var statusAndMetricsView: some View {
+        Group {
+            switch task.status {
+            case .downloading:
+                HStack(spacing: 4) {
+                    Text(AppState.formatSpeed(task.bytesPerSecond))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.success)
+                    Text("•")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.textTertiary)
+                    Text("\(Int(task.progress * 100))%")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.accent)
+                }
+            case .probing:
+                Text("Probing...")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.purple)
+            case .paused:
+                Text("Paused (\(Int(task.progress * 100))%)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.warning)
+            case .completed:
+                let size = AppState.formatBytes(task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes)
+                Text("Completed • \(size)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+            case .failed(let reason):
+                HStack(spacing: 3) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("Failed")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(Theme.critical)
+                .help(reason)
+            case .idle:
+                Text("Queued")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var compactActionButtons: some View {
+        HStack(spacing: 3) {
+            // Pause / Resume / Open button
+            switch task.status {
+            case .downloading, .probing:
+                Button {
+                    appState.pause(id: task.id)
+                } label: {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Pause Download")
+
+            case .paused, .idle, .failed:
+                Button {
+                    appState.resume(id: task.id)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 20, height: 20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Resume Download")
+
+            case .completed:
+                Button {
+                    appState.openFile(task: task)
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 20, height: 20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isActionHovered = $0 }
+                .help("Open File")
+            }
+
+            // Show in Finder button
+            Button {
+                appState.openInFinder(task: task)
+            } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 20, height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isFinderHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onHover { isFinderHovered = $0 }
+            .help("Show in Finder")
+
+            // More ellipsis Menu (Copy Link, Remove, Delete)
+            Menu {
+                Button("Copy Download Link") {
+                    appState.copyDownloadLink(task: task)
+                }
+                Divider()
+                Button("Remove from List") {
+                    appState.remove(id: task.id, deleteFile: false)
+                }
+                Button("Delete File from Disk...", role: .destructive) {
+                    appState.promptDelete(task: task)
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 20, height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isMoreHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                    )
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .contentShape(Rectangle())
+            .onHover { isMoreHovered = $0 }
+            .help("More Options")
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}

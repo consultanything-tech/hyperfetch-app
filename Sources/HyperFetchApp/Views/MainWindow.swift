@@ -143,6 +143,19 @@ public struct MainWindow: View {
             }
             .help("Sort Downloads By (\(appState.sortOption.rawValue))")
 
+            // View Mode Segmented Picker
+            Picker("View Mode", selection: $appState.viewMode) {
+                Image(systemName: "rectangle.grid.1x2")
+                    .tag(DownloadListViewMode.comfortable)
+                    .help("Default Card View")
+                Image(systemName: "list.bullet")
+                    .tag(DownloadListViewMode.compact)
+                    .help("Compact List View")
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .help("Switch View Style (Comfortable / Compact)")
+
             // Batch Actions for Selected Items
             if !appState.selectedTaskIDs.isEmpty {
                 Menu {
