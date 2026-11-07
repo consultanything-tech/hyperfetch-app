@@ -138,14 +138,23 @@ public enum Theme {
         light: NSColor(hex: 0x007AFF)
     )
 
-    /// Sequoia Green (success, 2xx, optimal).
-    public static let success = Color(hex: 0x30d158)
+    /// Sequoia Green (success, 2xx, optimal) - WCAG high-contrast dynamic.
+    public static let success = Color.dynamic(
+        dark: NSColor(hex: 0x30d158),
+        light: NSColor(hex: 0x248a3d)
+    )
 
-    /// Sequoia Amber (warnings, paused, redirects).
-    public static let warning = Color(hex: 0xff9f0a)
+    /// Sequoia Amber (warnings, paused, redirects) - WCAG high-contrast dynamic.
+    public static let warning = Color.dynamic(
+        dark: NSColor(hex: 0xff9f0a),
+        light: NSColor(hex: 0xb25e00)
+    )
 
-    /// Sequoia Crimson (errors, critical, failed).
-    public static let critical = Color(hex: 0xff453a)
+    /// Sequoia Crimson (errors, critical, failed) - WCAG high-contrast dynamic.
+    public static let critical = Color.dynamic(
+        dark: NSColor(hex: 0xff453a),
+        light: NSColor(hex: 0xd70015)
+    )
 
     // MARK: - File Format Badges & Colors
 
@@ -246,6 +255,22 @@ public struct FileBadgeStyle {
     public let gradientBottom: Color
     public let tintColor: Color
     public let borderColor: Color
+}
+
+// MARK: - Button Styles
+
+public struct TactileButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+public extension ButtonStyle where Self == TactileButtonStyle {
+    static var tactile: TactileButtonStyle { TactileButtonStyle() }
 }
 
 // MARK: - Color & NSColor Helpers

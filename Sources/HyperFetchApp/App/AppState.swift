@@ -629,6 +629,66 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Selects the next task in the filtered tasks list (arrow navigation).
+    public func selectNextTask() {
+        guard !filteredTasks.isEmpty else { return }
+        guard let currentId = selectedTaskId,
+              let currentIndex = filteredTasks.firstIndex(where: { $0.id == currentId }) else {
+            selectedTaskIDs = [filteredTasks[0].id]
+            return
+        }
+        let nextIndex = min(currentIndex + 1, filteredTasks.count - 1)
+        selectedTaskIDs = [filteredTasks[nextIndex].id]
+    }
+
+    /// Selects the previous task in the filtered tasks list (arrow navigation).
+    public func selectPreviousTask() {
+        guard !filteredTasks.isEmpty else { return }
+        guard let currentId = selectedTaskId,
+              let currentIndex = filteredTasks.firstIndex(where: { $0.id == currentId }) else {
+            selectedTaskIDs = [filteredTasks[0].id]
+            return
+        }
+        let prevIndex = max(0, currentIndex - 1)
+        selectedTaskIDs = [filteredTasks[prevIndex].id]
+    }
+
+    /// Selects a contiguous range of tasks from the anchor/selected task to the target task.
+    public func selectRange(to targetId: UUID) {
+        guard let anchorId = selectedTaskId,
+              let anchorIndex = filteredTasks.firstIndex(where: { $0.id == anchorId }),
+              let targetIndex = filteredTasks.firstIndex(where: { $0.id == targetId }) else {
+            selectedTaskIDs = [targetId]
+            return
+        }
+        let start = min(anchorIndex, targetIndex)
+        let end = max(anchorIndex, targetIndex)
+        let rangeTasks = filteredTasks[start...end]
+        selectedTaskIDs.formUnion(rangeTasks.map(\.id))
+    }
+
+    /// Copies the local destination file path of a task to the macOS pasteboard.
+    public func copyFilePath(task: DownloadTaskModel) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(task.destinationURL.path, forType: .string)
+    }
+
+    /// Reveals or previews a completed task file in Finder.
+    public func quickLookFile(task: DownloadTaskModel) {
+        NSWorkspace.shared.activateFileViewerSelecting([task.destinationURL])
+    }
+
+    /// Restarts a download task cleanly from byte 0.
+    public func restartTask(id: UUID) {
+        guard let task = tasks.first(where: { $0.id == id }) else { return }
+        let url = task.url
+        let filename = task.filename
+        let headers = task.headers
+        let chunkCount = task.preferredChunkCount
+        remove(id: id, deleteFile: true)
+        addTask(url: url, filename: filename, headers: headers, chunkCount: chunkCount, autoStart: true)
+    }
+
     /// Tasks filtered by the current sidebar selection (status filter or category), search query, and sort option.
     public var filteredTasks: [DownloadTaskModel] {
         if let cached = _cachedFilteredTasks {

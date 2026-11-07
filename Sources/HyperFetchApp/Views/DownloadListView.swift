@@ -13,6 +13,7 @@ import DownloadKit
 /// Main list displaying filtered download tasks as cards with toolbar controls and empty state handling.
 public struct DownloadListView: View {
     @EnvironmentObject private var appState: AppState
+    @ViewState private var isDropTargeted: Bool = false
 
     public init() {}
 
@@ -39,8 +40,13 @@ public struct DownloadListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvasBackground)
-        .onDrop(of: [.url, .utf8PlainText], isTargeted: nil) { providers in
+        .onDrop(of: [.url, .utf8PlainText], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
+        }
+        .overlay {
+            if isDropTargeted {
+                dragDropTargetOverlay
+            }
         }
         .confirmationDialog(
             "Delete Download?",
@@ -349,8 +355,22 @@ public struct DownloadListView: View {
             appState.openInFinder(task: task)
         }
 
+        if task.status == .completed {
+            Button("Quick Look File") {
+                appState.quickLookFile(task: task)
+            }
+        }
+
         Button("Copy Download Link") {
             appState.copyDownloadLink(task: task)
+        }
+
+        Button("Copy File Path") {
+            appState.copyFilePath(task: task)
+        }
+
+        Button("Restart Download") {
+            appState.restartTask(id: task.id)
         }
 
         Divider()
@@ -362,6 +382,44 @@ public struct DownloadListView: View {
         Button("Delete File from Disk...", role: .destructive) {
             appState.promptDelete(task: task)
         }
+    }
+
+    // MARK: - Drag and Drop Overlay
+
+    private var dragDropTargetOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+                .background(.ultraThinMaterial)
+
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.accent.opacity(0.2))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: "arrow.down.doc.fill")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                }
+
+                Text("Drop Link to Download")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+
+                Text("Multi-chunk parallel acceleration will start automatically")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(28)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+            )
+            .shadow(color: Theme.accent.opacity(0.25), radius: 20)
+        }
+        .transition(.opacity)
+        .animation(.easeOut(duration: 0.2), value: isDropTargeted)
     }
 
     // MARK: - Empty State

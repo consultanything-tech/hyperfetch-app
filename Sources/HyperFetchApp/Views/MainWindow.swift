@@ -17,6 +17,7 @@ public struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openSettings) private var openSettings
     @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
+    @ViewState private var copiedTaskId: UUID? = nil
 
     public init() {}
 
@@ -239,6 +240,16 @@ public struct MainWindow: View {
             }
             .keyboardShortcut(.escape, modifiers: [])
 
+            Button("Select Next") {
+                appState.selectNextTask()
+            }
+            .keyboardShortcut(.downArrow, modifiers: [])
+
+            Button("Select Previous") {
+                appState.selectPreviousTask()
+            }
+            .keyboardShortcut(.upArrow, modifiers: [])
+
             Button("Toggle Pause") {
                 appState.togglePauseSelected()
             }
@@ -444,13 +455,32 @@ public struct MainWindow: View {
 
             VStack(spacing: 8) {
                 metadataRow(label: "Source URL:") {
-                    Text(task.url.absoluteString)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(Theme.accent)
-                        .onTapGesture {
+                    HStack(spacing: 5) {
+                        Text(task.url.absoluteString)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(Theme.accent)
+
+                        Button {
                             appState.copyDownloadLink(task: task)
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                copiedTaskId = task.id
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation(.easeIn(duration: 0.15)) {
+                                    if copiedTaskId == task.id {
+                                        copiedTaskId = nil
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: copiedTaskId == task.id ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundStyle(copiedTaskId == task.id ? Theme.success : Theme.textTertiary)
                         }
+                        .buttonStyle(.tactile)
+                        .help("Copy Source URL")
+                    }
                 }
 
                 metadataRow(label: "Save Path:") {
@@ -581,24 +611,166 @@ public struct MainWindow: View {
     }
 
     private var noTaskSelectedView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "sidebar.trailing")
-                .font(.system(size: 32))
-                .foregroundStyle(Theme.textTertiary.opacity(0.5))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Header
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.accent.opacity(0.12))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "gauge.with.dots.needle.bottom.50percent")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.accent)
+                    }
 
-            Text("No Download Selected")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Queue Telemetry")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Live Aggregate Monitor")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
 
-            Text("Select an item in the queue to inspect real-time connection segments and file metadata.")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 260)
+                    Spacer()
+                }
+                .padding(12)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+
+                // Network & Concurrency
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Performance")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+
+                    VStack(spacing: 8) {
+                        metadataRow(label: "Current Speed:") {
+                            Text(appState.formattedTotalSpeed)
+                                .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(appState.totalDownloadSpeed > 0 ? Theme.success : Theme.textSecondary)
+                        }
+
+                        metadataRow(label: "Active Sockets:") {
+                            Text("\(appState.activeSocketCount) open")
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+
+                        metadataRow(label: "Engine Memory:") {
+                            Text("\(appState.allocatedMemoryMB) MB")
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+
+                        metadataRow(label: "Bandwidth Cap:") {
+                            Text(appState.speedLimitPreset.rawValue)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+
+                // Queue Status
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Queue Status")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+
+                    VStack(spacing: 8) {
+                        metadataRow(label: "Total Items:") {
+                            Text("\(appState.tasks.count)")
+                                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+
+                        metadataRow(label: "Downloading:") {
+                            Text("\(appState.activeDownloadCount)")
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.accent)
+                        }
+
+                        metadataRow(label: "Completed:") {
+                            Text("\(appState.completedDownloadCount)")
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.success)
+                        }
+
+                        metadataRow(label: "Paused:") {
+                            Text("\(appState.pausedDownloadCount)")
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.warning)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+
+                // Storage
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Storage")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+
+                    VStack(spacing: 8) {
+                        metadataRow(label: "Today's Total:") {
+                            Text(appState.formattedTotalDownloadedToday)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+
+                        metadataRow(label: "Disk Free:") {
+                            Text(appState.availableDiskSpaceString)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.success)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+
+                // Helper note
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.tap")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textTertiary)
+                    Text("Select any download to inspect live multi-stream chunk progress and HTTP connection headers.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(16)
         }
         .frame(minWidth: 320)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
         .background(Theme.inspectorBackground)
     }
 }

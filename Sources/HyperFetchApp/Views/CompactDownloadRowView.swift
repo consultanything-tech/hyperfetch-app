@@ -64,11 +64,12 @@ public struct CompactDownloadRowView: View {
         .onHover { isHovered = $0 }
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onTapGesture {
-            appState.selectedTaskId = task.id
-            if NSEvent.modifierFlags.contains(.command) {
+            if NSEvent.modifierFlags.contains(.shift) {
+                appState.selectRange(to: task.id)
+            } else if NSEvent.modifierFlags.contains(.command) {
                 appState.toggleSelection(id: task.id)
-            } else if !appState.selectedTaskIDs.contains(task.id) {
-                appState.selectedTaskIDs = [task.id]
+            } else {
+                appState.selectedTaskId = task.id
             }
         }
         .onTapGesture(count: 2) {
@@ -180,7 +181,7 @@ public struct CompactDownloadRowView: View {
             Capsule()
                 .fill(progressGradient)
                 .frame(width: fillWidth, height: 4)
-                .animation(.spring(), value: task.progress)
+                .animation(.linear(duration: 0.25), value: task.progress)
         }
         .frame(width: 70, height: 4)
     }
@@ -291,7 +292,7 @@ public struct CompactDownloadRowView: View {
                         )
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .contentShape(Rectangle())
                 .onHover { isActionHovered = $0 }
                 .help("Pause Download")
@@ -310,7 +311,7 @@ public struct CompactDownloadRowView: View {
                         )
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .contentShape(Rectangle())
                 .onHover { isActionHovered = $0 }
                 .help("Resume Download")
@@ -329,7 +330,7 @@ public struct CompactDownloadRowView: View {
                         )
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .contentShape(Rectangle())
                 .onHover { isActionHovered = $0 }
                 .help("Open File")
@@ -349,7 +350,7 @@ public struct CompactDownloadRowView: View {
                     )
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tactile)
             .contentShape(Rectangle())
             .onHover { isFinderHovered = $0 }
             .help("Show in Finder")
