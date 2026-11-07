@@ -50,7 +50,11 @@ public actor JSONStatePersister: StatePersisting {
         }
 
         let data = try makeEncoder().encode(tasks)
-        try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+        do {
+            try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+        } catch {
+            try data.write(to: storageURL, options: [.atomic])
+        }
         try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storageURL.path)
     }
 

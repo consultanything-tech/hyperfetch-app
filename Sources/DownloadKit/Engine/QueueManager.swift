@@ -134,8 +134,14 @@ public actor QueueManager {
         guard let idx = taskQueue.firstIndex(where: { $0.id == id }) else { return }
         guard taskQueue[idx].status != .completed else { return }
 
-        if case .failed = taskQueue[idx].status {
+        if case .failed(let reason) = taskQueue[idx].status {
             taskQueue[idx].status = .idle
+            if reason.contains("206") || reason.contains("range") || reason.contains("Range") || !taskQueue[idx].supportsRange {
+                taskQueue[idx].supportsRange = false
+                taskQueue[idx].chunks = []
+                taskQueue[idx].downloadedBytes = 0
+            }
+            try? await statePersister?.saveTask(taskQueue[idx])
         }
 
         resumedTaskIDs.insert(id)

@@ -481,4 +481,66 @@ struct QueueManagerTests {
         let queuedTask = await queueManager.task(for: task.id)
         #expect(queuedTask?.preferredChunkCount == 16)
     }
+
+    // MARK: - Test 9: Resuming Failed Range Task Resets supportsRange and Chunks
+
+    @Test("Resuming a failed range task resets supportsRange to false and clears failed chunk states")
+    func testResumeFailedRangeTaskResetsSupportsRangeAndChunks() async throws {
+        QueueMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let stateURL = tempDir.appendingPathComponent("state.json")
+        let persister = JSONStatePersister(storageURL: stateURL)
+
+        let engine = DownloadEngine(session: session, statePersister: persister)
+        let queueManager = QueueManager(engine: engine, statePersister: persister, maxConcurrentDownloads: 1)
+
+        // Block the single concurrency slot with an active slow download
+        let blockingURL = URL(string: "https://queue.example.com/blocking.bin")!
+        registerMockFile(url: blockingURL, size: 4096, delay: 0.5)
+        let blockingDest = tempDir.appendingPathComponent("blocking.bin")
+        try await queueManager.addTask(url: blockingURL, destinationURL: blockingDest, autoStart: true)
+        #expect(await queueManager.activeCount == 1)
+
+        let testURL = URL(string: "https://queue.example.com/failed_range.zip")!
+        let dest = tempDir.appendingPathComponent("failed_range.zip")
+
+        let taskId = UUID()
+        var failedTask = DownloadTaskModel(
+            id: taskId,
+            url: testURL,
+            destinationURL: dest,
+            status: .failed(reason: "Server responded with HTTP 200 instead of 206 Partial Content for range request.")
+        )
+        failedTask.supportsRange = true
+        failedTask.downloadedBytes = 5000
+        failedTask.chunks = [
+            Chunk(index: 0, startOffset: 0, endOffset: 2500, bytesDownloaded: 1000, status: .downloading),
+            Chunk(index: 1, startOffset: 2501, endOffset: 5000, bytesDownloaded: 0, status: .failed("Server responded with HTTP 200 instead of 206 Partial Content"))
+        ]
+
+        try await persister.saveTask(failedTask)
+        _ = try await queueManager.restoreTasks()
+
+        let restored = await queueManager.task(for: taskId)
+        #expect(restored?.status == .failed(reason: "Server responded with HTTP 200 instead of 206 Partial Content for range request."))
+        #expect(restored?.supportsRange == true)
+        #expect(restored?.chunks.count == 2)
+        #expect(restored?.downloadedBytes == 5000)
+
+        // Resume the failed task
+        try await queueManager.resumeTask(id: taskId)
+
+        let resumedTask = await queueManager.task(for: taskId)
+        #expect(resumedTask != nil)
+        #expect(resumedTask?.status == .idle)
+        #expect(resumedTask?.supportsRange == false)
+        #expect(resumedTask?.chunks.isEmpty == true)
+        #expect(resumedTask?.downloadedBytes == 0)
+
+        // Clean up blocking task
+        await queueManager.pauseAll()
+    }
 }

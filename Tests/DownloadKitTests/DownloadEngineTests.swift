@@ -812,4 +812,71 @@ struct DownloadEngineTests {
         #expect(updatedTask2.category == .archives)
         #expect(updatedTask2.destinationURL == customDir.appendingPathComponent("archive.zip"))
     }
+
+    // MARK: - Test: Single-Stream Fallback when Server Returns 200 for Range Requests
+
+    @Test("DownloadEngine seamlessly falls back to single-stream when server returns 200 OK for range request")
+    func testDownloadEngineFallsBackToSingleStreamWhenServerReturns200ForRange() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/Doc5959234250.zip")!
+        let totalSize = 1_000_000 // 1,000,000 bytes
+        let expectedData = Data((0..<totalSize).map { UInt8(($0 * 17 + 5) & 0xFF) })
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"Doc5959234250.zip\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                // Backend dynamic servlet ignores Range headers and returns HTTP 200 with full payload
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Content-Type": "application/zip"
+                    ]
+                )!
+                return (response, expectedData)
+            }
+            fatalError("Unexpected HTTP method \(request.httpMethod ?? "")")
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("Doc5959234250.zip")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 4,
+            minChunkSize: 128 * 1024
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.completedAt != nil)
+        #expect(completedTask.downloadedBytes == Int64(totalSize))
+        #expect(completedTask.progress == 1.0)
+        #expect(completedTask.supportsRange == false)
+
+        let diskData = try Data(contentsOf: destinationURL)
+        #expect(diskData.count == totalSize)
+        #expect(diskData == expectedData)
+    }
 }

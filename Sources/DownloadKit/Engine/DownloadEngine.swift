@@ -185,14 +185,123 @@ public actor DownloadEngine {
         progressHandler?(currentTask)
         try? await statePersister?.saveTask(currentTask)
 
-        speedTrackers[currentTask.id] = SpeedTracker()
+        do {
+            try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
+        } catch is CancellationError {
+            try? await writer.sync()
+            await writer.close()
+
+            if let latest = taskStore[currentTask.id] {
+                currentTask = latest
+            }
+            currentTask.status = .paused
+            currentTask.bytesPerSecond = 0.0
+            taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
+            progressHandler?(currentTask)
+            throw CancellationError()
+        } catch {
+            if isRangeNotSupportedError(error) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
+                print("[DownloadEngine] Server does not support range requests for task \(currentTask.id) (status 200 returned). Seamlessly falling back to direct single-stream download.")
+                currentTask.supportsRange = false
+                currentTask.downloadedBytes = 0
+                currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: currentTask.totalBytes > 0 ? currentTask.totalBytes - 1 : -1)]
+                taskStore[currentTask.id] = currentTask
+                try? await writer.allocate(totalBytes: 0)
+                try? await statePersister?.saveTask(currentTask)
+                progressHandler?(currentTask)
+
+                do {
+                    try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
+                } catch is CancellationError {
+                    try? await writer.sync()
+                    await writer.close()
+
+                    if let latest = taskStore[currentTask.id] {
+                        currentTask = latest
+                    }
+                    currentTask.status = .paused
+                    currentTask.bytesPerSecond = 0.0
+                    taskStore[currentTask.id] = currentTask
+                    try? await statePersister?.saveTask(currentTask)
+                    progressHandler?(currentTask)
+                    throw CancellationError()
+                } catch {
+                    try? await writer.sync()
+                    await writer.close()
+
+                    currentTask.status = .failed(reason: error.localizedDescription)
+                    currentTask.bytesPerSecond = 0.0
+                    taskStore[currentTask.id] = currentTask
+                    try? await statePersister?.saveTask(currentTask)
+                    progressHandler?(currentTask)
+                    throw error
+                }
+            } else {
+                try? await writer.sync()
+                await writer.close()
+
+                currentTask.status = .failed(reason: error.localizedDescription)
+                currentTask.bytesPerSecond = 0.0
+                taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask)
+                progressHandler?(currentTask)
+                throw error
+            }
+        }
+
+        if let latestTask = taskStore[currentTask.id] {
+            currentTask = latestTask
+        }
+
+        try await writer.sync()
+        await writer.close()
+
+        // Ensure all chunks that reached expected length are clamped and marked completed
+        for i in 0..<currentTask.chunks.count {
+            if currentTask.chunks[i].expectedLength > 0 && currentTask.chunks[i].bytesDownloaded >= currentTask.chunks[i].expectedLength {
+                currentTask.chunks[i].bytesDownloaded = currentTask.chunks[i].expectedLength
+                currentTask.chunks[i].status = .completed
+            } else if currentTask.chunks[i].endOffset == -1 {
+                currentTask.chunks[i].status = .completed
+            }
+        }
+
+        if currentTask.totalBytes > 0 {
+            currentTask.downloadedBytes = currentTask.totalBytes
+        } else if currentTask.downloadedBytes > 0 {
+            currentTask.totalBytes = currentTask.downloadedBytes
+        }
+        currentTask.status = .completed
+        currentTask.completedAt = Date()
+        currentTask.bytesPerSecond = 0.0
+
+        // Scrub sensitive session credentials and authentication tokens upon download completion (CWE-312)
+        currentTask.headers.removeValue(forKey: "Cookie")
+        currentTask.headers.removeValue(forKey: "cookie")
+        currentTask.headers.removeValue(forKey: "Authorization")
+        currentTask.headers.removeValue(forKey: "authorization")
+
+        taskStore[currentTask.id] = currentTask
+        try? await statePersister?.saveTask(currentTask)
+        progressHandler?(currentTask)
+        return currentTask
+    }
+
+    private func executeChunks(
+        for taskId: UUID,
+        writer: any FileWriting,
+        progressHandler: (@Sendable (DownloadTaskModel) -> Void)?
+    ) async throws {
+        guard let task = taskStore[taskId] else { return }
+        speedTrackers[taskId] = SpeedTracker()
 
         let (progressStream, progressContinuation) = AsyncStream<(Int, Int64)>.makeStream()
 
         let progressTask = Task { [weak self] in
             for await (chunkIndex, delta) in progressStream {
                 await self?.recordChunkProgress(
-                    taskId: currentTask.id,
+                    taskId: taskId,
                     chunkIndex: chunkIndex,
                     delta: delta,
                     progressHandler: progressHandler
@@ -200,10 +309,10 @@ public actor DownloadEngine {
             }
         }
 
-        let downloadURL = currentTask.url
-        let taskHeaders = currentTask.headers
+        let downloadURL = task.url
+        let taskHeaders = task.headers
         let downloader = self.downloader
-        let chunksToDownload = currentTask.chunks
+        let chunksToDownload = task.chunks
 
         do {
             try await withThrowingTaskGroup(of: Chunk.self) { group in
@@ -228,7 +337,7 @@ public actor DownloadEngine {
                 }
 
                 for try await completedChunk in group {
-                    if var storedTask = taskStore[currentTask.id] {
+                    if var storedTask = taskStore[taskId] {
                         if let idx = storedTask.chunks.firstIndex(where: { $0.index == completedChunk.index }) {
                             storedTask.chunks[idx] = completedChunk
                             taskStore[storedTask.id] = storedTask
@@ -240,72 +349,26 @@ public actor DownloadEngine {
 
             progressContinuation.finish()
             _ = await progressTask.value
-
-            if let latestTask = taskStore[currentTask.id] {
-                currentTask = latestTask
-            }
-
-            try await writer.sync()
-            await writer.close()
-
-            // Ensure all chunks that reached expected length are clamped and marked completed
-            for i in 0..<currentTask.chunks.count {
-                if currentTask.chunks[i].expectedLength > 0 && currentTask.chunks[i].bytesDownloaded >= currentTask.chunks[i].expectedLength {
-                    currentTask.chunks[i].bytesDownloaded = currentTask.chunks[i].expectedLength
-                    currentTask.chunks[i].status = .completed
-                } else if currentTask.chunks[i].endOffset == -1 {
-                    currentTask.chunks[i].status = .completed
-                }
-            }
-
-            if currentTask.totalBytes > 0 {
-                currentTask.downloadedBytes = currentTask.totalBytes
-            } else if currentTask.downloadedBytes > 0 {
-                currentTask.totalBytes = currentTask.downloadedBytes
-            }
-            currentTask.status = .completed
-            currentTask.completedAt = Date()
-            currentTask.bytesPerSecond = 0.0
-
-            // Scrub sensitive session credentials and authentication tokens upon download completion (CWE-312)
-            currentTask.headers.removeValue(forKey: "Cookie")
-            currentTask.headers.removeValue(forKey: "cookie")
-            currentTask.headers.removeValue(forKey: "Authorization")
-            currentTask.headers.removeValue(forKey: "authorization")
-
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
-            return currentTask
-
-        } catch is CancellationError {
-            progressContinuation.finish()
-            progressTask.cancel()
-            try? await writer.sync()
-            await writer.close()
-
-            if let latest = taskStore[currentTask.id] {
-                currentTask = latest
-            }
-            currentTask.status = .paused
-            currentTask.bytesPerSecond = 0.0
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
-            throw CancellationError()
         } catch {
             progressContinuation.finish()
             progressTask.cancel()
-            try? await writer.sync()
-            await writer.close()
-
-            currentTask.status = .failed(reason: error.localizedDescription)
-            currentTask.bytesPerSecond = 0.0
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
             throw error
         }
+    }
+
+    private func isRangeNotSupportedError(_ error: Error) -> Bool {
+        if let chunkError = error as? ChunkDownloadError {
+            switch chunkError {
+            case .serverDoesNotSupportRange:
+                return true
+            case .httpError(let statusCode):
+                return statusCode == 416 || statusCode == 501
+            default:
+                break
+            }
+        }
+        let desc = error.localizedDescription
+        return desc.contains("206") || desc.contains("range") || desc.contains("Range")
     }
 
     private func recordChunkProgress(
