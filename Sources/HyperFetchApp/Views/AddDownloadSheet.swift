@@ -24,6 +24,11 @@ public struct AddDownloadSheet: View {
     @ViewState private var customUserAgent: String = "HyperFetch/1.0 (macOS)"
     @ViewState private var sha256Checksum: String = ""
 
+    @ViewState private var isProbing: Bool = false
+    @ViewState private var probedResult: ProbeResult? = nil
+    @ViewState private var probeErrorMessage: String? = nil
+    @ViewState private var probeTask: Task<Void, Never>? = nil
+
     private let chunkCountOptions = [1, 2, 4, 8, 16]
 
     public init() {
@@ -71,6 +76,9 @@ public struct AddDownloadSheet: View {
         }
         .frame(width: 560)
         .background(Theme.windowSurface)
+        .onChange(of: urlString) { _, newURL in
+            scheduleProbe(for: newURL)
+        }
         .onAppear {
             chunkCount = appState.defaultChunkCount
             destinationFolderURL = appState.defaultDownloadDirectoryURL
@@ -84,9 +92,15 @@ public struct AddDownloadSheet: View {
             } else {
                 autoPopulateFromClipboard()
             }
+            if !urlString.isEmpty {
+                scheduleProbe(for: urlString)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isURLFocused = true
             }
+        }
+        .onDisappear {
+            probeTask?.cancel()
         }
     }
 
@@ -232,6 +246,104 @@ public struct AddDownloadSheet: View {
                             .foregroundStyle(Theme.warning)
                     }
                 }
+            }
+
+            // MARK: - Pre-flight Link Inspection Card
+            if isProbing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text("Inspecting server capabilities and remote file size…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+            } else if let result = probedResult {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.accent)
+                        Text(result.filename)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(result.totalBytes > 0 ? AppState.formatBytes(result.totalBytes) : "Dynamic Stream")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    HStack(spacing: 6) {
+                        if result.supportsRange {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 9))
+                                Text("Multi-Chunk Accelerated")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                            }
+                            .foregroundStyle(Theme.success)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.success.opacity(0.12), in: Capsule())
+                        } else {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.circle")
+                                    .font(.system(size: 9))
+                                Text("Single Stream (No Range Support)")
+                                    .font(.system(size: 10.5, weight: .medium))
+                            }
+                            .foregroundStyle(Theme.warning)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.warning.opacity(0.12), in: Capsule())
+                        }
+
+                        Spacer()
+
+                        if !customFilename.isEmpty && customFilename != result.filename {
+                            Button {
+                                customFilename = result.filename
+                            } label: {
+                                Text("Use Server Name")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
+            } else if let err = probeErrorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                    Text("Pre-flight inspection skipped: \(err). Will connect directly on download.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             }
         }
     }
@@ -650,6 +762,58 @@ public struct AddDownloadSheet: View {
             autoStart: autoStart
         )
 
+        probeTask?.cancel()
         dismiss()
+    }
+
+    private func scheduleProbe(for rawURL: String) {
+        probeTask?.cancel()
+        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            probedResult = nil
+            probeErrorMessage = nil
+            isProbing = false
+            return
+        }
+
+        guard let validURL = URL(string: trimmed),
+              let scheme = validURL.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              let host = validURL.host,
+              !host.isEmpty else {
+            probedResult = nil
+            probeErrorMessage = nil
+            isProbing = false
+            return
+        }
+
+        isProbing = true
+        probeErrorMessage = nil
+
+        probeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
+
+            let probe = HTTPRangeProbe(session: .shared, timeoutInterval: 12.0)
+            do {
+                let res = try await probe.probe(url: validURL)
+                if !Task.isCancelled {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.probedResult = res
+                        self.isProbing = false
+                        if self.customFilename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.customFilename = res.filename
+                        }
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.isProbing = false
+                        self.probeErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        }
     }
 }

@@ -223,101 +223,9 @@ struct HyperFetchApp: App {
 
         // Live status bar / menu bar companion
         MenuBarExtra {
-            Button("Open HyperFetch") {
-                MainWindowDelegate.shared.reopenMainWindow()
-            }
-
-            Divider()
-
-            Text("Active: \(appState.activeDownloadCount)  •  \(appState.formattedTotalSpeed)")
-
-            if appState.activeDownloadCount > 0 {
-                Divider()
-                ForEach(appState.tasks.filter { $0.status == .downloading || $0.status == .probing }.prefix(3)) { task in
-                    Button("⏸ \(task.filename) (\(Int(task.progress * 100))% • \(AppState.formatSpeed(task.bytesPerSecond)))") {
-                        appState.pause(id: task.id)
-                    }
-                }
-            } else {
-                ForEach(appState.tasks.filter { $0.status == .paused }.prefix(2)) { task in
-                    Button("▶ \(task.filename) (\(Int(task.progress * 100))%)") {
-                        appState.resume(id: task.id)
-                    }
-                }
-            }
-
-            Divider()
-
-            Button("Pause All") {
-                appState.pauseAll()
-            }
-            .disabled(appState.activeDownloadCount == 0)
-
-            Button("Resume All") {
-                appState.resumeAll()
-            }
-            .disabled(appState.pausedDownloadCount == 0)
-
-            Divider()
-
-            Button("Check for Updates...") {
-                MainWindowDelegate.shared.reopenMainWindow()
-                versionManager.checkForUpdates(userInitiated: true)
-            }
-
-            Button("About HyperFetch") {
-                MainWindowDelegate.shared.reopenMainWindow()
-                versionManager.isAboutSheetPresented = true
-            }
-
-            Divider()
-
-            Button("Settings...") {
-                appState.openSettingsWindow(tab: .general)
-            }
-            .keyboardShortcut(",", modifiers: .command)
-
-            Menu("Appearance") {
-                ForEach(AppearanceMode.allCases) { mode in
-                    Button {
-                        appState.appearanceMode = mode
-                    } label: {
-                        HStack {
-                            Text(mode.rawValue)
-                            if appState.appearanceMode == mode {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            }
-
-            Menu("List View Style") {
-                ForEach(DownloadListViewMode.allCases) { mode in
-                    Button {
-                        appState.viewMode = mode
-                    } label: {
-                        HStack {
-                            Text(mode.rawValue)
-                            if appState.viewMode == mode {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            }
-
-            Button("Browser Integration Guide...") {
-                appState.openSettingsWindow(tab: .browser)
-            }
-
-            Divider()
-
-            Button("Quit HyperFetch") {
-                MainWindowDelegate.shared.isTerminating = true
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q")
+            MenuBarCompanionView()
+                .environmentObject(appState)
+                .environmentObject(versionManager)
         } label: {
             if appState.totalDownloadSpeed > 0 {
                 Text("↓ \(appState.formattedTotalSpeed)")
@@ -325,5 +233,6 @@ struct HyperFetchApp: App {
                 Image(systemName: "arrow.down.circle")
             }
         }
+        .menuBarExtraStyle(.window)
     }
 }

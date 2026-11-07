@@ -179,6 +179,24 @@ public struct DownloadListView: View {
 
             Spacer()
 
+            if appState.selectedTaskIDs.isEmpty && appState.hasCompletedTasks {
+                Button {
+                    appState.clearCompletedTasks()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 10))
+                        Text("Clear Finished")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.tactile)
+                .contentShape(Rectangle())
+                .help("Remove finished downloads from the list without deleting files (⌥⌘K)")
+                .keyboardShortcut("k", modifiers: [.command, .option])
+            }
+
             // Quick Batch Actions
             if !appState.selectedTaskIDs.isEmpty {
                 HStack(spacing: 6) {

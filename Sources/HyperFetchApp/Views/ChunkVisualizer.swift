@@ -166,7 +166,13 @@ public struct ChunkVisualizer: View {
                 VStack {
                     Spacer()
                     Rectangle()
-                        .fill(Color.white.opacity(0.6))
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.3), Color.white, Color.white.opacity(0.3)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .frame(height: 3)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

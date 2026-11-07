@@ -150,6 +150,10 @@ public final class AppState: ObservableObject {
     @Published public var isBridgeRunning: Bool = false
     @Published public var bridgeListeningPort: UInt16 = 31415
     @Published public var isAddSheetPresented: Bool = false
+    public var isAddDownloadSheetPresented: Bool {
+        get { isAddSheetPresented }
+        set { isAddSheetPresented = newValue }
+    }
     @Published public var selectedTaskIDs: Set<UUID> = []
     @Published public var taskPendingDeletion: DownloadTaskModel? = nil
     @Published public var tasksPendingDeletion: [DownloadTaskModel] = []
@@ -236,7 +240,10 @@ public final class AppState: ObservableObject {
     private static let autoStartCapturedDownloadsKey = "com.hyperfetch.autoStartCapturedDownloads"
     private static let bringToFrontOnCaptureKey = "com.hyperfetch.bringToFrontOnCapture"
     private static let playCompletionSoundKey = "com.hyperfetch.playCompletionSound"
+    private static let completionSoundNameKey = "com.hyperfetch.completionSoundName"
     private static let showCompletionNotificationKey = "com.hyperfetch.showCompletionNotification"
+
+    public static let availableCompletionSounds = ["Glass", "Hero", "Ping", "Pop", "Purr", "Tink", "Mute"]
 
     /// Maximum concurrent downloads allowed simultaneously (1 to 8).
     @Published public var maxConcurrentDownloads: Int {
@@ -283,6 +290,13 @@ public final class AppState: ObservableObject {
     @Published public var playCompletionSound: Bool {
         didSet {
             UserDefaults.standard.set(playCompletionSound, forKey: Self.playCompletionSoundKey)
+        }
+    }
+
+    /// Sound effect name to play upon completion (from macOS System Sounds).
+    @Published public var completionSoundName: String {
+        didSet {
+            UserDefaults.standard.set(completionSoundName, forKey: Self.completionSoundNameKey)
         }
     }
 
@@ -407,6 +421,8 @@ public final class AppState: ObservableObject {
         } else {
             self.playCompletionSound = UserDefaults.standard.bool(forKey: Self.playCompletionSoundKey)
         }
+
+        self.completionSoundName = UserDefaults.standard.string(forKey: Self.completionSoundNameKey) ?? "Pop"
 
         if UserDefaults.standard.object(forKey: Self.showCompletionNotificationKey) == nil {
             self.showCompletionNotification = true
@@ -803,6 +819,21 @@ public final class AppState: ObservableObject {
         tasks.filter { $0.status == .downloading || $0.status == .probing }.count
     }
 
+    /// Aggregate progress fraction across all active downloads (0.0 to 1.0).
+    public var aggregateProgress: Double {
+        let active = tasks.filter { $0.status == .downloading || $0.status == .probing }
+        guard !active.isEmpty else { return 0.0 }
+        let total = active.reduce(Int64(0)) { $0 + max(0, $1.totalBytes) }
+        let downloaded = active.reduce(Int64(0)) { $0 + $1.downloadedBytes }
+        guard total > 0 else { return 0.0 }
+        return min(1.0, max(0.0, Double(downloaded) / Double(total)))
+    }
+
+    /// Whether there are any completed tasks in the queue.
+    public var hasCompletedTasks: Bool {
+        tasks.contains { $0.status == .completed }
+    }
+
     /// Count of completed tasks.
     public var completedDownloadCount: Int {
         tasks.filter { $0.status == .completed }.count
@@ -975,6 +1006,21 @@ public final class AppState: ObservableObject {
                 try? await queueManager.removeTask(id: task.id, deleteFile: deleteFile)
             }
         }
+    }
+
+    /// Removes all completed downloads from the queue without deleting files from disk.
+    public func clearCompletedTasks() {
+        let completedIDs = tasks.filter { $0.status == .completed }.map(\.id)
+        guard !completedIDs.isEmpty else { return }
+        for id in completedIDs {
+            remove(id: id, deleteFile: false)
+        }
+    }
+
+    /// Previews the currently selected completion chime sound.
+    public func playTestSound() {
+        guard completionSoundName != "Mute" else { return }
+        NSSound(named: completionSoundName)?.play()
     }
 
     /// Pauses all active/probing/idle tasks among the currently selected tasks.
@@ -1431,11 +1477,16 @@ public final class AppState: ObservableObject {
     }
 
     private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
-        // Detect newly completed tasks to trigger notifications
-        if !isInitialLoad && showCompletionNotification {
+        // Detect newly completed tasks to trigger notifications and audio alerts
+        if !isInitialLoad {
             for task in updatedTasks {
                 if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
-                    notificationManager.sendDownloadCompletedNotification(task: task, playSound: playCompletionSound)
+                    if showCompletionNotification {
+                        notificationManager.sendDownloadCompletedNotification(task: task, playSound: false)
+                    }
+                    if playCompletionSound && completionSoundName != "Mute" {
+                        NSSound(named: completionSoundName)?.play()
+                    }
                 }
             }
         }
@@ -1448,7 +1499,7 @@ public final class AppState: ObservableObject {
         if updatedTasks.isEmpty {
             self.tasks = []
             self.selectedTaskIDs = []
-            DockTileController.updateBadge(activeCount: 0)
+            DockTileController.update(activeCount: 0, progress: 0.0)
             return
         }
 
@@ -1462,7 +1513,7 @@ public final class AppState: ObservableObject {
             selectedTaskIDs = [firstId]
         }
 
-        // Update Dock icon badge
-        DockTileController.updateBadge(activeCount: self.activeDownloadCount)
+        // Update Dock icon badge and progress overlay
+        DockTileController.update(activeCount: self.activeDownloadCount, progress: aggregateProgress)
     }
 }

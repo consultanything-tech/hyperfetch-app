@@ -350,6 +350,26 @@ private struct AutomationSettingsTab: View {
                     Toggle("Show Banner Notification on Download Complete", isOn: $appState.showCompletionNotification)
 
                     Toggle("Play Sound Alert on Download Complete", isOn: $appState.playCompletionSound)
+
+                    if appState.playCompletionSound {
+                        HStack {
+                            Picker("Chime Sound", selection: $appState.completionSoundName) {
+                                ForEach(AppState.availableCompletionSounds, id: \.self) { sound in
+                                    Text(sound).tag(sound)
+                                }
+                            }
+                            .frame(maxWidth: 240)
+
+                            Button {
+                                appState.playTestSound()
+                            } label: {
+                                Label("Preview", systemImage: "speaker.wave.2.fill")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help("Preview selected chime")
+                        }
+                    }
                 }
             }
         }
