@@ -349,10 +349,16 @@ public final class AppVersionManager: ObservableObject {
             let releaseVersion = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
 
             if isVersion(releaseVersion, newerThan: currentVersion) {
-                // Prefer .zip asset if present (HyperFetch.zip), else .dmg (HyperFetch.dmg)
-                let zipAsset = release.assets?.first(where: { $0.name.hasSuffix(".zip") })
-                let dmgAsset = release.assets?.first(where: { $0.name.hasSuffix(".dmg") })
-                let targetAsset = zipAsset ?? dmgAsset
+                // Prefer HyperFetch application .zip asset, excluding companion extension packages
+                let appZipAsset = release.assets?.first(where: {
+                    let name = $0.name.lowercased()
+                    return name.hasSuffix(".zip") && (name == "hyperfetch.zip" || !name.contains("extension"))
+                })
+                let dmgAsset = release.assets?.first(where: {
+                    let name = $0.name.lowercased()
+                    return name.hasSuffix(".dmg") && !name.contains("extension")
+                })
+                let targetAsset = appZipAsset ?? dmgAsset
 
                 let downloadURL = targetAsset.flatMap { URL(string: $0.browserDownloadUrl) }
                     ?? release.htmlUrl.flatMap { URL(string: $0) }

@@ -96,8 +96,8 @@ echo "==> Creating ZIP archive for fast auto-updates..."
 /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$PROJECT_ROOT/build/HyperFetch.zip"
 
 echo "==> Creating Chrome Extension ZIP archive..."
-rm -f "$BUILD_DIR/HyperFetch-Chrome-Extension.zip"
-(cd "$PROJECT_ROOT" && zip -r -q -X "$BUILD_DIR/HyperFetch-Chrome-Extension.zip" extensions/chrome)
+rm -f "$BUILD_DIR/HyperFetch_Chrome_Extension.zip" "$BUILD_DIR/HyperFetch-Chrome-Extension.zip"
+(cd "$PROJECT_ROOT" && zip -r -q -X "$BUILD_DIR/HyperFetch_Chrome_Extension.zip" extensions/chrome)
 
 # 7. Generate Retina DMG background image
 echo "==> Generating branded DMG background image..."
@@ -219,5 +219,5 @@ echo "============================================================"
 echo "Successfully packaged HyperFetch release assets:"
 echo "  - $DMG_OUTPUT"
 echo "  - $PROJECT_ROOT/build/HyperFetch.zip"
-echo "  - $PROJECT_ROOT/build/HyperFetch-Chrome-Extension.zip"
+echo "  - $PROJECT_ROOT/build/HyperFetch_Chrome_Extension.zip"
 echo "============================================================"
