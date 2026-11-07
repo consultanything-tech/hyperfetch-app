@@ -200,7 +200,12 @@ public final class AppVersionManager: ObservableObject {
 
         let script = """
         #!/bin/bash
-        # Wait up to 5 seconds for current process to exit
+        LOG="/tmp/hyperfetch_updater.log"
+        echo "=== HyperFetch Updater Starting ($(date)) ===" > "$LOG"
+        echo "Target: \(targetAppURL.path)" >> "$LOG"
+        echo "Staged: \(stagedAppURL.path)" >> "$LOG"
+
+        # Wait for process to exit
         for i in $(seq 1 50); do
             if ! kill -0 \(currentPID) 2>/dev/null; then
                 break
@@ -208,22 +213,27 @@ public final class AppVersionManager: ObservableObject {
             sleep 0.1
         done
 
-        # Force kill if still lingering
         if kill -0 \(currentPID) 2>/dev/null; then
             kill -9 \(currentPID) 2>/dev/null
             sleep 0.2
         fi
 
-        # Replace existing app bundle with the verified staged bundle
-        rm -rf "\(targetAppURL.path)"
-        /usr/bin/ditto "\(stagedAppURL.path)" "\(targetAppURL.path)"
+        # Attempt direct replacement
+        rm -rf "\(targetAppURL.path)" >> "$LOG" 2>&1
+        /usr/bin/ditto "\(stagedAppURL.path)" "\(targetAppURL.path)" >> "$LOG" 2>&1
 
-        # Clean up staging directory and updater script
-        rm -rf "\(stagingFolderURL.path)"
-        rm -f "\(updaterScriptURL.path)"
+        # If target app bundle does not exist or copy failed, fallback to elevated prompt
+        if [ ! -d "\(targetAppURL.path)" ]; then
+            echo "Direct replacement failed; attempting elevated prompt via osascript..." >> "$LOG"
+            /usr/bin/osascript -e 'do shell script "rm -rf \\"\(targetAppURL.path)\\" && /usr/bin/ditto \\"\(stagedAppURL.path)\\" \\"\(targetAppURL.path)\\"" with administrator privileges' >> "$LOG" 2>&1
+        fi
 
-        # Launch the updated application
-        /usr/bin/open "\(targetAppURL.path)"
+        # Clean staging
+        rm -rf "\(stagingFolderURL.path)" >> "$LOG" 2>&1
+        rm -f "\(updaterScriptURL.path)" >> "$LOG" 2>&1
+
+        echo "Launching updated app..." >> "$LOG"
+        /usr/bin/open "\(targetAppURL.path)" >> "$LOG" 2>&1
         """
 
         do {
