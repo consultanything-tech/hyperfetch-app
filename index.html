@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HyperFetch — High-Speed Native Download Manager for macOS</title>
-  <meta name="description" content="The best lightweight, high-speed native download manager for macOS. Accelerated multi-chunk HTTP Range streaming, direct POSIX sparse I/O, seamless Chrome & Safari auto-capture, and zero telemetry.">
+  <title>HyperFetch — High-Speed Native Download Manager for Windows &amp; macOS</title>
+  <meta name="description" content="The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, seamless Chrome, Edge &amp; Safari auto-capture, and zero telemetry.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
 
   <!-- Tailwind CSS CDN -->
@@ -134,7 +134,7 @@
       opacity: 0.8;
     }
   </style>
-  <!-- Deployed: 2026-11-07T14:50:00+08:00 (v1.0.13) -->
+  <!-- Deployed: 2026-11-08T15:30:00+08:00 (v1.1.0) -->
 </head>
 <body class="bg-spaceDark text-slate-100 min-h-screen relative antialiased selection:bg-appleBlue selection:text-white">
 
@@ -151,7 +151,7 @@
         <img src="assets/icon.png" alt="HyperFetch Icon" class="w-8 h-8 rounded-lg shadow-md group-hover:scale-105 transition-transform duration-200 shrink-0">
         <div class="flex items-center gap-2 shrink-0">
           <span class="font-bold text-base sm:text-lg tracking-tight text-white group-hover:text-cyberCyan transition-colors whitespace-nowrap">HyperFetch</span>
-          <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-appleBlue/20 text-cyberCyan border border-appleBlue/30 whitespace-nowrap shrink-0">v1.0.13</span>
+          <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-appleBlue/20 text-cyberCyan border border-appleBlue/30 whitespace-nowrap shrink-0">v1.1.0</span>
         </div>
       </a>
 
@@ -192,8 +192,9 @@
       <a href="#extension" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Extension Guide</a>
       <a href="https://github.com/consultanything-tech/hyperfetch-app" target="_blank" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">GitHub Repository</a>
       <a href="https://ko-fi.com/consultanythingtech" target="_blank" rel="noopener noreferrer" class="block px-3 py-2 rounded-md text-base text-amber-300 hover:bg-amber-500/10">☕ Support on Ko-fi</a>
-      <div class="pt-2">
-        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.13/HyperFetch.dmg" class="w-full text-center block px-4 py-2.5 rounded-lg font-semibold text-sm bg-appleBlue text-white">Download HyperFetch.dmg</a>
+      <div class="pt-2 space-y-2">
+        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch.dmg" class="w-full text-center block px-4 py-2.5 rounded-lg font-semibold text-sm bg-appleBlue text-white">Download HyperFetch.dmg (macOS)</a>
+        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch-Windows-x64-Setup.exe" class="w-full text-center block px-4 py-2.5 rounded-lg font-semibold text-sm bg-white/10 border border-white/15 text-white">Download Windows (.exe)</a>
       </div>
     </div>
   </nav>
@@ -203,32 +204,35 @@
     <!-- Announcement Badge -->
     <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-xs font-medium text-slate-300 mb-8 backdrop-blur-md hover:border-cyberCyan/40 transition-colors cursor-default">
       <span class="text-amber-400">⚡</span>
-      <span>HyperFetch v1.0.13</span>
-      <span class="text-white/20">•</span>
-      <span class="text-cyberCyan">Pure Swift 6 for macOS</span>
+      <span class="text-cyberCyan">Universal v1.1.0 (Windows &amp; macOS)</span>
     </div>
 
     <!-- Main Headline -->
     <h1 class="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.08] max-w-4xl mx-auto mb-6">
       Hyper-Speed Downloads.<br>
-      <span class="gradient-accent">Pure Native Mac.</span>
+      <span class="gradient-accent">Pure Native Speed for Windows &amp; Mac.</span>
     </h1>
 
     <!-- Subtitle -->
     <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto font-normal leading-relaxed mb-10">
-      The best lightweight, high-speed native download manager for macOS. Accelerated multi-chunk HTTP Range streaming, direct POSIX sparse I/O, seamless Chrome &amp; Safari auto-capture, smart categorized folders, and zero telemetry.
+      The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, seamless Chrome, Edge &amp; Safari auto-capture, smart categorized folders, and zero telemetry.
     </p>
 
     <!-- Dual CTA Buttons -->
     <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.13/HyperFetch.dmg" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-appleBlue via-[#0080FF] to-cyberCyan text-white shadow-xl shadow-appleBlue/25 hover:shadow-appleBlue/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2">
-        <svg class="w-4 h-4 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-        Download HyperFetch.dmg (v1.0.13)
+      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch-Windows-x64-Setup.exe" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2.5">
+        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.95-1.801"/></svg>
+        <span>Download for Windows (.exe)</span>
       </a>
 
-      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.13/HyperFetch.zip" class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-medium text-sm bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] hover:border-white/20 text-slate-200 hover:text-white transition-all duration-200 flex items-center justify-center gap-2">
+      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch.dmg" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-appleBlue via-[#0080FF] to-cyberCyan text-white shadow-xl shadow-appleBlue/25 hover:shadow-appleBlue/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2.5">
+        <svg class="w-4 h-4 fill-current" viewBox="0 0 170 170"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-5.65-8.59-10.15-18.42-13.48-29.49-3.34-11.07-5.01-21.84-5.01-32.32 0-14.03 3.34-25.59 10.02-34.68 6.69-9.09 15.22-13.72 25.6-13.9 4.35 0 9.4 1.13 15.16 3.4 5.76 2.26 9.69 3.48 11.78 3.65 1.77-.22 5.86-1.49 12.28-3.8 6.42-2.31 11.66-3.34 15.73-3.08 11.78.65 21.06 4.96 27.84 12.92-10.45 6.31-15.55 14.93-15.3 25.86.25 8.7 3.61 16.03 10.08 21.99 6.47 5.96 14.18 9.38 23.13 10.25-2.26 6.74-4.7 13.51-7.33 20.3zM119.22 32.55c0-6.74 2.39-13.23 7.16-19.46 4.77-6.23 10.74-10.49 17.91-12.79.76 5.54-.31 11.45-3.22 17.74-2.9 6.29-7.1 11.07-12.59 14.34-2.9 1.74-6.06 2.87-9.47 3.39-.1-.98.21-2.05-.21-3.22z"/></svg>
+        <span>Download for macOS (.dmg)</span>
+      </a>
+
+      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch.zip" class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-medium text-sm bg-white/[0.05] border border-white/10 hover:bg-white/[0.1] hover:border-white/20 text-slate-200 hover:text-white transition-all duration-200 flex items-center justify-center gap-2">
         <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
-        Download .zip (2.8 MB)
+        macOS .zip (2.8 MB)
       </a>
     </div>
 
@@ -248,8 +252,10 @@
 
     <!-- System Requirements note -->
     <div class="flex items-center justify-center gap-2 text-xs text-slate-400">
+      <svg class="w-3.5 h-3.5 fill-current text-slate-400" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.95-1.801"/></svg>
+      <span class="text-white/20">•</span>
       <svg class="w-3.5 h-3.5 fill-current text-slate-400" viewBox="0 0 170 170"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-5.65-8.59-10.15-18.42-13.48-29.49-3.34-11.07-5.01-21.84-5.01-32.32 0-14.03 3.34-25.59 10.02-34.68 6.69-9.09 15.22-13.72 25.6-13.9 4.35 0 9.4 1.13 15.16 3.4 5.76 2.26 9.69 3.48 11.78 3.65 1.77-.22 5.86-1.49 12.28-3.8 6.42-2.31 11.66-3.34 15.73-3.08 11.78.65 21.06 4.96 27.84 12.92-10.45 6.31-15.55 14.93-15.3 25.86.25 8.7 3.61 16.03 10.08 21.99 6.47 5.96 14.18 9.38 23.13 10.25-2.26 6.74-4.7 13.51-7.33 20.3zM119.22 32.55c0-6.74 2.39-13.23 7.16-19.46 4.77-6.23 10.74-10.49 17.91-12.79.76 5.54-.31 11.45-3.22 17.74-2.9 6.29-7.1 11.07-12.59 14.34-2.9 1.74-6.06 2.87-9.47 3.39-.1-.98.21-2.05-.21-3.22z"/></svg>
-      <span>macOS 14.0+ Sonoma &amp; Sequoia • Universal Binary (Apple Silicon &amp; Intel)</span>
+      <span>Universal Native Binaries: Windows 10/11 (64-bit) &amp; macOS 14.0+ (Apple Silicon &amp; Intel)</span>
     </div>
   </section>
 
@@ -541,10 +547,10 @@
   <!-- APP SCREENSHOT PREVIEW -->
   <section id="screenshot" class="py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center relative z-10">
     <div class="mb-12">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Native macOS Experience</h2>
-      <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Crafted for Apple Silicon &amp; macOS Sonoma</p>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Native Desktop Experience</h2>
+      <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Engineered for Windows 11 &amp; macOS Sonoma</p>
       <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
-        Designed from the ground up using Pure Swift 6 and SwiftUI. Crisp typography, native system vibrant sidebars, and dark mode perfection.
+        Designed from the ground up for native performance across Windows and macOS. Crisp typography, vibrant sidebars, Windows taskbar progress, macOS Dock badging, and dark mode perfection.
       </p>
     </div>
 
@@ -565,7 +571,7 @@
       <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Architected for Extreme Speed</h2>
       <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Everything You Need. Nothing You Don't.</p>
       <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
-        Every byte and syscall in HyperFetch is engineered for raw macOS performance.
+        Every byte and I/O operation in HyperFetch is engineered for raw desktop performance across Windows &amp; macOS.
       </p>
     </div>
 
@@ -586,9 +592,9 @@
         <div class="w-12 h-12 rounded-xl bg-cyberCyan/20 border border-cyberCyan/30 flex items-center justify-center text-cyberCyan mb-5">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">POSIX Sparse Pre-Allocation</h3>
+        <h3 class="text-lg font-bold text-white mb-2">Direct Sparse Disk Pre-Allocation</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Pre-allocates target files using atomic <code class="text-cyberCyan font-mono">ftruncate()</code> and streams incoming segments directly to disk via positional <code class="text-cyberCyan font-mono">pwrite()</code>. Zero disk fragmentation, zero reassembly lag.
+          Atomic disk pre-allocation and direct offset streaming write incoming chunks directly into place for zero fragmentation on both Windows and macOS.
         </p>
       </div>
 
@@ -599,7 +605,7 @@
         </div>
         <h3 class="text-lg font-bold text-white mb-2">Browser Companion &amp; Auto-Capture</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Seamless Chrome Extension and native Safari integration capture downloads automatically. Supports custom file-type filters and holding <kbd class="px-1.5 py-0.5 rounded bg-white/10 text-[11px]">Alt</kbd> to bypass.
+          Seamless Chrome, Edge, Brave, and Safari integration with companion auto-launch captures downloads automatically. Supports custom file-type filters and holding <kbd class="px-1.5 py-0.5 rounded bg-white/10 text-[11px]">Alt</kbd> to bypass.
         </p>
       </div>
 
@@ -640,6 +646,7 @@
 
   <!-- COMPARISON MATRIX -->
   <section id="comparison" class="py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
+    <div id="compare"></div>
     <div class="text-center mb-16">
       <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Why HyperFetch?</h2>
       <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Technical Comparison</p>
@@ -657,7 +664,7 @@
             <th class="p-4 sm:p-5 font-bold text-cyberCyan bg-appleBlue/10 border-x border-appleBlue/20">
               <div class="flex items-center gap-2">
                 <span>HyperFetch</span>
-                <span class="text-[10px] bg-cyberCyan/20 text-cyberCyan px-2 py-0.5 rounded-full font-mono">v1.0.13</span>
+                <span class="text-[10px] bg-cyberCyan/20 text-cyberCyan px-2 py-0.5 rounded-full font-mono">v1.1.0</span>
               </div>
             </th>
             <th class="p-4 sm:p-5 font-semibold text-slate-400">Free Download Manager</th>
@@ -667,6 +674,13 @@
         </thead>
         <tbody class="divide-y divide-white/5">
           <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="p-4 sm:p-5 font-medium text-slate-200">Platforms</td>
+            <td class="p-4 sm:p-5 font-bold text-cyberCyan bg-appleBlue/10 border-x border-appleBlue/20">macOS &amp; Windows</td>
+            <td class="p-4 sm:p-5 text-slate-400">Windows, macOS, Linux</td>
+            <td class="p-4 sm:p-5 text-slate-400">macOS only</td>
+            <td class="p-4 sm:p-5 text-slate-400">All</td>
+          </tr>
+          <tr class="hover:bg-white/[0.02] transition-colors">
             <td class="p-4 sm:p-5 font-medium text-slate-200">Binary Size</td>
             <td class="p-4 sm:p-5 font-bold text-successGreen bg-appleBlue/10 border-x border-appleBlue/20">~6 MB</td>
             <td class="p-4 sm:p-5 text-slate-400">~120 MB</td>
@@ -674,8 +688,8 @@
             <td class="p-4 sm:p-5 text-slate-500">N/A (Built-in)</td>
           </tr>
           <tr class="hover:bg-white/[0.02] transition-colors">
-            <td class="p-4 sm:p-5 font-medium text-slate-200">Language &amp; Architecture</td>
-            <td class="p-4 sm:p-5 font-bold text-white bg-appleBlue/10 border-x border-appleBlue/20">Pure Swift 6 &amp; SwiftUI</td>
+            <td class="p-4 sm:p-5 font-medium text-slate-200">Engine</td>
+            <td class="p-4 sm:p-5 font-bold text-white bg-appleBlue/10 border-x border-appleBlue/20">Pure Swift 6 &amp; Rust (Tauri 2)</td>
             <td class="p-4 sm:p-5 text-slate-400">Qt / C++ cross-platform</td>
             <td class="p-4 sm:p-5 text-slate-400">Obj-C / Swift hybrid</td>
             <td class="p-4 sm:p-5 text-slate-500">C++ Chromium / WebKit</td>
@@ -779,7 +793,7 @@
         </ol>
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
-          <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.13/HyperFetch_Chrome_Extension.zip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-appleBlue/20 text-appleBlue border border-appleBlue/30 hover:bg-appleBlue/30 text-xs font-semibold transition-all">
+          <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch_Chrome_Extension.zip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-appleBlue/20 text-appleBlue border border-appleBlue/30 hover:bg-appleBlue/30 text-xs font-semibold transition-all">
             <svg class="w-4 h-4 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             Download Chrome Extension (.zip)
           </a>
@@ -833,14 +847,19 @@
       <div class="absolute -bottom-24 -right-24 w-72 h-72 bg-cyberCyan/20 rounded-full blur-3xl pointer-events-none"></div>
 
       <img src="assets/icon.png" alt="HyperFetch Icon" class="w-16 h-16 rounded-2xl mx-auto shadow-2xl mb-6">
-      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Supercharge Your macOS Downloads Today</h2>
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Supercharge Your Downloads on Windows &amp; macOS Today</h2>
       <p class="text-slate-300 max-w-xl mx-auto text-sm sm:text-base mb-8">
-        No subscription. No tracking. Pure native Swift performance that respects your Mac.
+        No subscription. No tracking. Pure native high-speed performance that respects your machine.
       </p>
 
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.0.13/HyperFetch.dmg" class="w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-appleBlue to-cyberCyan text-white shadow-xl shadow-appleBlue/30 hover:brightness-110 active:scale-95 transition-all">
-          Download HyperFetch.dmg (v1.0.13)
+        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch-Windows-x64-Setup.exe" class="w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.95-1.801"/></svg>
+          <span>Download Windows (.exe)</span>
+        </a>
+        <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch.dmg" class="w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-appleBlue to-cyberCyan text-white shadow-xl shadow-appleBlue/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 170 170"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-5.65-8.59-10.15-18.42-13.48-29.49-3.34-11.07-5.01-21.84-5.01-32.32 0-14.03 3.34-25.59 10.02-34.68 6.69-9.09 15.22-13.72 25.6-13.9 4.35 0 9.4 1.13 15.16 3.4 5.76 2.26 9.69 3.48 11.78 3.65 1.77-.22 5.86-1.49 12.28-3.8 6.42-2.31 11.66-3.34 15.73-3.08 11.78.65 21.06 4.96 27.84 12.92-10.45 6.31-15.55 14.93-15.3 25.86.25 8.7 3.61 16.03 10.08 21.99 6.47 5.96 14.18 9.38 23.13 10.25-2.26 6.74-4.7 13.51-7.33 20.3zM119.22 32.55c0-6.74 2.39-13.23 7.16-19.46 4.77-6.23 10.74-10.49 17.91-12.79.76 5.54-.31 11.45-3.22 17.74-2.9 6.29-7.1 11.07-12.59 14.34-2.9 1.74-6.06 2.87-9.47 3.39-.1-.98.21-2.05-.21-3.22z"/></svg>
+          <span>Download macOS (.dmg)</span>
         </a>
         <a href="https://github.com/consultanything-tech/hyperfetch-app" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-medium text-sm bg-white/10 hover:bg-white/15 border border-white/10 text-white transition-all">
           View on GitHub
@@ -869,7 +888,7 @@
       </div>
 
       <div class="text-slate-400 text-center md:text-right">
-        Released under the MIT License • Built with Pure Swift 6
+        Released under the MIT License • Built for Windows &amp; macOS
       </div>
     </div>
   </footer>
