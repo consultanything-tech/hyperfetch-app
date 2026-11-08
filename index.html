@@ -133,6 +133,26 @@
     .traffic-dot:hover {
       opacity: 0.8;
     }
+
+    /* Windows 11 Caption Buttons */
+    .win-caption-btn {
+      width: 38px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+    .win-caption-btn:hover {
+      background-color: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+    }
+    .win-caption-btn.win-close:hover {
+      background-color: #e81123;
+      color: #ffffff;
+    }
   </style>
   <!-- Deployed: 2026-11-08T15:30:00+08:00 (v1.1.0) -->
 </head>
@@ -269,35 +289,80 @@
       </p>
     </div>
 
-    <!-- macOS Window Mockup -->
+    <!-- macOS / Windows 11 Window Mockup with Live Interactive Simulator -->
     <div class="glass-card rounded-2xl overflow-hidden border border-white/15 shadow-2xl max-w-5xl mx-auto bg-[#0E121A]/95">
-      <!-- Window Titlebar with Traffic Lights -->
-      <div class="px-4 py-3.5 bg-[#161B24]/90 border-b border-white/10 flex items-center justify-between select-none">
-        <div class="flex items-center space-x-2">
-          <span class="traffic-dot bg-[#FF5F56] border border-[#E0443E]"></span>
-          <span class="traffic-dot bg-[#FFBD2E] border border-[#DEA123]"></span>
-          <span class="traffic-dot bg-[#27C93F] border border-[#1AAB29]"></span>
+      <!-- Window Titlebar with Traffic Lights / Windows Controls & Platform Switcher -->
+      <div class="px-3 sm:px-4 py-2.5 bg-[#161B24]/95 border-b border-white/10 flex items-center justify-between select-none gap-2">
+        <!-- Left: Traffic Lights (macOS) & Window Title -->
+        <div class="flex items-center gap-3 min-w-0">
+          <div id="trafficLights" class="flex items-center space-x-2 shrink-0">
+            <span class="traffic-dot bg-[#FF5F56] border border-[#E0443E]"></span>
+            <span class="traffic-dot bg-[#FFBD2E] border border-[#DEA123]"></span>
+            <span class="traffic-dot bg-[#27C93F] border border-[#1AAB29]"></span>
+          </div>
+          <div class="flex items-center gap-2 text-xs font-semibold text-slate-200 truncate">
+            <img src="assets/icon.png" class="w-4 h-4 rounded shrink-0" alt="App">
+            <span class="truncate">HyperFetch — <span id="titlebarCountText">1 active download</span></span>
+          </div>
         </div>
-        <div class="flex items-center gap-2 text-xs font-semibold text-slate-300">
-          <img src="assets/icon.png" class="w-3.5 h-3.5 rounded" alt="App">
-          <span>HyperFetch — 1 active download</span>
+
+        <!-- Center: Interactive Platform Switcher -->
+        <div class="inline-flex items-center p-0.5 rounded-lg bg-black/50 border border-white/10 text-xs shrink-0 shadow-inner">
+          <button id="btnPlatformMac" onclick="setPlatformMode('macos')" class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer bg-white/15 text-white font-semibold shadow-xs" title="Switch to macOS interface">
+            <span>🍎</span>
+            <span class="hidden sm:inline">macOS</span>
+          </button>
+          <button id="btnPlatformWin" onclick="setPlatformMode('windows')" class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white" title="Switch to Windows 11 interface">
+            <span>🪟</span>
+            <span class="hidden sm:inline">Windows 11</span>
+          </button>
         </div>
-        <div class="text-[11px] text-slate-400 font-mono">
-          <span id="daemonStatus" class="inline-flex items-center gap-1 text-successGreen">
-            <span class="w-1.5 h-1.5 rounded-full bg-successGreen animate-ping"></span>
-            Daemon: Connected (31415)
-          </span>
+
+        <!-- Right: Daemon Status & Windows 11 Caption Controls -->
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div class="text-[11px] font-mono">
+            <span id="daemonStatus" class="inline-flex items-center gap-1.5 text-successGreen px-2 py-0.5 rounded-full bg-successGreen/10 border border-successGreen/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-successGreen animate-ping"></span>
+              <span class="hidden md:inline">Connected</span> (31415)
+            </span>
+          </div>
+          <!-- Windows Caption Buttons (Hidden by default in macOS mode) -->
+          <div id="windowsCaptionButtons" class="hidden items-center -mr-1">
+            <button class="win-caption-btn text-xs" title="Minimize">─</button>
+            <button class="win-caption-btn text-xs" title="Maximize">▢</button>
+            <button class="win-caption-btn win-close text-xs" title="Close">✕</button>
+          </div>
         </div>
       </div>
 
       <!-- Window Body: Split into Sidebar and Main Pane -->
-      <div class="grid grid-cols-1 md:grid-cols-4 min-h-[460px]">
+      <div class="grid grid-cols-1 md:grid-cols-4 min-h-[480px]">
         <!-- Sidebar -->
-        <div class="p-4 bg-[#11151F]/90 border-r border-white/10 flex flex-col justify-between text-xs space-y-6">
+        <div class="p-3 sm:p-4 bg-[#11151F]/90 border-r border-white/10 flex flex-col justify-between text-xs space-y-5">
           <div class="space-y-4">
-            <!-- Search bar -->
-            <div class="relative">
-              <input type="text" placeholder="Filter downloads..." disabled class="w-full bg-white/[0.05] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 placeholder-slate-500 focus:outline-none">
+            <!-- Transfers Group -->
+            <div>
+              <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2 px-1">Transfers</div>
+              <ul class="space-y-1">
+                <li>
+                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-appleBlue/20 text-white font-medium border border-appleBlue/30">
+                    <span class="flex items-center gap-2">📂 All Downloads</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/10 text-[10px] font-mono">2</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-successGreen animate-pulse"></span>Downloading</span>
+                    <span id="sidebarDownloadingCount" class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono text-successGreen">1</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-cyberCyan"></span>Completed</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono text-cyberCyan">1</span>
+                  </a>
+                </li>
+              </ul>
             </div>
 
             <!-- Category List -->
@@ -305,239 +370,436 @@
               <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2 px-1">Categories</div>
               <ul class="space-y-1">
                 <li>
-                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-appleBlue/20 text-white font-medium border border-appleBlue/30">
-                    <span class="flex items-center gap-2">📂 All Downloads</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/10 text-[10px]">2</span>
+                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <span class="flex items-center gap-2 text-amber-400">📦 Archives</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono">1</span>
                   </a>
                 </li>
                 <li>
                   <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <span class="flex items-center gap-2">🚀 Applications</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px]">0</span>
+                    <span class="flex items-center gap-2 text-emerald-400">💻 Programs</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono">1</span>
                   </a>
                 </li>
                 <li>
                   <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <span class="flex items-center gap-2">📦 Archives</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px]">2</span>
+                    <span class="flex items-center gap-2 text-purple-400">🎬 Videos</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono">0</span>
                   </a>
                 </li>
                 <li>
                   <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <span class="flex items-center gap-2">📄 Documents</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px]">0</span>
+                    <span class="flex items-center gap-2 text-blue-400">📄 Documents</span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px] font-mono">0</span>
                   </a>
-                </li>
-                <li>
-                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <span class="flex items-center gap-2">🎬 Video</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px]">0</span>
-                  </a>
-                </li>
-                <li>
-                  <a href="#demo" class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <span class="flex items-center gap-2">🎵 Music</span>
-                    <span class="px-1.5 py-0.2 rounded-full bg-white/5 text-[10px]">0</span>
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            <!-- State Filter -->
-            <div>
-              <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2 px-1">Status</div>
-              <ul class="space-y-1">
-                <li class="flex items-center justify-between px-2 py-1 text-slate-400">
-                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-successGreen"></span>Downloading</span>
-                  <span>1</span>
-                </li>
-                <li class="flex items-center justify-between px-2 py-1 text-slate-400">
-                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-cyberCyan"></span>Completed</span>
-                  <span>1</span>
                 </li>
               </ul>
             </div>
           </div>
 
-          <!-- Bottom Speed Stats -->
-          <div class="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
-            <div class="text-[10px] text-slate-400 uppercase">Total Bandwidth</div>
-            <div id="sidebarTotalSpeed" class="text-base font-bold text-cyberCyan font-mono">84.6 MB/s</div>
-            <div class="text-[10px] text-slate-400 mt-0.5">8 HTTP Range Streams</div>
+          <!-- Bottom Telemetry Card & Ko-fi Support -->
+          <div class="space-y-3">
+            <!-- Bandwidth Telemetry Card -->
+            <div class="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <span id="telemetryPulseDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span class="text-[11px] font-semibold text-slate-300">Total Bandwidth</span>
+                </div>
+                <span class="text-[9.5px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">UNLIMITED</span>
+              </div>
+
+              <div class="flex items-baseline justify-between">
+                <span id="sidebarTotalSpeed" class="text-base font-bold font-mono text-white">84.6 MB/s</span>
+                <span id="sidebarStreamsBadge" class="flex items-center gap-1 text-[11px] font-mono text-emerald-400">
+                  ↓ 8 Streams
+                </span>
+              </div>
+
+              <!-- Sparklines simulation -->
+              <div class="h-4 flex items-end gap-[3px] pt-1" id="sparklinesContainer">
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[40%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[65%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[30%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[85%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[95%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[55%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[75%] transition-all duration-300"></div>
+                <div class="spark-bar flex-1 rounded-xs bg-appleBlue h-[100%] transition-all duration-300"></div>
+              </div>
+
+              <!-- Disk storage status -->
+              <div class="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+                <div class="flex items-center gap-1">
+                  <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                  <span>Storage</span>
+                </div>
+                <span class="font-mono text-emerald-400 font-medium">Available</span>
+              </div>
+            </div>
+
+            <!-- Ko-fi Support Card -->
+            <a href="https://ko-fi.com/consultanything" target="_blank" rel="noopener noreferrer" class="w-full p-2.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/15 border border-orange-500/25 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm">
+              <div class="w-7 h-7 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 shrink-0">
+                <span class="text-sm group-hover:scale-110 transition-transform">☕</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[11px] font-semibold text-white flex items-center gap-1 truncate">
+                  Support HyperFetch <span class="text-[10px]">❤️</span>
+                </div>
+                <div class="text-[9.5px] text-slate-400 truncate">Buy us a coffee on Ko-fi</div>
+              </div>
+              <svg class="w-3 h-3 text-orange-400 shrink-0 opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
           </div>
         </div>
 
-        <!-- Main Content Area -->
-        <div class="p-5 md:col-span-3 space-y-5 bg-[#0C1017]/90 flex flex-col justify-between" id="simulatorContainer">
-          <div class="space-y-4">
-            <!-- Active Download Card -->
-            <div class="p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-white/20 transition-all">
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-appleBlue/20 border border-appleBlue/30 flex items-center justify-center shrink-0 text-cyberCyan">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <span class="font-bold text-sm text-white">Xcode_16.2_Release.xip</span>
-                      <span id="activeStatusPill" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-successGreen/20 text-successGreen border border-successGreen/30">Downloading</span>
-                    </div>
-                    <div class="text-xs text-slate-400 mt-0.5 font-mono">
-                      <span id="transferredText">8.48 GB</span> of 12.4 GB • <span id="mainSpeedText" class="text-cyberCyan font-bold">84.6 MB/s</span> • ETA: <span id="etaText">47s</span>
-                    </div>
-                  </div>
-                </div>
+        <!-- Main Content Area with Modern Toolbar & Dual View Modes -->
+        <div class="md:col-span-3 flex flex-col justify-between bg-[#0C1017]/90 min-h-[480px]" id="simulatorContainer">
+          <!-- Top Toolbar -->
+          <div class="h-14 px-4 bg-[#141923]/80 border-b border-white/10 flex items-center justify-between gap-3 select-none shrink-0">
+            <!-- Left Action Buttons -->
+            <div class="flex items-center gap-2">
+              <button onclick="resetSimulation()" class="h-8 px-3 rounded-lg bg-appleBlue hover:bg-[#0077ED] active:scale-95 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-appleBlue/25 transition-all cursor-pointer" title="Simulate adding new download">
+                <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                <span>+ New</span>
+              </button>
 
-                <!-- Simulation Controls -->
-                <div class="flex items-center gap-2">
-                  <button id="toggleDownloadBtn" onclick="toggleDownloadSimulation()" class="px-3.5 py-1.5 rounded-lg bg-appleBlue hover:bg-[#0077ED] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-appleBlue/20 active:scale-95">
-                    <span id="toggleIcon">⏸</span>
-                    <span id="toggleBtnText">Pause</span>
-                  </button>
-                  <button onclick="resetSimulation()" title="Reset Simulator" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors text-xs">
-                    ↺ Reset
-                  </button>
-                </div>
-              </div>
+              <div class="h-4 w-[1px] bg-white/10 mx-0.5"></div>
 
-              <!-- Main Overall Progress Bar -->
-              <div class="relative w-full h-3 rounded-full bg-slate-800/80 overflow-hidden border border-white/10 mb-4">
-                <div id="overallProgressBar" class="h-full bg-gradient-to-r from-appleBlue via-cyberCyan to-successGreen transition-all duration-300 relative progress-shimmer" style="width: 68.4%;"></div>
-              </div>
+              <button onclick="if(!isDownloading) toggleDownloadSimulation()" class="h-8 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer" title="Resume All Downloads">
+                <svg class="w-3 h-3 fill-current text-slate-300" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <span class="hidden sm:inline">Resume All</span>
+              </button>
 
-              <!-- Real-Time 8-Chunk Parallel Range Visualizer -->
-              <div class="mt-4 pt-4 border-t border-white/10">
-                <div class="flex items-center justify-between text-xs mb-2">
-                  <span class="font-semibold text-slate-300 flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-cyberCyan"></span>
-                    Parallel HTTP Range Streams (8 Chunks)
-                  </span>
-                  <span class="text-[11px] text-slate-400 font-mono">POSIX Sparse I/O (Direct pwrite)</span>
-                </div>
-
-                <!-- Chunks Grid -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="chunksGrid">
-                  <!-- Chunk 1 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #1</span>
-                      <span id="c1-speed" class="text-slate-400">10.8 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">0.0 – 1.55 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c1-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 86%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 2 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #2</span>
-                      <span id="c2-speed" class="text-slate-400">11.2 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">1.55 – 3.10 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c2-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 81%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 3 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #3</span>
-                      <span id="c3-speed" class="text-slate-400">10.4 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">3.10 – 4.65 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c3-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 74%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 4 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #4</span>
-                      <span id="c4-speed" class="text-slate-400">9.8 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">4.65 – 6.20 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c4-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 69%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 5 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #5</span>
-                      <span id="c5-speed" class="text-slate-400">10.9 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">6.20 – 7.75 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c5-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 63%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 6 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #6</span>
-                      <span id="c6-speed" class="text-slate-400">11.1 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">7.75 – 9.30 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c6-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 58%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 7 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #7</span>
-                      <span id="c7-speed" class="text-slate-400">9.9 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">9.30 – 10.85 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c7-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 54%;"></div>
-                    </div>
-                  </div>
-
-                  <!-- Chunk 8 -->
-                  <div class="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
-                    <div class="flex justify-between text-slate-300">
-                      <span class="font-bold text-cyberCyan">Chunk #8</span>
-                      <span id="c8-speed" class="text-slate-400">10.5 MB/s</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 truncate">10.85 – 12.40 GB</div>
-                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div id="c8-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 50%;"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <button onclick="if(isDownloading) toggleDownloadSimulation()" class="h-8 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer" title="Pause All Downloads">
+                <svg class="w-3 h-3 fill-current text-slate-300" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                <span class="hidden sm:inline">Pause All</span>
+                <span id="activeCountBadge" class="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-appleBlue/20 text-cyberCyan font-mono">1</span>
+              </button>
             </div>
 
-            <!-- Secondary Completed Item -->
-            <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs">
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-successGreen/20 border border-successGreen/30 flex items-center justify-center shrink-0 text-successGreen">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                </div>
-                <div>
-                  <div class="font-semibold text-white">macOS_Sonoma_14.5.dmg</div>
-                  <div class="text-[11px] text-slate-400 font-mono">13.1 GB • Completed • ~/Downloads/HyperFetch/Archives/</div>
-                </div>
+            <!-- Center Search Bar -->
+            <div class="flex-1 max-w-xs relative hidden sm:block">
+              <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               </div>
-              <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 rounded-full bg-white/10 text-slate-300 text-[10px]">100%</span>
-                <span class="text-slate-400">Show in Finder</span>
+              <input type="text" id="filterInput" oninput="filterDemoTasks(this.value)" placeholder="Filter downloads..." class="w-full h-8 pl-8 pr-7 rounded-lg text-xs bg-white/5 border border-white/10 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-appleBlue transition-all">
+            </div>
+
+            <!-- Right Controls: View Mode Switcher & Settings -->
+            <div class="flex items-center gap-2 shrink-0">
+              <!-- Segmented View Mode Switcher -->
+              <div class="h-8 p-0.5 rounded-lg bg-black/40 border border-white/10 flex items-center">
+                <button id="btnViewComfortable" onclick="setViewMode('comfortable')" class="h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white shadow-xs transition-all cursor-pointer" title="Comfortable Detailed View">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                  <span class="hidden md:inline">Comfortable</span>
+                </button>
+                <button id="btnViewCompact" onclick="setViewMode('compact')" class="h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-all cursor-pointer" title="Compact High-Density 36px View">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                  <span class="hidden md:inline">Compact</span>
+                </button>
               </div>
+
+              <!-- Preferences / Info button -->
+              <button onclick="alert('HyperFetch Engine: 16 Concurrent HTTP Range Streams, Direct Sparse Disk Allocation, and Browser Companion active on localhost:31415.')" class="h-8 w-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-white/10 cursor-pointer" title="Preferences & Engine Stats">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              </button>
             </div>
           </div>
 
-          <!-- Bottom Footer Bar -->
-          <div class="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-white/5">
-            <span>Destination: <code class="text-slate-300">~/Downloads/HyperFetch/</code></span>
-            <span>Sparse allocation: <span class="text-successGreen">Enabled</span> (ftruncate)</span>
+          <!-- Main Pane Body: Dual View Modes Container -->
+          <div class="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-4">
+            <!-- COMFORTABLE VIEW MODE (Default) -->
+            <div id="comfortableView" class="space-y-4">
+              <!-- Active Download Card -->
+              <div id="demoActiveCard" class="p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-white/20 transition-all space-y-3">
+                <!-- Top Row: Icon + Filename + Badges + Progress % -->
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <!-- Category Squircle Icon -->
+                    <div class="w-10 h-10 rounded-xl bg-appleBlue/20 border border-appleBlue/30 flex items-center justify-center shrink-0 text-cyberCyan shadow-sm">
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span id="activeFilename" class="font-bold text-sm text-white truncate">Xcode_16.2_Release.xip</span>
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          ⚡ Multi-Chunk
+                        </span>
+                        <span id="activeStatusPill" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-successGreen/20 text-successGreen border border-successGreen/30">Downloading</span>
+                      </div>
+                      <div class="text-xs text-slate-400 mt-1 font-mono">
+                        <span id="transferredText">8.48 GB</span> of <span id="totalSizeText">12.4 GB</span> • <span id="mainSpeedText" class="text-cyberCyan font-bold">84.6 MB/s</span> • ETA: <span id="etaText">47s</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Right Action Buttons & Percentage -->
+                  <div class="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
+                    <div class="text-right">
+                      <span id="overallPercentText" class="text-sm font-bold font-mono text-white">68.4%</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      <button id="toggleDownloadBtn" onclick="toggleDownloadSimulation()" class="px-3 py-1.5 rounded-lg bg-appleBlue hover:bg-[#0077ED] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-appleBlue/20 active:scale-95 cursor-pointer">
+                        <span id="toggleIcon">⏸</span>
+                        <span id="toggleBtnText">Pause</span>
+                      </button>
+                      <button onclick="resetSimulation()" title="Reset Simulator" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors text-xs cursor-pointer">
+                        ↺ Reset
+                      </button>
+                      <button class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors text-xs cursor-pointer" title="Show in Folder">
+                        📁 <span id="activeFolderBtnText" class="hidden sm:inline text-[11px] ml-1">Show in Finder</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Main Overall Progress Bar -->
+                <div class="relative w-full h-2.5 rounded-full bg-slate-800/80 overflow-hidden border border-white/10">
+                  <div id="overallProgressBar" class="h-full bg-gradient-to-r from-appleBlue via-cyberCyan to-successGreen transition-all duration-300 relative progress-shimmer" style="width: 68.4%;"></div>
+                </div>
+
+                <!-- Real-Time 8-Chunk Parallel Range Visualizer -->
+                <div class="pt-3 border-t border-white/10 space-y-2.5">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 rounded-full bg-cyberCyan"></span>
+                      Parallel Range Streams (8 Chunks)
+                    </span>
+                    <span id="chunkIoBadge" class="text-[11px] text-slate-400 font-mono">POSIX Direct pwrite (Sparse)</span>
+                  </div>
+
+                  <!-- Continuous Segmented Chunk Bar -->
+                  <div class="w-full h-2 bg-slate-900 rounded-md overflow-hidden flex gap-[2px] p-[1px] border border-white/10" id="segmentedChunkBar">
+                    <div id="seg-1" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-2" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-3" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-4" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-5" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-6" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-7" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                    <div id="seg-8" class="h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300"></div>
+                  </div>
+
+                  <!-- Chunks Micro-Grid (8 Columns) -->
+                  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5" id="chunksGrid">
+                    <!-- Chunk 1 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#1</span>
+                        <span id="c1-speed" class="text-[9.5px] text-slate-400">10.8 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>0–1.55G</span>
+                        <span id="c1-pct" class="text-slate-300 font-semibold">86%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c1-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 86%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 2 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#2</span>
+                        <span id="c2-speed" class="text-[9.5px] text-slate-400">11.2 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>1.55–3.1G</span>
+                        <span id="c2-pct" class="text-slate-300 font-semibold">81%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c2-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 81%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 3 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#3</span>
+                        <span id="c3-speed" class="text-[9.5px] text-slate-400">10.4 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>3.1–4.6G</span>
+                        <span id="c3-pct" class="text-slate-300 font-semibold">74%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c3-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 74%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 4 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#4</span>
+                        <span id="c4-speed" class="text-[9.5px] text-slate-400">9.8 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>4.6–6.2G</span>
+                        <span id="c4-pct" class="text-slate-300 font-semibold">69%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c4-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 69%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 5 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#5</span>
+                        <span id="c5-speed" class="text-[9.5px] text-slate-400">10.9 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>6.2–7.7G</span>
+                        <span id="c5-pct" class="text-slate-300 font-semibold">63%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c5-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 63%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 6 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#6</span>
+                        <span id="c6-speed" class="text-[9.5px] text-slate-400">11.1 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>7.7–9.3G</span>
+                        <span id="c6-pct" class="text-slate-300 font-semibold">58%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c6-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 58%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 7 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#7</span>
+                        <span id="c7-speed" class="text-[9.5px] text-slate-400">9.9 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>9.3–10.8G</span>
+                        <span id="c7-pct" class="text-slate-300 font-semibold">54%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c7-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 54%;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Chunk 8 -->
+                    <div class="p-1.5 rounded-lg bg-black/40 border border-white/5 space-y-1 font-mono text-[11px]">
+                      <div class="flex justify-between items-center text-slate-300">
+                        <span class="font-bold text-cyberCyan text-[10px]">#8</span>
+                        <span id="c8-speed" class="text-[9.5px] text-slate-400">10.5 MB/s</span>
+                      </div>
+                      <div class="flex justify-between text-[8.5px] text-slate-400 truncate">
+                        <span>10.8–12.4G</span>
+                        <span id="c8-pct" class="text-slate-300 font-semibold">50%</span>
+                      </div>
+                      <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="c8-bar" class="h-full bg-cyberCyan chunk-active-bar" style="width: 50%;"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Secondary Completed Item -->
+              <div id="demoCompletedCard" class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs hover:border-white/15 transition-all">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-8 h-8 rounded-lg bg-successGreen/20 border border-successGreen/30 flex items-center justify-center shrink-0 text-successGreen">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  </div>
+                  <div class="min-w-0">
+                    <div id="completedFilename" class="font-semibold text-white truncate">macOS_Sonoma_14.5.dmg</div>
+                    <div id="completedDetails" class="text-[11px] text-slate-400 font-mono truncate">13.1 GB • Completed • ~/Downloads/HyperFetch/Archives/</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2.5 shrink-0">
+                  <span class="px-2 py-0.5 rounded-full bg-white/10 text-slate-300 text-[10px] font-mono">100%</span>
+                  <button class="text-slate-400 hover:text-white transition-colors cursor-pointer text-xs flex items-center gap-1">
+                    <span>📁</span>
+                    <span id="completedFolderBtnText">Show in Finder</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- COMPACT VIEW MODE (High-Density 36px Rows) -->
+            <div id="compactView" class="space-y-2 hidden">
+              <!-- Active Compact Row -->
+              <div id="compactActiveRow" class="h-9 px-3 flex items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-xs select-none transition-colors group">
+                <input type="checkbox" checked class="w-3.5 h-3.5 rounded text-appleBlue border-white/20 bg-black/40 cursor-pointer">
+                <!-- Mini Squircle Icon -->
+                <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-appleBlue/20 text-cyberCyan border border-appleBlue/30">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                </div>
+                <!-- Status Dot -->
+                <div id="compactStatusDot" class="w-2 h-2 rounded-full shrink-0 bg-successGreen animate-pulse" title="Downloading"></div>
+                <!-- Filename -->
+                <div id="compactActiveFilename" class="flex-1 min-w-0 font-medium text-white truncate text-[12px]">Xcode_16.2_Release.xip</div>
+                <!-- Mini Progress Bar -->
+                <div class="w-24 sm:w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden shrink-0 hidden sm:block">
+                  <div id="compactProgressBar" class="h-full bg-gradient-to-r from-appleBlue to-cyberCyan transition-all duration-300" style="width: 68.4%;"></div>
+                </div>
+                <!-- Speed & % Readout -->
+                <div class="w-32 text-right font-mono text-[11px] shrink-0 truncate">
+                  <span id="compactSpeedText" class="text-cyberCyan font-semibold">84.6 MB/s</span>
+                  <span id="compactPercentText" class="text-slate-400 ml-1">68.4%</span>
+                </div>
+                <!-- Inline Quick Actions -->
+                <div class="flex items-center gap-1 shrink-0">
+                  <button id="compactToggleBtn" onclick="toggleDownloadSimulation()" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Pause/Resume">
+                    <span id="compactToggleIcon">⏸</span>
+                  </button>
+                  <button id="compactActiveFolderBtn" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Show in Finder">
+                    📁
+                  </button>
+                  <button onclick="resetSimulation()" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Reset">
+                    ↺
+                  </button>
+                </div>
+              </div>
+
+              <!-- Completed Compact Row -->
+              <div id="compactCompletedRow" class="h-9 px-3 flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.015] hover:bg-white/[0.04] text-xs select-none transition-colors group">
+                <input type="checkbox" class="w-3.5 h-3.5 rounded text-appleBlue border-white/20 bg-black/40 cursor-pointer">
+                <!-- Mini Squircle Icon -->
+                <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-successGreen/20 text-successGreen border border-successGreen/30">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <!-- Status Dot -->
+                <div class="w-2 h-2 rounded-full shrink-0 bg-successGreen" title="Completed"></div>
+                <!-- Filename -->
+                <div id="compactCompletedFilename" class="flex-1 min-w-0 font-medium text-white truncate text-[12px]">macOS_Sonoma_14.5.dmg</div>
+                <!-- 100% Progress Bar -->
+                <div class="w-24 sm:w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden shrink-0 hidden sm:block">
+                  <div class="h-full bg-successGreen" style="width: 100%;"></div>
+                </div>
+                <!-- Readout -->
+                <div class="w-32 text-right font-mono text-[11px] text-successGreen font-medium shrink-0 truncate">
+                  13.1 GB (100%)
+                </div>
+                <!-- Inline Quick Actions -->
+                <div class="flex items-center gap-1 shrink-0">
+                  <button class="w-6 h-6 rounded flex items-center justify-center text-successGreen hover:bg-successGreen/10 transition-colors cursor-pointer" title="Open File">
+                    ✓
+                  </button>
+                  <button id="compactCompletedFolderBtn" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Show in Finder">
+                    📁
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom Destination Footer Bar -->
+            <div class="text-[11px] text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 pt-3 border-t border-white/5">
+              <span>Destination: <code id="destinationPath" class="text-slate-300 font-mono">~/Downloads/HyperFetch/</code></span>
+              <span>Sparse allocation: <span id="sparseStatus"><span class="text-successGreen">Enabled</span> (ftruncate)</span></span>
+            </div>
           </div>
         </div>
       </div>
@@ -923,12 +1185,14 @@
       });
     }
 
-    // Interactive Live Simulator Engine
+    // Interactive Live Simulator Engine (v1.1.0 Cross-Platform)
     let isDownloading = true;
     let progressPercent = 68.4;
     let transferredMB = 8480;
     const totalMB = 12400; // 12.4 GB
     let currentSpeedMBps = 84.6;
+    let currentPlatform = 'macos';
+    let currentViewMode = 'comfortable';
 
     // 8 Chunks state: progress % (0 - 100) and base speed
     const chunks = [
@@ -942,26 +1206,195 @@
       { id: 8, progress: 50.1, baseSpeed: 10.5 }
     ];
 
+    // Platform Switcher: macOS vs Windows 11
+    function setPlatformMode(platform) {
+      currentPlatform = platform;
+      const btnMac = document.getElementById('btnPlatformMac');
+      const btnWin = document.getElementById('btnPlatformWin');
+      const trafficLights = document.getElementById('trafficLights');
+      const windowsCaptionButtons = document.getElementById('windowsCaptionButtons');
+      const destinationPath = document.getElementById('destinationPath');
+      const activeFolderBtnText = document.getElementById('activeFolderBtnText');
+      const completedFolderBtnText = document.getElementById('completedFolderBtnText');
+      const compactActiveFolderBtn = document.getElementById('compactActiveFolderBtn');
+      const compactCompletedFolderBtn = document.getElementById('compactCompletedFolderBtn');
+      const chunkIoBadge = document.getElementById('chunkIoBadge');
+      const sparseStatus = document.getElementById('sparseStatus');
+      const activeFilename = document.getElementById('activeFilename');
+      const compactActiveFilename = document.getElementById('compactActiveFilename');
+      const completedFilename = document.getElementById('completedFilename');
+      const compactCompletedFilename = document.getElementById('compactCompletedFilename');
+      const completedDetails = document.getElementById('completedDetails');
+
+      if (platform === 'macos') {
+        if (btnMac) btnMac.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer bg-white/15 text-white font-semibold shadow-xs';
+        if (btnWin) btnWin.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white';
+        
+        if (trafficLights) {
+          trafficLights.classList.remove('hidden');
+          trafficLights.classList.add('flex');
+        }
+        if (windowsCaptionButtons) {
+          windowsCaptionButtons.classList.add('hidden');
+          windowsCaptionButtons.classList.remove('flex');
+        }
+
+        if (destinationPath) destinationPath.textContent = '~/Downloads/HyperFetch/';
+        if (activeFolderBtnText) activeFolderBtnText.textContent = 'Show in Finder';
+        if (completedFolderBtnText) completedFolderBtnText.textContent = 'Show in Finder';
+        if (compactActiveFolderBtn) compactActiveFolderBtn.title = 'Show in Finder';
+        if (compactCompletedFolderBtn) compactCompletedFolderBtn.title = 'Show in Finder';
+
+        if (chunkIoBadge) chunkIoBadge.textContent = 'POSIX Direct pwrite (Sparse)';
+        if (sparseStatus) sparseStatus.innerHTML = '<span class="text-successGreen">Enabled</span> (ftruncate)';
+
+        if (activeFilename) activeFilename.textContent = 'Xcode_16.2_Release.xip';
+        if (compactActiveFilename) compactActiveFilename.textContent = 'Xcode_16.2_Release.xip';
+        if (completedFilename) completedFilename.textContent = 'macOS_Sonoma_14.5.dmg';
+        if (compactCompletedFilename) compactCompletedFilename.textContent = 'macOS_Sonoma_14.5.dmg';
+        if (completedDetails) completedDetails.textContent = '13.1 GB • Completed • ~/Downloads/HyperFetch/Archives/';
+      } else {
+        if (btnWin) btnWin.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer bg-white/15 text-white font-semibold shadow-xs';
+        if (btnMac) btnMac.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white';
+
+        if (trafficLights) {
+          trafficLights.classList.add('hidden');
+          trafficLights.classList.remove('flex');
+        }
+        if (windowsCaptionButtons) {
+          windowsCaptionButtons.classList.remove('hidden');
+          windowsCaptionButtons.classList.add('flex');
+        }
+
+        if (destinationPath) destinationPath.textContent = '%USERPROFILE%\\Downloads\\HyperFetch\\';
+        if (activeFolderBtnText) activeFolderBtnText.textContent = 'Show in Explorer';
+        if (completedFolderBtnText) completedFolderBtnText.textContent = 'Show in Explorer';
+        if (compactActiveFolderBtn) compactActiveFolderBtn.title = 'Show in Explorer';
+        if (compactCompletedFolderBtn) compactCompletedFolderBtn.title = 'Show in Explorer';
+
+        if (chunkIoBadge) chunkIoBadge.textContent = 'Win32 SetFileValidData (Direct)';
+        if (sparseStatus) sparseStatus.innerHTML = '<span class="text-successGreen">Enabled</span> (SetEndOfFile)';
+
+        if (activeFilename) activeFilename.textContent = 'HyperFetch_Windows_x64_Setup.exe';
+        if (compactActiveFilename) compactActiveFilename.textContent = 'HyperFetch_Windows_x64_Setup.exe';
+        if (completedFilename) completedFilename.textContent = 'Windows11_24H2_English_x64.iso';
+        if (compactCompletedFilename) compactCompletedFilename.textContent = 'Windows11_24H2_English_x64.iso';
+        if (completedDetails) completedDetails.textContent = '6.24 GB • Completed • %USERPROFILE%\\Downloads\\HyperFetch\\Archives\\';
+      }
+
+      // Re-apply active search filter if any
+      const filterInput = document.getElementById('filterInput');
+      if (filterInput && filterInput.value) {
+        filterDemoTasks(filterInput.value);
+      }
+    }
+
+    // View Mode Switcher: Comfortable vs Compact
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      const btnComfortable = document.getElementById('btnViewComfortable');
+      const btnCompact = document.getElementById('btnViewCompact');
+      const comfortableView = document.getElementById('comfortableView');
+      const compactView = document.getElementById('compactView');
+
+      if (mode === 'comfortable') {
+        if (btnComfortable) btnComfortable.className = 'h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white shadow-xs transition-all cursor-pointer';
+        if (btnCompact) btnCompact.className = 'h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-all cursor-pointer';
+        if (comfortableView) comfortableView.classList.remove('hidden');
+        if (compactView) compactView.classList.add('hidden');
+      } else {
+        if (btnCompact) btnCompact.className = 'h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white shadow-xs transition-all cursor-pointer';
+        if (btnComfortable) btnComfortable.className = 'h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-all cursor-pointer';
+        if (comfortableView) comfortableView.classList.add('hidden');
+        if (compactView) compactView.classList.remove('hidden');
+      }
+    }
+
+    // Real-Time Demo Search / Filter
+    function filterDemoTasks(query) {
+      const q = (query || '').toLowerCase().trim();
+      const activeCard = document.getElementById('demoActiveCard');
+      const completedCard = document.getElementById('demoCompletedCard');
+      const compactActive = document.getElementById('compactActiveRow');
+      const compactCompleted = document.getElementById('compactCompletedRow');
+
+      const activeName = (document.getElementById('activeFilename')?.textContent || '').toLowerCase();
+      const completedName = (document.getElementById('completedFilename')?.textContent || '').toLowerCase();
+
+      const showActive = !q || activeName.includes(q);
+      const showCompleted = !q || completedName.includes(q);
+
+      if (activeCard) activeCard.style.display = showActive ? '' : 'none';
+      if (completedCard) completedCard.style.display = showCompleted ? '' : 'none';
+      if (compactActive) compactActive.style.display = showActive ? '' : 'none';
+      if (compactCompleted) compactCompleted.style.display = showCompleted ? '' : 'none';
+    }
+
+    // Sparkline Bars Animation
+    function updateSparklines(isLive) {
+      const container = document.getElementById('sparklinesContainer');
+      if (!container) return;
+      const bars = container.querySelectorAll('.spark-bar');
+      const baseHeights = [40, 65, 30, 85, 95, 55, 75, 100];
+      bars.forEach((bar, idx) => {
+        if (!isLive) {
+          bar.style.height = '18%';
+          bar.className = 'spark-bar flex-1 rounded-xs bg-slate-700 h-[18%] transition-all duration-300';
+        } else {
+          const jitter = (Math.random() - 0.5) * 15;
+          const h = Math.max(20, Math.min(100, baseHeights[idx] + jitter));
+          bar.style.height = `${h}%`;
+          bar.className = 'spark-bar flex-1 rounded-xs bg-appleBlue transition-all duration-300';
+        }
+      });
+    }
+
+    // Pause / Resume Simulation
     function toggleDownloadSimulation() {
       isDownloading = !isDownloading;
       const toggleBtnText = document.getElementById('toggleBtnText');
       const toggleIcon = document.getElementById('toggleIcon');
+      const compactToggleIcon = document.getElementById('compactToggleIcon');
       const activeStatusPill = document.getElementById('activeStatusPill');
+      const compactStatusDot = document.getElementById('compactStatusDot');
       const mainSpeedText = document.getElementById('mainSpeedText');
+      const compactSpeedText = document.getElementById('compactSpeedText');
       const sidebarTotalSpeed = document.getElementById('sidebarTotalSpeed');
-      const overallProgressBar = document.getElementById('overallProgressBar');
+      const activeCountBadge = document.getElementById('activeCountBadge');
+      const titlebarCountText = document.getElementById('titlebarCountText');
+      const sidebarDownloadingCount = document.getElementById('sidebarDownloadingCount');
+      const telemetryPulseDot = document.getElementById('telemetryPulseDot');
       const simulatorContainer = document.getElementById('simulatorContainer');
 
       if (!isDownloading) {
         // Paused state
-        toggleBtnText.textContent = 'Resume';
-        toggleIcon.textContent = '▶';
-        activeStatusPill.textContent = 'Paused';
-        activeStatusPill.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30';
-        mainSpeedText.textContent = '0.0 MB/s';
-        mainSpeedText.className = 'text-slate-400 font-bold';
-        sidebarTotalSpeed.textContent = '0.0 MB/s';
-        simulatorContainer.classList.add('paused');
+        if (toggleBtnText) toggleBtnText.textContent = 'Resume';
+        if (toggleIcon) toggleIcon.textContent = '▶';
+        if (compactToggleIcon) compactToggleIcon.textContent = '▶';
+        if (activeStatusPill) {
+          activeStatusPill.textContent = 'Paused';
+          activeStatusPill.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        }
+        if (compactStatusDot) {
+          compactStatusDot.className = 'w-2 h-2 rounded-full shrink-0 bg-amber-500';
+          compactStatusDot.title = 'Paused';
+        }
+        if (mainSpeedText) {
+          mainSpeedText.textContent = '0.0 MB/s';
+          mainSpeedText.className = 'text-slate-400 font-bold';
+        }
+        if (compactSpeedText) {
+          compactSpeedText.textContent = 'Paused';
+          compactSpeedText.className = 'text-amber-400 font-semibold';
+        }
+        if (sidebarTotalSpeed) sidebarTotalSpeed.textContent = '0.0 MB/s';
+        if (activeCountBadge) activeCountBadge.textContent = '0';
+        if (titlebarCountText) titlebarCountText.textContent = '0 active downloads';
+        if (sidebarDownloadingCount) sidebarDownloadingCount.textContent = '0';
+        if (telemetryPulseDot) telemetryPulseDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        if (simulatorContainer) simulatorContainer.classList.add('paused');
+
+        updateSparklines(false);
 
         // Stop chunk speeds
         for (let i = 1; i <= 8; i++) {
@@ -970,15 +1403,30 @@
         }
       } else {
         // Resumed state
-        toggleBtnText.textContent = 'Pause';
-        toggleIcon.textContent = '⏸';
-        activeStatusPill.textContent = 'Downloading';
-        activeStatusPill.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-successGreen/20 text-successGreen border border-successGreen/30';
-        mainSpeedText.className = 'text-cyberCyan font-bold';
-        simulatorContainer.classList.remove('paused');
+        if (toggleBtnText) toggleBtnText.textContent = 'Pause';
+        if (toggleIcon) toggleIcon.textContent = '⏸';
+        if (compactToggleIcon) compactToggleIcon.textContent = '⏸';
+        if (activeStatusPill) {
+          activeStatusPill.textContent = 'Downloading';
+          activeStatusPill.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-successGreen/20 text-successGreen border border-successGreen/30';
+        }
+        if (compactStatusDot) {
+          compactStatusDot.className = 'w-2 h-2 rounded-full shrink-0 bg-successGreen animate-pulse';
+          compactStatusDot.title = 'Downloading';
+        }
+        if (mainSpeedText) mainSpeedText.className = 'text-cyberCyan font-bold';
+        if (compactSpeedText) compactSpeedText.className = 'text-cyberCyan font-semibold';
+        if (activeCountBadge) activeCountBadge.textContent = '1';
+        if (titlebarCountText) titlebarCountText.textContent = '1 active download';
+        if (sidebarDownloadingCount) sidebarDownloadingCount.textContent = '1';
+        if (telemetryPulseDot) telemetryPulseDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        if (simulatorContainer) simulatorContainer.classList.remove('paused');
+
+        updateSparklines(true);
       }
     }
 
+    // Reset Simulation
     function resetSimulation() {
       progressPercent = 12.0;
       transferredMB = 1488;
@@ -997,6 +1445,7 @@
       updateUI();
     }
 
+    // Tick Loop: Real-Time Stream Engine
     function updateUI() {
       if (!isDownloading) return;
 
@@ -1006,7 +1455,7 @@
 
       // Advance chunks
       let chunkSpeedSum = 0;
-      chunks.forEach((chunk, index) => {
+      chunks.forEach((chunk) => {
         const cSpeedJitter = (Math.random() - 0.5) * 1.5;
         const cSpeed = Math.max(7.5, (chunk.baseSpeed + cSpeedJitter));
         chunkSpeedSum += cSpeed;
@@ -1016,15 +1465,26 @@
 
         const spdEl = document.getElementById(`c${chunk.id}-speed`);
         const barEl = document.getElementById(`c${chunk.id}-bar`);
+        const pctEl = document.getElementById(`c${chunk.id}-pct`);
+        const segEl = document.getElementById(`seg-${chunk.id}`);
+
         if (spdEl) spdEl.textContent = `${cSpeed.toFixed(1)} MB/s`;
         if (barEl) barEl.style.width = `${chunk.progress.toFixed(1)}%`;
+        if (pctEl) pctEl.textContent = `${Math.round(chunk.progress)}%`;
+        if (segEl) {
+          if (chunk.progress >= 99) {
+            segEl.className = 'h-full flex-1 rounded-xs bg-successGreen transition-all duration-300';
+          } else {
+            segEl.className = 'h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300';
+          }
+        }
       });
 
       // Overall Progress Update
       const avgChunkProgress = chunks.reduce((acc, c) => acc + c.progress, 0) / chunks.length;
       progressPercent = avgChunkProgress;
 
-      // If finished, wrap around or finish gracefully
+      // If finished, wrap around gracefully
       if (progressPercent >= 99.8) {
         progressPercent = 68.4;
         chunks.forEach((c, idx) => {
@@ -1036,25 +1496,39 @@
       const remainingMB = totalMB - transferredMB;
       const etaSeconds = Math.max(1, Math.round(remainingMB / currentSpeedMBps));
 
-      // Update DOM
+      // Update DOM - Comfortable View
       const transferredText = document.getElementById('transferredText');
       const mainSpeedText = document.getElementById('mainSpeedText');
       const sidebarTotalSpeed = document.getElementById('sidebarTotalSpeed');
       const etaText = document.getElementById('etaText');
       const overallProgressBar = document.getElementById('overallProgressBar');
+      const overallPercentText = document.getElementById('overallPercentText');
 
       if (transferredText) transferredText.textContent = `${(transferredMB / 1024).toFixed(2)} GB`;
       if (mainSpeedText) mainSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
       if (sidebarTotalSpeed) sidebarTotalSpeed.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
       if (etaText) etaText.textContent = `${etaSeconds}s`;
       if (overallProgressBar) overallProgressBar.style.width = `${progressPercent.toFixed(1)}%`;
+      if (overallPercentText) overallPercentText.textContent = `${progressPercent.toFixed(1)}%`;
+
+      // Update DOM - Compact View
+      const compactProgressBar = document.getElementById('compactProgressBar');
+      const compactSpeedText = document.getElementById('compactSpeedText');
+      const compactPercentText = document.getElementById('compactPercentText');
+
+      if (compactProgressBar) compactProgressBar.style.width = `${progressPercent.toFixed(1)}%`;
+      if (compactSpeedText) compactSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
+      if (compactPercentText) compactPercentText.textContent = `${progressPercent.toFixed(1)}%`;
+
+      // Animate sidebar sparklines with subtle jitter
+      updateSparklines(true);
     }
 
     // Interval loop for live download simulator
     setInterval(updateUI, 650);
   </script>
   <!-- Floating Ko-fi Pill -->
-  <a href="https://ko-fi.com/consultanythingtech" target="_blank" rel="noopener noreferrer" id="floatingKofiBtn" class="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#1A1F2C]/90 hover:bg-[#1A1F2C] border border-amber-500/40 text-amber-300 shadow-xl shadow-black/40 backdrop-blur-md hover:scale-105 active:scale-95 transition-all text-xs font-semibold group">
+  <a href="https://ko-fi.com/consultanything" target="_blank" rel="noopener noreferrer" id="floatingKofiBtn" class="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#1A1F2C]/90 hover:bg-[#1A1F2C] border border-amber-500/40 text-amber-300 shadow-xl shadow-black/40 backdrop-blur-md hover:scale-105 active:scale-95 transition-all text-xs font-semibold group">
     <span class="text-base group-hover:rotate-12 transition-transform">☕</span>
     <span>Support HyperFetch</span>
   </a>
