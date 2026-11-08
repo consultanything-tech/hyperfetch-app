@@ -1,0 +1,17 @@
+PackageIdentifier: ConsultAnything.HyperFetch
+PackageVersion: 1.1.0
+MinimumOSVersion: 10.0.0.0
+InstallerType: nullsoft
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch-Windows-x64-Setup.exe
+    InstallerSha256: F25FD1DE556B089B8190A0C42AFBCB9DD6443C223831FE4FD847B8A8AA419E95
+    InstallerType: nullsoft
+    Scope: user
+  - Architecture: x64
+    InstallerUrl: https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.1.0/HyperFetch-Windows-x64.msi
+    InstallerSha256: 639D7FBB8859D8BD20F152D811C8B79F00A55A5247F7C7B533C7019487E4C574
+    InstallerType: wix
+    Scope: machine
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -1,0 +1,21 @@
+PackageIdentifier: ConsultAnything.HyperFetch
+PackageVersion: 1.1.0
+PackageLocale: en-US
+Publisher: ConsultAnything
+PublisherUrl: https://consultanything-tech.github.io/hyperfetch-app/
+PublisherSupportUrl: https://github.com/consultanything-tech/hyperfetch/issues
+PackageName: HyperFetch
+PackageUrl: https://consultanything-tech.github.io/hyperfetch-app/
+License: MIT
+LicenseUrl: https://github.com/consultanything-tech/hyperfetch/blob/main/LICENSE
+Copyright: Copyright (c) 2026 ConsultAnything
+ShortDescription: Lightweight, high-speed native download manager for Windows & macOS.
+Description: HyperFetch is an open-source, ad-free download manager featuring multi-chunk parallel HTTP Range acceleration, direct sparse disk pre-allocation, and seamless browser auto-capture.
+Tags:
+  - download-manager
+  - multi-threaded
+  - accelerator
+  - open-source
+  - tauri
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
