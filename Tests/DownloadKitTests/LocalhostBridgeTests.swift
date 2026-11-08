@@ -165,7 +165,7 @@ struct LocalhostBridgeTests {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         #expect(json?["status"] as? String == "ok")
         #expect(json?["app"] as? String == "HyperFetch")
-        #expect(json?["version"] as? String == "1.0.13")
+        #expect(json?["version"] as? String == "1.1.0")
         #expect(json?["port"] as? Int == Int(port))
     }
 

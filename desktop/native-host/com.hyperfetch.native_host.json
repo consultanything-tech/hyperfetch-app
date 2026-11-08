@@ -1,0 +1,12 @@
+{
+  "name": "com.hyperfetch.native_host",
+  "description": "HyperFetch Chrome Native Messaging Host",
+  "path": "hyperfetch-native-host.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://chhljomijnngbgaglihlgjdbebebfijl/",
+    "chrome-extension://*/",
+    "chrome-extension://*",
+    "edge-extension://*"
+  ]
+}

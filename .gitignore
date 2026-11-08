@@ -7,5 +7,7 @@ build/
 *.png
 !docs/assets/*.png
 !extensions/chrome/icons/*.png
+!desktop/src-tauri/icons/*.png
+!desktop/public/*.png
 *.tiff
 
