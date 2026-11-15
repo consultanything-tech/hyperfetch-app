@@ -1,6 +1,6 @@
 cask "hyperfetch" do
-  version "1.1.0"
-  sha256 "82aa8fb770a264fe920946f1fd4113f6e8b2968ae6b684c8ff036e363b8f0842"
+  version "1.1.1"
+  sha256 "ad96a7131a8ce4b6409dc7ca163bb7d991fdab377038fd2631b0e1788d180a72"
 
   url "https://github.com/consultanything-tech/hyperfetch-app/releases/download/v#{version}/HyperFetch.dmg",
       verified: "github.com/consultanything-tech/hyperfetch-app/"

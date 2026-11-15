@@ -201,6 +201,21 @@ public actor DownloadEngine {
             progressHandler?(currentTask)
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                try? await writer.sync()
+                await writer.close()
+
+                if let latest = taskStore[currentTask.id] {
+                    currentTask = latest
+                }
+                currentTask.status = .paused
+                currentTask.bytesPerSecond = 0.0
+                taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask)
+                progressHandler?(currentTask)
+                throw CancellationError()
+            }
+
             if isRangeNotSupportedError(error) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
                 print("[DownloadEngine] Server does not support range requests for task \(currentTask.id) (status 200 returned). Seamlessly falling back to direct single-stream download.")
                 currentTask.supportsRange = false
@@ -227,6 +242,21 @@ public actor DownloadEngine {
                     progressHandler?(currentTask)
                     throw CancellationError()
                 } catch {
+                    if Task.isCancelled {
+                        try? await writer.sync()
+                        await writer.close()
+
+                        if let latest = taskStore[currentTask.id] {
+                            currentTask = latest
+                        }
+                        currentTask.status = .paused
+                        currentTask.bytesPerSecond = 0.0
+                        taskStore[currentTask.id] = currentTask
+                        try? await statePersister?.saveTask(currentTask)
+                        progressHandler?(currentTask)
+                        throw CancellationError()
+                    }
+
                     try? await writer.sync()
                     await writer.close()
 

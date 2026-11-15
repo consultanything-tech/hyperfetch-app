@@ -543,4 +543,63 @@ struct QueueManagerTests {
         // Clean up blocking task
         await queueManager.pauseAll()
     }
+
+    // MARK: - Test 10: Pause Active Task Cleanly Without Failing
+
+    @Test("pauseTask pauses an active download cleanly without failing")
+    func testPauseTaskPausesActiveDownloadCleanlyWithoutFailing() async throws {
+        QueueMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let engine = DownloadEngine(session: session)
+        let queueManager = QueueManager(engine: engine, maxConcurrentDownloads: 1)
+
+        let testURL = URL(string: "https://queue.example.com/pause_clean.bin")!
+        registerMockFile(url: testURL, size: 8192, delay: 0.08)
+
+        let dest = tempDir.appendingPathComponent("pause_clean.bin")
+        let task = try await queueManager.addTask(url: testURL, destinationURL: dest, autoStart: true)
+
+        // Wait briefly for download to become active (.downloading)
+        for _ in 0..<30 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if let current = await queueManager.task(for: task.id), current.status == .downloading {
+                break
+            }
+        }
+
+        // Pause task
+        await queueManager.pauseTask(id: task.id)
+
+        // Give any asynchronous error/cancellation handling a moment to settle
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let pausedTask = await queueManager.task(for: task.id)
+        #expect(pausedTask?.status == .paused)
+
+        // Verify it didn't transition to failed
+        if case .failed = pausedTask?.status {
+            Issue.record("Task unexpectedly transitioned to failed state upon pause")
+        }
+
+        // Resume task
+        try await queueManager.resumeTask(id: task.id)
+
+        // Wait for completion
+        var completed = false
+        for _ in 0..<80 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            if let current = await queueManager.task(for: task.id), current.status == .completed {
+                completed = true
+                break
+            }
+        }
+
+        #expect(completed)
+        let finalTask = await queueManager.task(for: task.id)
+        #expect(finalTask?.status == .completed)
+        #expect(FileManager.default.fileExists(atPath: dest.path))
+    }
 }

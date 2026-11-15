@@ -300,7 +300,11 @@ public actor QueueManager {
             } catch is CancellationError {
                 await self?.handleTaskCancellation(id: taskId)
             } catch {
-                await self?.handleTaskFailure(id: taskId, error: error)
+                if Task.isCancelled {
+                    await self?.handleTaskCancellation(id: taskId)
+                } else {
+                    await self?.handleTaskFailure(id: taskId, error: error)
+                }
             }
         }
 
@@ -311,7 +315,7 @@ public actor QueueManager {
         guard let idx = taskQueue.firstIndex(where: { $0.id == updatedTask.id }) else { return }
         if taskQueue[idx].status == .completed { return }
         if case .failed = taskQueue[idx].status { return }
-        if taskQueue[idx].status == .paused && updatedTask.status == .downloading { return }
+        if taskQueue[idx].status == .paused { return }
 
         taskQueue[idx] = updatedTask
         broadcastUpdate()
@@ -345,6 +349,7 @@ public actor QueueManager {
     private func handleTaskFailure(id: UUID, error: Error) async {
         activeTasks.removeValue(forKey: id)
         if let idx = taskQueue.firstIndex(where: { $0.id == id }) {
+            if taskQueue[idx].status == .paused { return }
             if let engineTask = await engine.task(for: id) {
                 taskQueue[idx] = engineTask
             } else {

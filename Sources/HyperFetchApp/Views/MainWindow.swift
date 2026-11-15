@@ -15,6 +15,7 @@ import DownloadKit
 /// modernized inspector pane, and system telemetry status bar.
 public struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var versionManager: AppVersionManager
     @Environment(\.openSettings) private var openSettings
     @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
     @ViewState private var copiedTaskId: UUID? = nil
@@ -26,8 +27,13 @@ public struct MainWindow: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } content: {
-            DownloadListView()
-                .navigationSplitViewColumnWidth(min: 440, ideal: 580)
+            VStack(spacing: 0) {
+                if let banner = updateNotificationBanner {
+                    banner
+                }
+                DownloadListView()
+            }
+            .navigationSplitViewColumnWidth(min: 440, ideal: 580)
         } detail: {
             Group {
                 if let task = appState.selectedTask {
@@ -66,6 +72,88 @@ public struct MainWindow: View {
                 openSettings()
             }
         }
+    }
+
+    // MARK: - Update Banner
+
+    private var updateNotificationBanner: AnyView? {
+        if case .readyToInstall(let newVersion, let stagedAppURL) = versionManager.state,
+           versionManager.isBannerDismissedForVersion != newVersion {
+            return AnyView(
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                        .foregroundStyle(Theme.accent)
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text("HyperFetch v\(newVersion) is downloaded and ready to install.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+
+                    Spacer()
+
+                    Button("Later") {
+                        versionManager.isBannerDismissedForVersion = newVersion
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+
+                    Button("Restart & Launch") {
+                        versionManager.installAndRelaunch(stagedAppURL: stagedAppURL)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Theme.accent.opacity(0.12))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Theme.accent.opacity(0.3)),
+                    alignment: .bottom
+                )
+            )
+        } else if case .updateAvailable(let newVersion, _, _, _, _) = versionManager.state,
+                  versionManager.isBannerDismissedForVersion != newVersion {
+            return AnyView(
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(Color.orange)
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text("HyperFetch v\(newVersion) is available.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+
+                    Spacer()
+
+                    Button("Dismiss") {
+                        versionManager.isBannerDismissedForVersion = newVersion
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+
+                    Button("Update Now") {
+                        versionManager.isUpdateSheetPresented = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.12))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.orange.opacity(0.3)),
+                    alignment: .bottom
+                )
+            )
+        }
+        return nil
     }
 
     // MARK: - Toolbar

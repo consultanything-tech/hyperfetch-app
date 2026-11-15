@@ -139,6 +139,10 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
                     onProgress(count)
                 }
 
+                if Task.isCancelled {
+                    throw CancellationError()
+                }
+
                 // Verify expected byte count if length is known
                 if expectedLength > 0 && downloadedSoFar < expectedLength {
                     let err = ChunkDownloadError.unexpectedEOF(
@@ -165,6 +169,12 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
             chunk.status = .pending
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                task.cancel()
+                chunk.bytesDownloaded = downloadedSoFar
+                chunk.status = .pending
+                throw CancellationError()
+            }
             task.cancel()
             chunk.bytesDownloaded = downloadedSoFar
             chunk.status = .failed(error.localizedDescription)

@@ -212,27 +212,58 @@ public struct SidebarView: View {
                 .help("Support HyperFetch development on Ko-fi")
 
                 // Version & Update Check
-                HStack {
-                    Text("HyperFetch \(versionManager.fullVersionString)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.textTertiary)
-
-                    Spacer()
-
+                if case .readyToInstall(let newVersion, _) = versionManager.state {
                     Button {
-                        versionManager.checkForUpdates(userInitiated: true)
+                        versionManager.isUpdateSheetPresented = true
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.textTertiary)
-                            .frame(width: 20, height: 20)
-                            .contentShape(Rectangle())
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                                .foregroundStyle(Theme.accent)
+                            Text("v\(newVersion) Ready to Install")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                        }
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .help("Check for Updates")
+                    .padding(.horizontal, 2)
+                    .help("Update ready to install. Click to restart.")
+                } else if case .updateAvailable(let newVersion, _, _, _, _) = versionManager.state {
+                    Button {
+                        versionManager.isUpdateSheetPresented = true
+                    } label: {
+                        HStack(spacing: 5) {
+                            Circle().fill(Color.orange).frame(width: 6, height: 6)
+                            Text("v\(newVersion) Available")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(Color.orange)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 2)
+                    .help("Update available. Click to view.")
+                } else {
+                    HStack {
+                        Text("HyperFetch \(versionManager.fullVersionString)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textTertiary)
+
+                        Spacer()
+
+                        Button {
+                            versionManager.checkForUpdates(userInitiated: true)
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textTertiary)
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Check for Updates")
+                    }
+                    .padding(.horizontal, 2)
                 }
-                .padding(.horizontal, 2)
             }
             .padding(12)
             .background(Theme.statusBarBackground)

@@ -961,6 +961,10 @@ public final class AppState: ObservableObject {
 
     /// Pauses an active or queued download task.
     public func pause(id: UUID) {
+        if let idx = tasks.firstIndex(where: { $0.id == id }) {
+            tasks[idx].status = .paused
+            tasks[idx].bytesPerSecond = 0.0
+        }
         Task {
             await queueManager.pauseTask(id: id)
         }
@@ -968,6 +972,9 @@ public final class AppState: ObservableObject {
 
     /// Resumes a paused or failed download task.
     public func resume(id: UUID) {
+        if let idx = tasks.firstIndex(where: { $0.id == id }) {
+            tasks[idx].status = tasks[idx].totalBytes > 0 ? .downloading : .probing
+        }
         Task {
             try? await queueManager.resumeTask(id: id)
         }
@@ -1114,6 +1121,12 @@ public final class AppState: ObservableObject {
 
     /// Pauses all downloads.
     public func pauseAll() {
+        for i in 0..<tasks.count {
+            if tasks[i].status == .downloading || tasks[i].status == .probing || tasks[i].status == .idle {
+                tasks[i].status = .paused
+                tasks[i].bytesPerSecond = 0.0
+            }
+        }
         Task {
             await queueManager.pauseAll()
         }

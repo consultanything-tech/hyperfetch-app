@@ -56,29 +56,29 @@ public struct CompactDownloadRowView: View {
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .onTapGesture {
+                    if NSEvent.modifierFlags.contains(.shift) {
+                        appState.selectRange(to: task.id)
+                    } else if NSEvent.modifierFlags.contains(.command) {
+                        appState.toggleSelection(id: task.id)
+                    } else {
+                        appState.selectedTaskId = task.id
+                    }
+                }
+                .onTapGesture(count: 2) {
+                    if task.status == .completed {
+                        appState.openFile(task: task)
+                    } else {
+                        appState.togglePause(id: task.id)
+                    }
+                }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.2 : 0.8)
         )
         .onHover { isHovered = $0 }
-        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .onTapGesture {
-            if NSEvent.modifierFlags.contains(.shift) {
-                appState.selectRange(to: task.id)
-            } else if NSEvent.modifierFlags.contains(.command) {
-                appState.toggleSelection(id: task.id)
-            } else {
-                appState.selectedTaskId = task.id
-            }
-        }
-        .onTapGesture(count: 2) {
-            if task.status == .completed {
-                appState.openFile(task: task)
-            } else {
-                appState.togglePause(id: task.id)
-            }
-        }
         .modifier(DragCompletedModifier(task: task))
     }
 

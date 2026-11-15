@@ -126,6 +126,23 @@ public struct DownloadRowView: View {
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
                 .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
+                .onTapGesture {
+                    if NSEvent.modifierFlags.contains(.shift) {
+                        appState.selectRange(to: task.id)
+                    } else if NSEvent.modifierFlags.contains(.command) {
+                        appState.toggleSelection(id: task.id)
+                    } else {
+                        appState.selectedTaskId = task.id
+                    }
+                }
+                .onTapGesture(count: 2) {
+                    if task.status == .completed {
+                        appState.openFile(task: task)
+                    } else {
+                        appState.togglePause(id: task.id)
+                    }
+                }
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
@@ -138,23 +155,6 @@ public struct DownloadRowView: View {
             y: isSelected ? 2 : 1
         )
         .onHover { isHovered = $0 }
-        .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-        .onTapGesture {
-            if NSEvent.modifierFlags.contains(.shift) {
-                appState.selectRange(to: task.id)
-            } else if NSEvent.modifierFlags.contains(.command) {
-                appState.toggleSelection(id: task.id)
-            } else {
-                appState.selectedTaskId = task.id
-            }
-        }
-        .onTapGesture(count: 2) {
-            if task.status == .completed {
-                appState.openFile(task: task)
-            } else {
-                appState.togglePause(id: task.id)
-            }
-        }
         .modifier(DragCompletedModifier(task: task))
     }
 

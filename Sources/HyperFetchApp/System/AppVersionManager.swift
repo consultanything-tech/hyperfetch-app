@@ -22,12 +22,15 @@ public final class AppVersionManager: ObservableObject {
     private static let autoCheckOnLaunchKey = "com.hyperfetch.autoCheckForUpdates"
     private static let updateChannelKey = "com.hyperfetch.updateChannel"
 
+    public static let autoDownloadUpdatesKey = "HyperFetch_AutoDownloadUpdates"
+    public static let notifyOnUpdateAvailableKey = "HyperFetch_NotifyOnUpdateAvailable"
+
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "15"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "16"
     }
 
     public var fullVersionString: String {
@@ -52,6 +55,19 @@ public final class AppVersionManager: ObservableObject {
         }
     }
 
+    @Published public var autoDownloadUpdates: Bool {
+        didSet {
+            UserDefaults.standard.set(autoDownloadUpdates, forKey: Self.autoDownloadUpdatesKey)
+        }
+    }
+
+    @Published public var notifyOnUpdateAvailable: Bool {
+        didSet {
+            UserDefaults.standard.set(notifyOnUpdateAvailable, forKey: Self.notifyOnUpdateAvailableKey)
+        }
+    }
+
+    @Published public var isBannerDismissedForVersion: String? = nil
     @Published public var isUpdateSheetPresented: Bool = false
     @Published public var isAboutSheetPresented: Bool = false
     @Published public var state: UpdateState = .idle
@@ -67,6 +83,7 @@ public final class AppVersionManager: ObservableObject {
     private var activeCheckTask: Task<Void, Never>?
     private var downloadTask: URLSessionDownloadTask?
     private var activeSession: URLSession?
+    private var periodicCheckTimer: Timer?
 
     public init() {
         if let savedDate = UserDefaults.standard.object(forKey: Self.lastCheckedDateKey) as? Date {
@@ -86,14 +103,55 @@ public final class AppVersionManager: ObservableObject {
         } else {
             self.updateChannel = "Stable"
         }
+
+        if UserDefaults.standard.object(forKey: Self.autoDownloadUpdatesKey) != nil {
+            self.autoDownloadUpdates = UserDefaults.standard.bool(forKey: Self.autoDownloadUpdatesKey)
+        } else {
+            self.autoDownloadUpdates = true
+        }
+
+        if UserDefaults.standard.object(forKey: Self.notifyOnUpdateAvailableKey) != nil {
+            self.notifyOnUpdateAvailable = UserDefaults.standard.bool(forKey: Self.notifyOnUpdateAvailableKey)
+        } else {
+            self.notifyOnUpdateAvailable = true
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("HyperFetchShowUpdateSheet"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.isUpdateSheetPresented = true
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("HyperFetchRelaunchRequested"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if case .readyToInstall(_, let stagedAppURL) = self.state {
+                    self.installAndRelaunch(stagedAppURL: stagedAppURL)
+                }
+            }
+        }
+
+        periodicCheckTimer = Timer.scheduledTimer(withTimeInterval: 14400, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkOnLaunchIfNeeded()
+            }
+        }
     }
 
-    /// Checks if automatic update check is required on launch (> 24 hours since last check).
+    /// Checks if automatic update check is required on launch (> 15 minutes since last check).
     public func checkOnLaunchIfNeeded() {
         guard autoCheckOnLaunch else { return }
         if let lastChecked = lastCheckedDate {
             let elapsed = Date().timeIntervalSince(lastChecked)
-            guard elapsed > 86400 else { return }
+            guard elapsed > 900 else { return }
         }
         checkForUpdates(userInitiated: false)
     }
@@ -133,6 +191,20 @@ public final class AppVersionManager: ObservableObject {
                     downloadURL: downloadURL,
                     publishedAt: pubDate
                 )
+                if userInitiated {
+                    self.isUpdateSheetPresented = true
+                } else {
+                    if self.autoDownloadUpdates, let url = downloadURL, url.lastPathComponent.lowercased().hasSuffix(".zip") {
+                        self.downloadAndInstallUpdate(from: url, newVersion: newVersion, isSilent: true)
+                    } else if self.notifyOnUpdateAvailable {
+                        NotificationManager.shared.sendUpdateAvailableNotification(
+                            version: newVersion,
+                            releaseNotes: notes,
+                            releaseURL: downloadURL,
+                            canAutoDownload: self.autoDownloadUpdates
+                        )
+                    }
+                }
             case .upToDate:
                 self.state = .upToDate(currentVersion: currentVer, lastChecked: now)
             case .failed:
@@ -143,9 +215,11 @@ public final class AppVersionManager: ObservableObject {
     }
 
     /// Downloads and automatically extracts/verifies the update package.
-    public func downloadAndInstallUpdate(from url: URL, newVersion: String) {
+    public func downloadAndInstallUpdate(from url: URL, newVersion: String, isSilent: Bool = false) {
         state = .downloading(newVersion: newVersion, progress: 0.0, bytesDownloaded: 0, totalBytes: 0)
-        isUpdateSheetPresented = true
+        if !isSilent {
+            isUpdateSheetPresented = true
+        }
 
         Task { [weak self] in
             guard let self else { return }
@@ -174,10 +248,16 @@ public final class AppVersionManager: ObservableObject {
 
                 await MainActor.run {
                     self.state = .readyToInstall(newVersion: newVersion, stagedAppURL: stagedApp)
+                    if isSilent {
+                        NotificationManager.shared.sendUpdateReadyNotification(version: newVersion)
+                    }
                 }
             } catch {
                 await MainActor.run {
                     self.state = .failed(error: error.localizedDescription)
+                    if isSilent {
+                        NotificationManager.shared.sendUpdateDownloadFailedNotification(version: newVersion, fallbackURL: url)
+                    }
                 }
             }
         }

@@ -182,4 +182,41 @@ struct UpdateManagerTests {
             )
         }
     }
+
+    // MARK: - UpdatePreferences Tests
+
+    @Test("UpdatePreferences defaults to true and roundtrips properly")
+    func testUpdatePreferencesRoundtrip() {
+        let suiteName = "test.hyperfetch.updateprefs.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(UpdatePreferences.autoDownloadUpdatesKey == "HyperFetch_AutoDownloadUpdates")
+        #expect(UpdatePreferences.notifyOnUpdateAvailableKey == "HyperFetch_NotifyOnUpdateAvailable")
+
+        // 1. Defaults should be true when unset
+        #expect(UpdatePreferences.isAutoDownloadUpdatesEnabled(userDefaults: testDefaults) == true)
+        #expect(UpdatePreferences.isNotifyOnUpdateAvailableEnabled(userDefaults: testDefaults) == true)
+
+        // 2. Set to false and verify roundtrip
+        UpdatePreferences.setAutoDownloadUpdates(false, userDefaults: testDefaults)
+        UpdatePreferences.setNotifyOnUpdateAvailable(false, userDefaults: testDefaults)
+
+        #expect(testDefaults.bool(forKey: UpdatePreferences.autoDownloadUpdatesKey) == false)
+        #expect(testDefaults.bool(forKey: UpdatePreferences.notifyOnUpdateAvailableKey) == false)
+        #expect(UpdatePreferences.isAutoDownloadUpdatesEnabled(userDefaults: testDefaults) == false)
+        #expect(UpdatePreferences.isNotifyOnUpdateAvailableEnabled(userDefaults: testDefaults) == false)
+
+        // 3. Set to true and verify roundtrip
+        UpdatePreferences.setAutoDownloadUpdates(true, userDefaults: testDefaults)
+        UpdatePreferences.setNotifyOnUpdateAvailable(true, userDefaults: testDefaults)
+
+        #expect(testDefaults.bool(forKey: UpdatePreferences.autoDownloadUpdatesKey) == true)
+        #expect(testDefaults.bool(forKey: UpdatePreferences.notifyOnUpdateAvailableKey) == true)
+        #expect(UpdatePreferences.isAutoDownloadUpdatesEnabled(userDefaults: testDefaults) == true)
+        #expect(UpdatePreferences.isNotifyOnUpdateAvailableEnabled(userDefaults: testDefaults) == true)
+    }
 }

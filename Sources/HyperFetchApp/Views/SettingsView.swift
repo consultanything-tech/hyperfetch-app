@@ -734,6 +734,24 @@ private struct UpdatesSettingsTab: View {
                     Divider()
                         .padding(.vertical, 2)
 
+                    Toggle("Automatically download updates in the background", isOn: $versionManager.autoDownloadUpdates)
+
+                    Text("Downloads verified updates silently so they are ready to install without interrupting your workflow.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    Toggle("Notify when updates are available", isOn: $versionManager.notifyOnUpdateAvailable)
+
+                    Text("Delivers system notifications when new releases or completed downloads are ready.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+                        .padding(.vertical, 2)
+
                     Picker("Update Channel", selection: $versionManager.updateChannel) {
                         Text("Stable (Recommended)").tag("Stable")
                         Text("Beta / Pre-Release").tag("Beta")
