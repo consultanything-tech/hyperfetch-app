@@ -14,6 +14,7 @@ public actor QueueManager {
 
     private var taskQueue: [DownloadTaskModel] = []
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
+    private var taskExecutionTokens: [UUID: UUID] = [:]
     private var resumedTaskIDs: Set<UUID> = []
     private var continuations: [UUID: AsyncStream<[DownloadTaskModel]>.Continuation] = [:]
 
@@ -116,16 +117,18 @@ public actor QueueManager {
     /// Pauses an active or queued download task.
     public func pauseTask(id: UUID) async {
         resumedTaskIDs.remove(id)
-        if let running = activeTasks.removeValue(forKey: id) {
-            running.cancel()
-            await engine.pauseDownload(id: id)
-        }
+        taskExecutionTokens.removeValue(forKey: id)
         if let idx = taskQueue.firstIndex(where: { $0.id == id }) {
             taskQueue[idx].status = .paused
             taskQueue[idx].bytesPerSecond = 0.0
             try? await statePersister?.saveTask(taskQueue[idx])
         }
         broadcastUpdate()
+
+        if let running = activeTasks.removeValue(forKey: id) {
+            running.cancel()
+            await engine.pauseDownload(id: id)
+        }
         scheduleNextTasks()
     }
 
@@ -160,6 +163,7 @@ public actor QueueManager {
     /// Removes a task from the queue, optionally deleting the downloaded file from disk.
     public func removeTask(id: UUID, deleteFile: Bool = false) async throws {
         resumedTaskIDs.remove(id)
+        taskExecutionTokens.removeValue(forKey: id)
         if let running = activeTasks.removeValue(forKey: id) {
             running.cancel()
             await engine.pauseDownload(id: id)
@@ -183,12 +187,7 @@ public actor QueueManager {
     /// Pauses all active and queued downloads.
     public func pauseAll() async {
         resumedTaskIDs.removeAll()
-        for (id, running) in activeTasks {
-            running.cancel()
-            await engine.pauseDownload(id: id)
-        }
-        activeTasks.removeAll()
-
+        taskExecutionTokens.removeAll()
         for i in 0..<taskQueue.count {
             if taskQueue[i].status == .downloading || taskQueue[i].status == .probing || taskQueue[i].status == .idle {
                 taskQueue[i].status = .paused
@@ -198,6 +197,12 @@ public actor QueueManager {
 
         try? await statePersister?.save(tasks: taskQueue)
         broadcastUpdate()
+
+        for (id, running) in activeTasks {
+            running.cancel()
+            await engine.pauseDownload(id: id)
+        }
+        activeTasks.removeAll()
     }
 
     /// Resumes all paused and idle tasks in queue order.
@@ -231,6 +236,7 @@ public actor QueueManager {
         while activeTasks.count > maxConcurrentDownloads {
             if let taskToPause = taskQueue.reversed().first(where: { activeTasks[$0.id] != nil }) {
                 resumedTaskIDs.insert(taskToPause.id)
+                taskExecutionTokens.removeValue(forKey: taskToPause.id)
                 if let running = activeTasks.removeValue(forKey: taskToPause.id) {
                     running.cancel()
                     await engine.pauseDownload(id: taskToPause.id)
@@ -287,6 +293,9 @@ public actor QueueManager {
 
     private func startTaskInternal(task: DownloadTaskModel) {
         let taskId = task.id
+        let token = UUID()
+        taskExecutionTokens[taskId] = token
+
         if let idx = taskQueue.firstIndex(where: { $0.id == taskId }) {
             taskQueue[idx].status = task.totalBytes > 0 ? .downloading : .probing
         }
@@ -296,17 +305,17 @@ public actor QueueManager {
             do {
                 let completedTask = try await engine.startDownload(task: task) { [weak self] progressTask in
                     Task { [weak self] in
-                        await self?.updateTaskProgress(progressTask)
+                        await self?.updateTaskProgress(progressTask, token: token)
                     }
                 }
-                await self?.handleTaskCompletion(id: taskId, completedTask: completedTask)
+                await self?.handleTaskCompletion(id: taskId, token: token, completedTask: completedTask)
             } catch is CancellationError {
-                await self?.handleTaskCancellation(id: taskId)
+                await self?.handleTaskCancellation(id: taskId, token: token)
             } catch {
                 if Task.isCancelled {
-                    await self?.handleTaskCancellation(id: taskId)
+                    await self?.handleTaskCancellation(id: taskId, token: token)
                 } else {
-                    await self?.handleTaskFailure(id: taskId, error: error)
+                    await self?.handleTaskFailure(id: taskId, token: token, error: error)
                 }
             }
         }
@@ -314,7 +323,8 @@ public actor QueueManager {
         activeTasks[taskId] = runningTask
     }
 
-    private func updateTaskProgress(_ updatedTask: DownloadTaskModel) {
+    private func updateTaskProgress(_ updatedTask: DownloadTaskModel, token: UUID) {
+        guard taskExecutionTokens[updatedTask.id] == token else { return }
         guard let idx = taskQueue.firstIndex(where: { $0.id == updatedTask.id }) else { return }
         if taskQueue[idx].status == .completed { return }
         if case .failed = taskQueue[idx].status { return }
@@ -324,7 +334,9 @@ public actor QueueManager {
         broadcastUpdate()
     }
 
-    private func handleTaskCompletion(id: UUID, completedTask: DownloadTaskModel) async {
+    private func handleTaskCompletion(id: UUID, token: UUID, completedTask: DownloadTaskModel) async {
+        guard taskExecutionTokens[id] == token else { return }
+        taskExecutionTokens.removeValue(forKey: id)
         activeTasks.removeValue(forKey: id)
         if let idx = taskQueue.firstIndex(where: { $0.id == id }) {
             taskQueue[idx] = completedTask
@@ -334,10 +346,14 @@ public actor QueueManager {
         scheduleNextTasks()
     }
 
-    private func handleTaskCancellation(id: UUID) async {
+    private func handleTaskCancellation(id: UUID, token: UUID) async {
+        guard taskExecutionTokens[id] == token else { return }
+        taskExecutionTokens.removeValue(forKey: id)
         activeTasks.removeValue(forKey: id)
         if let idx = taskQueue.firstIndex(where: { $0.id == id }) {
-            if let engineTask = await engine.task(for: id) {
+            if var engineTask = await engine.task(for: id) {
+                engineTask.status = .paused
+                engineTask.bytesPerSecond = 0.0
                 taskQueue[idx] = engineTask
             } else {
                 taskQueue[idx].status = .paused
@@ -349,7 +365,9 @@ public actor QueueManager {
         scheduleNextTasks()
     }
 
-    private func handleTaskFailure(id: UUID, error: Error) async {
+    private func handleTaskFailure(id: UUID, token: UUID, error: Error) async {
+        guard taskExecutionTokens[id] == token else { return }
+        taskExecutionTokens.removeValue(forKey: id)
         activeTasks.removeValue(forKey: id)
         if let idx = taskQueue.firstIndex(where: { $0.id == id }) {
             if taskQueue[idx].status == .paused { return }

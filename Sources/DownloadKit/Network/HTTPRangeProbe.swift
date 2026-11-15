@@ -128,6 +128,10 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         if !hasUserAgent {
             resolved["User-Agent"] = Self.defaultUserAgent
         }
+        let hasAcceptLanguage = resolved.keys.contains { $0.caseInsensitiveCompare("Accept-Language") == .orderedSame }
+        if !hasAcceptLanguage {
+            request.setValue("", forHTTPHeaderField: "Accept-Language")
+        }
         for (key, value) in resolved {
             request.setValue(value, forHTTPHeaderField: key)
         }

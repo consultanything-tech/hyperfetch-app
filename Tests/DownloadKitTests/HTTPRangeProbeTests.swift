@@ -630,6 +630,7 @@ struct HTTPRangeProbeTests {
             #expect(request.value(forHTTPHeaderField: "Cookie") == "session_token=secret123")
             #expect(request.value(forHTTPHeaderField: "Referer") == "https://authenticated.example.com/dashboard")
             #expect(request.value(forHTTPHeaderField: "User-Agent") == HTTPRangeProbe.defaultUserAgent)
+            #expect(request.value(forHTTPHeaderField: "Accept-Language") == "")
 
             let response = HTTPURLResponse(
                 url: testURL,
@@ -653,6 +654,49 @@ struct HTTPRangeProbeTests {
         #expect(result.supportsRange == true)
         #expect(result.totalBytes == 2048)
         #expect(result.filename == "file.zip")
+    }
+
+    @Test("HTTPRangeProbe suppresses Accept-Language by default and preserves custom Accept-Language when provided")
+    func testAcceptLanguageHandling() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://authenticated.example.com/file.zip")!
+        let session = makeSession()
+
+        // 1. Default: Accept-Language is suppressed ("")
+        MockURLProtocol.register(url: testURL) { request in
+            #expect(request.value(forHTTPHeaderField: "Accept-Language") == "")
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Length": "100",
+                    "Accept-Ranges": "bytes"
+                ]
+            )!
+            return (response, nil)
+        }
+
+        let probe = HTTPRangeProbe(session: session)
+        _ = try await probe.probe(url: testURL)
+
+        // 2. Custom Accept-Language provided: retained as-is
+        MockURLProtocol.reset()
+        MockURLProtocol.register(url: testURL) { request in
+            #expect(request.value(forHTTPHeaderField: "Accept-Language") == "fr-FR,fr;q=0.9")
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Length": "100",
+                    "Accept-Ranges": "bytes"
+                ]
+            )!
+            return (response, nil)
+        }
+
+        _ = try await probe.probe(url: testURL, headers: ["Accept-Language": "fr-FR,fr;q=0.9"])
     }
 
     @Test("HEAD 401 falls back to GET Range with cookies and succeeds")

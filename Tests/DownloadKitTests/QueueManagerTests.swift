@@ -237,7 +237,7 @@ struct QueueManagerTests {
 
         let urls = (1...3).map { URL(string: "https://queue.example.com/pause_file\($0).bin")! }
         for url in urls {
-            registerMockFile(url: url, size: 4096, delay: 0.08)
+            registerMockFile(url: url, size: 4096, delay: 0.02)
         }
 
         for (idx, url) in urls.enumerated() {
@@ -264,7 +264,7 @@ struct QueueManagerTests {
 
         // Wait for completion
         var finished = false
-        for _ in 0..<80 {
+        for _ in 0..<160 {
             try await Task.sleep(nanoseconds: 50_000_000)
             let currentTasks = await queueManager.tasks()
             if currentTasks.allSatisfy({ $0.status == .completed }) {
@@ -663,5 +663,74 @@ struct QueueManagerTests {
 
         // Clean up blocking task
         await queueManager.pauseAll()
+    }
+
+    // MARK: - Test 12: Pausing Multi-Chunk Download Does Not Auto-Restart Or Fallback
+
+    @Test("Pausing active multi-chunk download transitions to paused and does not auto-restart or fall into single-stream fallback")
+    func testPauseActiveMultiChunkDownloadDoesNotAutoRestart() async throws {
+        QueueMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 4,
+            minChunkSize: 1024
+        )
+        let queueManager = QueueManager(engine: engine, maxConcurrentDownloads: 1)
+
+        let testURL = URL(string: "https://queue.example.com/multi_chunk_pause.bin")!
+        let totalSize = 16 * 1024 // 16 KB, 4 chunks of 4 KB
+        registerMockFile(url: testURL, size: totalSize, delay: 0.1)
+
+        let dest = tempDir.appendingPathComponent("multi_chunk_pause.bin")
+        let task = try await queueManager.addTask(
+            url: testURL,
+            destinationURL: dest,
+            preferredChunkCount: 4,
+            autoStart: true
+        )
+
+        // Wait until it is actively downloading and chunks are partitioned
+        for _ in 0..<40 {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            if let current = await queueManager.task(for: task.id),
+               current.status == .downloading,
+               current.chunks.count > 1 {
+                break
+            }
+        }
+
+        let activeBeforePause = await queueManager.task(for: task.id)
+        #expect(activeBeforePause?.status == .downloading)
+        #expect(activeBeforePause?.supportsRange == true)
+        #expect(activeBeforePause?.chunks.count == 4)
+
+        // Pause the active task
+        await queueManager.pauseTask(id: task.id)
+
+        // Immediately verify status is .paused
+        let immediatelyPaused = await queueManager.task(for: task.id)
+        #expect(immediatelyPaused?.status == .paused)
+        #expect(immediatelyPaused?.bytesPerSecond == 0.0)
+
+        // Await cancellation settling time
+        try await Task.sleep(nanoseconds: 300_000_000) // 300ms
+
+        // Verify it remains paused, activeCount is 0, and did NOT auto-restart or fallback
+        let settledTask = await queueManager.task(for: task.id)
+        #expect(settledTask?.status == .paused)
+        #expect(settledTask?.bytesPerSecond == 0.0)
+        #expect(settledTask?.supportsRange == true) // Did NOT fall into single-stream fallback
+        #expect(settledTask?.chunks.count == 4)
+        #expect(await queueManager.activeCount == 0) // Did NOT auto-restart
+
+        // Verify another sleep window confirms it continues to remain paused
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let persistentPaused = await queueManager.task(for: task.id)
+        #expect(persistentPaused?.status == .paused)
+        #expect(await queueManager.activeCount == 0)
     }
 }

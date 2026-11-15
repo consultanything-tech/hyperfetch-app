@@ -962,4 +962,83 @@ struct DownloadEngineTests {
         #expect(diskData.count == totalSize)
         #expect(diskData == expectedData)
     }
+
+    @Test("DownloadEngine seamlessly falls back to single-stream when server rate limits multi-chunk with HTTP 403")
+    func testDownloadEngineFallsBackToSingleStreamWhenServerRateLimitsWith403() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/forbidden_chunk_video.mp4")!
+        let totalSize = 500_000
+        let expectedData = Data((0..<totalSize).map { UInt8(($0 * 17 + 3) & 0xFF) })
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"forbidden_chunk_video.mp4\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                if let rangeHeader = request.value(forHTTPHeaderField: "Range"), !rangeHeader.isEmpty {
+                    // Simulate server rejecting concurrent chunk requests with HTTP 403 Forbidden
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 403,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [
+                            "Content-Type": "text/html"
+                        ]
+                    )!
+                    let errorBody = Data("<html><body>403 Forbidden</body></html>".utf8)
+                    return (response, errorBody)
+                } else {
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 200,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [
+                            "Content-Length": "\(totalSize)",
+                            "Content-Type": "video/mp4"
+                        ]
+                    )!
+                    return (response, expectedData)
+                }
+            }
+            fatalError("Unexpected HTTP method \(request.httpMethod ?? "")")
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("forbidden_chunk_video.mp4")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 4,
+            minChunkSize: 64 * 1024,
+            rateLimitBackoffDuration: .milliseconds(10)
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.completedAt != nil)
+        #expect(completedTask.downloadedBytes == Int64(totalSize))
+        #expect(completedTask.progress == 1.0)
+        #expect(completedTask.supportsRange == false)
+
+        let diskData = try Data(contentsOf: destinationURL)
+        #expect(diskData.count == totalSize)
+        #expect(diskData == expectedData)
+    }
 }

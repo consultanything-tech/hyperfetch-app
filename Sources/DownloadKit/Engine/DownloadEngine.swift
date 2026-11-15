@@ -86,10 +86,18 @@ public actor DownloadEngine {
                 break
             }
         }
+
+        switch currentTask.status {
+        case .paused, .idle, .failed:
+            currentTask.status = (currentTask.totalBytes > 0 && currentTask.status != .idle) ? .downloading : .probing
+        case .downloading, .probing, .completed:
+            break
+        }
         taskStore[currentTask.id] = currentTask
 
         if Task.isCancelled {
             currentTask.status = .paused
+            currentTask.bytesPerSecond = 0.0
             taskStore[currentTask.id] = currentTask
             try? await statePersister?.saveTask(currentTask)
             progressHandler?(currentTask)
@@ -97,7 +105,7 @@ public actor DownloadEngine {
         }
 
         // Step 1: Probe remote resource if idle or size unknown
-        if currentTask.status == .idle || currentTask.totalBytes < 0 {
+        if currentTask.status == .probing || currentTask.status == .idle || currentTask.totalBytes < 0 {
             currentTask.status = .probing
             taskStore[currentTask.id] = currentTask
             progressHandler?(currentTask)
@@ -183,6 +191,17 @@ public actor DownloadEngine {
             }
         }
 
+        if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
+            try? await writer.sync()
+            await writer.close()
+            currentTask.status = .paused
+            currentTask.bytesPerSecond = 0.0
+            taskStore[currentTask.id] = currentTask
+            try? await statePersister?.saveTask(currentTask)
+            progressHandler?(currentTask)
+            throw CancellationError()
+        }
+
         currentTask.status = .downloading
         taskStore[currentTask.id] = currentTask
         progressHandler?(currentTask)
@@ -204,7 +223,7 @@ public actor DownloadEngine {
             progressHandler?(currentTask)
             throw CancellationError()
         } catch {
-            if Task.isCancelled {
+            if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
                 try? await writer.sync()
                 await writer.close()
 
@@ -224,6 +243,21 @@ public actor DownloadEngine {
                 if isRateLimitError(error) {
                     try? await Task.sleep(for: rateLimitBackoffDuration)
                 }
+
+                if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
+                    try? await writer.sync()
+                    await writer.close()
+                    if let latest = taskStore[currentTask.id] {
+                        currentTask = latest
+                    }
+                    currentTask.status = .paused
+                    currentTask.bytesPerSecond = 0.0
+                    taskStore[currentTask.id] = currentTask
+                    try? await statePersister?.saveTask(currentTask)
+                    progressHandler?(currentTask)
+                    throw CancellationError()
+                }
+
                 currentTask.supportsRange = false
                 currentTask.downloadedBytes = 0
                 currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: -1)]
@@ -231,6 +265,20 @@ public actor DownloadEngine {
                 try? await writer.allocate(totalBytes: 0)
                 try? await statePersister?.saveTask(currentTask)
                 progressHandler?(currentTask)
+
+                if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
+                    try? await writer.sync()
+                    await writer.close()
+                    if let latest = taskStore[currentTask.id] {
+                        currentTask = latest
+                    }
+                    currentTask.status = .paused
+                    currentTask.bytesPerSecond = 0.0
+                    taskStore[currentTask.id] = currentTask
+                    try? await statePersister?.saveTask(currentTask)
+                    progressHandler?(currentTask)
+                    throw CancellationError()
+                }
 
                 do {
                     try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
@@ -248,7 +296,7 @@ public actor DownloadEngine {
                     progressHandler?(currentTask)
                     throw CancellationError()
                 } catch {
-                    if Task.isCancelled {
+                    if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
                         try? await writer.sync()
                         await writer.close()
 
@@ -428,6 +476,7 @@ public actor DownloadEngine {
         progressHandler: (@Sendable (DownloadTaskModel) -> Void)?
     ) {
         guard var task = taskStore[taskId] else { return }
+        guard task.status != .paused, !Task.isCancelled else { return }
 
         if let idx = task.chunks.firstIndex(where: { $0.index == chunkIndex }) {
             task.chunks[idx].bytesDownloaded += delta

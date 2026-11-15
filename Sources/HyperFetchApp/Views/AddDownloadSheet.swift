@@ -23,6 +23,7 @@ public struct AddDownloadSheet: View {
     @ViewState private var isAdvancedExpanded: Bool = false
     @ViewState private var customUserAgent: String = "HyperFetch/1.0 (macOS)"
     @ViewState private var sha256Checksum: String = ""
+    @ViewState private var referrerURL: String = ""
 
     @ViewState private var isProbing: Bool = false
     @ViewState private var probedResult: ProbeResult? = nil
@@ -78,6 +79,9 @@ public struct AddDownloadSheet: View {
         .background(Theme.windowSurface)
         .onChange(of: urlString) { _, newURL in
             scheduleProbe(for: newURL)
+        }
+        .onChange(of: referrerURL) { _, _ in
+            scheduleProbe(for: urlString)
         }
         .onAppear {
             chunkCount = appState.defaultChunkCount
@@ -532,8 +536,26 @@ public struct AddDownloadSheet: View {
                         .overlay(Theme.separator)
                         .padding(.vertical, 2)
 
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("HTTP Referrer URL:")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textSecondary)
+
+                        TextField("Optional Referrer URL (e.g. https://...)", text: $referrerURL)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Theme.inputBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Theme.inputBorder, lineWidth: 1)
+                            )
+                    }
+
                     HStack {
-                        Text("Custom Referrer / User-Agent:")
+                        Text("Default User-Agent:")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.textSecondary)
                         Spacer()
@@ -754,10 +776,17 @@ public struct AddDownloadSheet: View {
         appState.defaultChunkCount = chunkCount
         appState.defaultDownloadDirectoryURL = destinationFolderURL
 
+        let trimmedReferrer = referrerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        var headers: [String: String] = [:]
+        if !trimmedReferrer.isEmpty {
+            headers["Referer"] = trimmedReferrer
+        }
+
         appState.addTask(
             url: url,
             destinationURL: destinationFile,
             filename: finalFilename,
+            headers: headers,
             chunkCount: chunkCount,
             autoStart: autoStart
         )
@@ -790,13 +819,19 @@ public struct AddDownloadSheet: View {
         isProbing = true
         probeErrorMessage = nil
 
+        let trimmedReferrer = referrerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        var headers: [String: String] = [:]
+        if !trimmedReferrer.isEmpty {
+            headers["Referer"] = trimmedReferrer
+        }
+
         probeTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)
             if Task.isCancelled { return }
 
             let probe = HTTPRangeProbe(session: .shared, timeoutInterval: 12.0)
             do {
-                let res = try await probe.probe(url: validURL)
+                let res = try await probe.probe(url: validURL, headers: headers)
                 if !Task.isCancelled {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         self.probedResult = res

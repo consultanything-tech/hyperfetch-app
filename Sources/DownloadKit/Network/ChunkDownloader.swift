@@ -66,6 +66,24 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
         self.rateLimiter = rateLimiter
     }
 
+    private func isTransientNetworkError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .networkConnectionLost, .timedOut, .cannotConnectToHost, .notConnectedToInternet, .dnsLookupFailed:
+                return true
+            default:
+                return false
+            }
+        }
+        if case ChunkDownloadError.unexpectedEOF = error {
+            return true
+        }
+        let desc = error.localizedDescription.lowercased()
+        return desc.contains("network connection was lost") ||
+               desc.contains("timed out") ||
+               desc.contains("connection reset")
+    }
+
     public func download(
         chunk: inout Chunk,
         from url: URL,
@@ -79,106 +97,140 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
             return
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        var baseRequest = URLRequest(url: url)
+        baseRequest.httpMethod = "GET"
 
         var resolvedHeaders = headers
         let hasUserAgent = resolvedHeaders.keys.contains { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }
         if !hasUserAgent {
             resolvedHeaders["User-Agent"] = HTTPRangeProbe.defaultUserAgent
         }
+        let hasAcceptLanguage = resolvedHeaders.keys.contains { $0.caseInsensitiveCompare("Accept-Language") == .orderedSame }
+        if !hasAcceptLanguage {
+            baseRequest.setValue("", forHTTPHeaderField: "Accept-Language")
+        }
         for (key, value) in resolvedHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
+            baseRequest.setValue(value, forHTTPHeaderField: key)
         }
 
-        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        baseRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let chunkStartOffset = chunk.startOffset
-        let currentStart = chunkStartOffset + chunk.bytesDownloaded
-        if chunk.endOffset >= 0 {
-            request.setValue("bytes=\(currentStart)-\(chunk.endOffset)", forHTTPHeaderField: "Range")
-        } else if currentStart > 0 {
-            request.setValue("bytes=\(currentStart)-", forHTTPHeaderField: "Range")
-        }
+        var attempt = 0
+        let maxAttempts = 3
 
-        chunk.status = .downloading
+        while attempt < maxAttempts {
+            attempt += 1
 
-        let (dataStream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
-
-        let delegate = DataTaskStreamDelegate(continuation: continuation) { response in
-            if response.statusCode == 206 {
-                // Expected Partial Content
-            } else if response.statusCode == 200 {
-                // 200 OK is only valid if chunk begins at offset 0 (single-stream or entire file)
-                if chunkStartOffset > 0 {
-                    throw ChunkDownloadError.serverDoesNotSupportRange(statusCode: 200)
-                }
-            } else if response.statusCode >= 400 {
-                throw ChunkDownloadError.httpError(statusCode: response.statusCode)
+            if chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength {
+                chunk.status = .completed
+                return
             }
-        }
 
-        let task = session.dataTask(with: request)
-        task.delegate = delegate
-        task.resume()
+            var request = baseRequest
+            let currentStart = chunkStartOffset + chunk.bytesDownloaded
+            if chunk.endOffset >= 0 {
+                request.setValue("bytes=\(currentStart)-\(chunk.endOffset)", forHTTPHeaderField: "Range")
+            } else if currentStart > 0 {
+                request.setValue("bytes=\(currentStart)-", forHTTPHeaderField: "Range")
+            }
 
-        var downloadedSoFar = chunk.bytesDownloaded
-        let expectedLength = chunk.expectedLength
+            chunk.status = .downloading
 
-        do {
-            try await withTaskCancellationHandler {
-                for try await data in dataStream {
-                    try Task.checkCancellation()
-                    let count = Int64(data.count)
-                    if let rateLimiter {
-                        try await rateLimiter.requestTokens(count: count)
+            let (dataStream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+
+            let delegate = DataTaskStreamDelegate(continuation: continuation) { response in
+                if response.statusCode == 206 {
+                    // Expected Partial Content
+                } else if response.statusCode == 200 {
+                    // 200 OK is only valid if chunk begins at offset 0 (single-stream or entire file)
+                    if currentStart > 0 {
+                        throw ChunkDownloadError.serverDoesNotSupportRange(statusCode: 200)
                     }
-                    let writeOffset = chunkStartOffset + downloadedSoFar
-                    try await writer.write(data: data, at: writeOffset)
-                    downloadedSoFar += count
-                    onProgress(count)
+                } else if response.statusCode >= 400 {
+                    throw ChunkDownloadError.httpError(statusCode: response.statusCode)
                 }
-
-                if Task.isCancelled {
-                    throw CancellationError()
-                }
-
-                // Verify expected byte count if length is known
-                if expectedLength > 0 && downloadedSoFar < expectedLength {
-                    let err = ChunkDownloadError.unexpectedEOF(
-                        expected: expectedLength,
-                        received: downloadedSoFar
-                    )
-                    throw err
-                }
-            } onCancel: {
-                task.cancel()
-                continuation.finish(throwing: CancellationError())
             }
 
-            chunk.bytesDownloaded = downloadedSoFar
-            chunk.status = .completed
-        } catch is CancellationError {
-            task.cancel()
-            chunk.bytesDownloaded = downloadedSoFar
-            chunk.status = .pending
-            throw CancellationError()
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            task.cancel()
-            chunk.bytesDownloaded = downloadedSoFar
-            chunk.status = .pending
-            throw CancellationError()
-        } catch {
-            if Task.isCancelled {
+            let task = session.dataTask(with: request)
+            task.delegate = delegate
+            task.resume()
+
+            var downloadedSoFar = chunk.bytesDownloaded
+            let expectedLength = chunk.expectedLength
+
+            do {
+                try await withTaskCancellationHandler {
+                    for try await data in dataStream {
+                        try Task.checkCancellation()
+                        let count = Int64(data.count)
+                        if let rateLimiter {
+                            try await rateLimiter.requestTokens(count: count)
+                        }
+                        let writeOffset = chunkStartOffset + downloadedSoFar
+                        try await writer.write(data: data, at: writeOffset)
+                        downloadedSoFar += count
+                        chunk.bytesDownloaded = downloadedSoFar
+                        onProgress(count)
+                    }
+
+                    if Task.isCancelled {
+                        throw CancellationError()
+                    }
+
+                    // Verify expected byte count if length is known
+                    if expectedLength > 0 && downloadedSoFar < expectedLength {
+                        let err = ChunkDownloadError.unexpectedEOF(
+                            expected: expectedLength,
+                            received: downloadedSoFar
+                        )
+                        throw err
+                    }
+                } onCancel: {
+                    task.cancel()
+                    continuation.finish(throwing: CancellationError())
+                }
+
+                chunk.bytesDownloaded = downloadedSoFar
+                chunk.status = .completed
+                return
+            } catch is CancellationError {
                 task.cancel()
                 chunk.bytesDownloaded = downloadedSoFar
                 chunk.status = .pending
                 throw CancellationError()
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                task.cancel()
+                chunk.bytesDownloaded = downloadedSoFar
+                chunk.status = .pending
+                throw CancellationError()
+            } catch {
+                task.cancel()
+                chunk.bytesDownloaded = downloadedSoFar
+
+                if Task.isCancelled {
+                    chunk.status = .pending
+                    throw CancellationError()
+                }
+
+                if isTransientNetworkError(error) && attempt < maxAttempts {
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(attempt * 500_000_000))
+                        continue
+                    } catch {
+                        chunk.status = .pending
+                        throw CancellationError()
+                    }
+                }
+
+                chunk.status = .failed(error.localizedDescription)
+                throw error
             }
-            task.cancel()
-            chunk.bytesDownloaded = downloadedSoFar
-            chunk.status = .failed(error.localizedDescription)
-            throw error
+        }
+
+        if chunk.status != .completed {
+            chunk.status = .failed("Max retry attempts reached")
+            throw ChunkDownloadError.invalidResponse
         }
     }
 }
