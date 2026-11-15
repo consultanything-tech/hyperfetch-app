@@ -136,7 +136,10 @@ public actor QueueManager {
 
         if case .failed(let reason) = taskQueue[idx].status {
             taskQueue[idx].status = .idle
-            if reason.contains("206") || reason.contains("range") || reason.contains("Range") || !taskQueue[idx].supportsRange {
+            if reason.contains("206") || reason.contains("range") || reason.contains("Range") ||
+               reason.contains("429") || reason.contains("403") || reason.contains("503") ||
+               reason.localizedCaseInsensitiveContains("too many requests") ||
+               !taskQueue[idx].supportsRange {
                 taskQueue[idx].supportsRange = false
                 taskQueue[idx].chunks = []
                 taskQueue[idx].downloadedBytes = 0

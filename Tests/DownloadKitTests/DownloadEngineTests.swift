@@ -879,4 +879,87 @@ struct DownloadEngineTests {
         #expect(diskData.count == totalSize)
         #expect(diskData == expectedData)
     }
+
+    // MARK: - Test: Rate-Limit (429) Fallback to Single Stream
+
+    @Test("DownloadEngine seamlessly falls back to single-stream when server rate limits multi-chunk with HTTP 429")
+    func testDownloadEngineFallsBackToSingleStreamWhenServerRateLimitsWith429() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/rate_limited_video.mp4")!
+        let totalSize = 1_000_000 // 1,000,000 bytes
+        let expectedData = Data((0..<totalSize).map { UInt8(($0 * 31 + 7) & 0xFF) })
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"rate_limited_video.mp4\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                // If request includes Range header, simulate server rejecting concurrent chunk requests with HTTP 429 Too Many Requests
+                if let rangeHeader = request.value(forHTTPHeaderField: "Range"), !rangeHeader.isEmpty {
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 429,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [
+                            "Content-Type": "text/plain",
+                            "Retry-After": "1"
+                        ]
+                    )!
+                    let errorBody = Data("Too Many Requests: Concurrency limit exceeded".utf8)
+                    return (response, errorBody)
+                } else {
+                    // Direct single-stream GET request without Range header succeeds with 200 OK
+                    let response = HTTPURLResponse(
+                        url: testURL,
+                        statusCode: 200,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: [
+                            "Content-Length": "\(totalSize)",
+                            "Content-Type": "video/mp4"
+                        ]
+                    )!
+                    return (response, expectedData)
+                }
+            }
+            fatalError("Unexpected HTTP method \(request.httpMethod ?? "")")
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("rate_limited_video.mp4")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL
+        )
+
+        let engine = DownloadEngine(
+            session: session,
+            defaultChunkCount: 4,
+            minChunkSize: 128 * 1024,
+            rateLimitBackoffDuration: .milliseconds(10)
+        )
+
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.completedAt != nil)
+        #expect(completedTask.downloadedBytes == Int64(totalSize))
+        #expect(completedTask.progress == 1.0)
+        #expect(completedTask.supportsRange == false)
+
+        let diskData = try Data(contentsOf: destinationURL)
+        #expect(diskData.count == totalSize)
+        #expect(diskData == expectedData)
+    }
 }

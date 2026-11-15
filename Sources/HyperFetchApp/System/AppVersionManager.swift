@@ -26,11 +26,11 @@ public final class AppVersionManager: ObservableObject {
     public static let notifyOnUpdateAvailableKey = "HyperFetch_NotifyOnUpdateAvailable"
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "16"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "17"
     }
 
     public var fullVersionString: String {

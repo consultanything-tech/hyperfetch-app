@@ -1,5 +1,5 @@
 PackageIdentifier: ConsultAnything.HyperFetch
-PackageVersion: 1.1.1
+PackageVersion: 1.1.2
 PackageLocale: en-US
 Publisher: ConsultAnything
 PublisherUrl: https://consultanything-tech.github.io/hyperfetch-app/
@@ -17,5 +17,6 @@ Tags:
   - accelerator
   - open-source
   - tauri
+ReleaseDate: 2026-11-15
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

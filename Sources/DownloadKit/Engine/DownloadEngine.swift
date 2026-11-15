@@ -10,6 +10,7 @@ public actor DownloadEngine {
     public let rateLimiter: (any RateLimiting)?
     private let defaultChunkCount: Int
     private let minChunkSize: Int64
+    private let rateLimitBackoffDuration: Duration
 
     private var taskStore: [UUID: DownloadTaskModel] = [:]
     private var speedTrackers: [UUID: SpeedTracker] = [:]
@@ -22,7 +23,8 @@ public actor DownloadEngine {
         statePersister: (any StatePersisting)? = nil,
         rateLimiter: (any RateLimiting)? = nil,
         defaultChunkCount: Int = 4,
-        minChunkSize: Int64 = 256 * 1024
+        minChunkSize: Int64 = 256 * 1024,
+        rateLimitBackoffDuration: Duration = .milliseconds(1500)
     ) {
         self.session = session
         self.probe = probe ?? HTTPRangeProbe(session: session)
@@ -32,6 +34,7 @@ public actor DownloadEngine {
         self.rateLimiter = rateLimiter
         self.defaultChunkCount = defaultChunkCount
         self.minChunkSize = minChunkSize
+        self.rateLimitBackoffDuration = rateLimitBackoffDuration
     }
 
     /// Sets or updates the bandwidth limit for downloads.
@@ -217,10 +220,13 @@ public actor DownloadEngine {
             }
 
             if isRangeNotSupportedError(error) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
-                print("[DownloadEngine] Server does not support range requests for task \(currentTask.id) (status 200 returned). Seamlessly falling back to direct single-stream download.")
+                print("[DownloadEngine] Server does not support range requests or rate-limited concurrent connections for task \(currentTask.id) (\(error)). Seamlessly falling back to direct single-stream download.")
+                if isRateLimitError(error) {
+                    try? await Task.sleep(for: rateLimitBackoffDuration)
+                }
                 currentTask.supportsRange = false
                 currentTask.downloadedBytes = 0
-                currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: currentTask.totalBytes > 0 ? currentTask.totalBytes - 1 : -1)]
+                currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: -1)]
                 taskStore[currentTask.id] = currentTask
                 try? await writer.allocate(totalBytes: 0)
                 try? await statePersister?.saveTask(currentTask)
@@ -392,13 +398,27 @@ public actor DownloadEngine {
             case .serverDoesNotSupportRange:
                 return true
             case .httpError(let statusCode):
-                return statusCode == 416 || statusCode == 501
+                return statusCode == 416 || statusCode == 501 || statusCode == 429 || statusCode == 403 || statusCode == 503
             default:
                 break
             }
         }
         let desc = error.localizedDescription
-        return desc.contains("206") || desc.contains("range") || desc.contains("Range")
+        return desc.contains("206") || desc.contains("range") || desc.contains("Range") ||
+               desc.contains("429") || desc.contains("403") || desc.contains("503") ||
+               desc.localizedCaseInsensitiveContains("too many requests")
+    }
+
+    private func isRateLimitError(_ error: Error) -> Bool {
+        if let chunkError = error as? ChunkDownloadError {
+            if case .httpError(let statusCode) = chunkError {
+                if statusCode == 429 || statusCode == 503 {
+                    return true
+                }
+            }
+        }
+        let desc = error.localizedDescription
+        return desc.contains("429") || desc.contains("503") || desc.localizedCaseInsensitiveContains("too many requests")
     }
 
     private func recordChunkProgress(

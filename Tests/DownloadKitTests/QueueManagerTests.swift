@@ -602,4 +602,66 @@ struct QueueManagerTests {
         #expect(finalTask?.status == .completed)
         #expect(FileManager.default.fileExists(atPath: dest.path))
     }
+
+    // MARK: - Test 11: Resuming a Failed 429 Rate-Limited Task
+
+    @Test("Resuming a failed 429 rate-limited task resets supportsRange to false and clears chunks")
+    func testResumingFailed429RateLimitedTaskResetsSupportsRangeAndClearsChunks() async throws {
+        QueueMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let stateURL = tempDir.appendingPathComponent("state.json")
+        let persister = JSONStatePersister(storageURL: stateURL)
+        let engine = DownloadEngine(session: session, statePersister: persister)
+        let queueManager = QueueManager(engine: engine, statePersister: persister, maxConcurrentDownloads: 1)
+
+        // Block the single concurrency slot with an active slow download so the resumed task stays idle
+        let blockingURL = URL(string: "https://queue.example.com/blocking_slot.bin")!
+        registerMockFile(url: blockingURL, size: 4096, delay: 0.5)
+        let blockingDest = tempDir.appendingPathComponent("blocking_slot.bin")
+        try await queueManager.addTask(url: blockingURL, destinationURL: blockingDest, autoStart: true)
+        #expect(await queueManager.activeCount == 1)
+
+        let testURL = URL(string: "https://queue.example.com/ratelimited_429.zip")!
+        let dest = tempDir.appendingPathComponent("ratelimited_429.zip")
+
+        let taskId = UUID()
+        var failedTask = DownloadTaskModel(
+            id: taskId,
+            url: testURL,
+            destinationURL: dest,
+            status: .failed(reason: "Server responded with HTTP error: 429")
+        )
+        failedTask.supportsRange = true
+        failedTask.downloadedBytes = 8192
+        failedTask.chunks = [
+            Chunk(index: 0, startOffset: 0, endOffset: 4095, bytesDownloaded: 4096, status: .completed),
+            Chunk(index: 1, startOffset: 4096, endOffset: 8191, bytesDownloaded: 4096, status: .completed),
+            Chunk(index: 2, startOffset: 8192, endOffset: 12287, bytesDownloaded: 0, status: .failed("Server responded with HTTP error: 429"))
+        ]
+
+        try await persister.saveTask(failedTask)
+        _ = try await queueManager.restoreTasks()
+
+        let restored = await queueManager.task(for: taskId)
+        #expect(restored?.status == DownloadStatus.failed(reason: "Server responded with HTTP error: 429"))
+        #expect(restored?.supportsRange == true)
+        #expect(restored?.chunks.count == 3)
+        #expect(restored?.downloadedBytes == 8192)
+
+        // Resume the failed task
+        try await queueManager.resumeTask(id: taskId)
+
+        let resumedTask = await queueManager.task(for: taskId)
+        #expect(resumedTask != nil)
+        #expect(resumedTask?.status == DownloadStatus.idle)
+        #expect(resumedTask?.supportsRange == false)
+        #expect(resumedTask?.chunks.isEmpty == true)
+        #expect(resumedTask?.downloadedBytes == 0)
+
+        // Clean up blocking task
+        await queueManager.pauseAll()
+    }
 }
