@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// High-performance multi-chunk concurrent download engine with speed calculation and progress tracking.
 public actor DownloadEngine {
@@ -197,6 +198,18 @@ public actor DownloadEngine {
         // Pre-allocate destination file if range supported and totalBytes > 0
         let writer = fileWriterFactory(currentTask.destinationURL)
         if currentTask.supportsRange && currentTask.totalBytes > 0 {
+            let destDir = currentTask.destinationURL.deletingLastPathComponent()
+            let values = try? destDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            let available = values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map { Int64($0) } ?? Int64.max
+            if currentTask.totalBytes > 0 && available < currentTask.totalBytes {
+                let err = DownloadError.insufficientDiskSpace(required: currentTask.totalBytes, available: available)
+                currentTask.status = .failed(error: err)
+                taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask, immediate: true)
+                progressHandler?(currentTask)
+                throw err
+            }
+
             do {
                 try await writer.allocate(totalBytes: currentTask.totalBytes)
             } catch {
@@ -302,6 +315,40 @@ public actor DownloadEngine {
         } else if currentTask.downloadedBytes > 0 {
             currentTask.totalBytes = currentTask.downloadedBytes
         }
+
+        // SHA-256 Checksum Verification Pipeline
+        if let expected = currentTask.expectedChecksum?.trimmingCharacters(in: .whitespacesAndNewlines), !expected.isEmpty {
+            do {
+                let actual = try computeSHA256(for: currentTask.destinationURL)
+                let expectedNormalized = expected.lowercased()
+                let actualNormalized = actual.lowercased()
+
+                if actualNormalized == expectedNormalized {
+                    currentTask.checksumVerified = true
+                } else {
+                    currentTask.checksumVerified = false
+                    let mismatchError = DownloadError.checksumMismatch(expected: expectedNormalized, actual: actualNormalized)
+                    currentTask.status = .failed(error: mismatchError)
+                    currentTask.bytesPerSecond = 0.0
+                    taskStore[currentTask.id] = currentTask
+                    try? await statePersister?.saveTask(currentTask, immediate: true)
+                    progressHandler?(currentTask)
+                    throw mismatchError
+                }
+            } catch let error as DownloadError {
+                throw error
+            } catch {
+                currentTask.checksumVerified = false
+                let err = DownloadError.failed(reason: "Failed to compute checksum: \(error.localizedDescription)")
+                currentTask.status = .failed(error: err)
+                currentTask.bytesPerSecond = 0.0
+                taskStore[currentTask.id] = currentTask
+                try? await statePersister?.saveTask(currentTask, immediate: true)
+                progressHandler?(currentTask)
+                throw err
+            }
+        }
+
         currentTask.status = .completed
         currentTask.completedAt = Date()
         currentTask.bytesPerSecond = 0.0
@@ -465,6 +512,22 @@ public actor DownloadEngine {
             lastProgressEmitTime[taskId] = now
             progressHandler?(task)
         }
+    }
+
+    /// Computes the SHA-256 checksum of a file on disk by streaming chunks into CryptoKit hasher.
+    /// Operates with O(1) buffer memory to safely process multi-gigabyte files.
+    private func computeSHA256(for fileURL: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer {
+            try? handle.close()
+        }
+        var hasher = SHA256()
+        let bufferSize = 64 * 1024 // 64 KB streaming buffer
+        while let chunk = try handle.read(upToCount: bufferSize), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 

@@ -71,10 +71,17 @@ impl FileWriter {
     pub async fn allocate(&self, total_bytes: u64) -> Result<(), StorageError> {
         let file = self.file.write().await;
         file.set_len(total_bytes).map_err(|e| {
-            StorageError::AllocationError(format!(
-                "Failed to allocate {} bytes: {}",
-                total_bytes, e
-            ))
+            if e.raw_os_error() == Some(28) || e.to_string().to_lowercase().contains("space") {
+                StorageError::Io(format!(
+                    "Insufficient disk space: cannot allocate {} bytes ({})",
+                    total_bytes, e
+                ))
+            } else {
+                StorageError::AllocationError(format!(
+                    "Failed to allocate {} bytes: {}",
+                    total_bytes, e
+                ))
+            }
         })?;
         Ok(())
     }

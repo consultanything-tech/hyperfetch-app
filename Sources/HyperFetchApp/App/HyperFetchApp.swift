@@ -50,7 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainWindowDelegate.shared.isTerminating = true
+        AppState.shared?.flushSync()
         return .terminateNow
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        AppState.shared?.flushSync()
     }
 }
 

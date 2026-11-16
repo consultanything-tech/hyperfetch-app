@@ -93,6 +93,13 @@ public actor FileWriter: FileWriting {
     /// Pre-allocates a sparse target file of `totalBytes` using ftruncate.
     /// If totalBytes <= 0, the file is truncated to 0 bytes.
     public func allocate(totalBytes: Int64) throws {
+        let destDir = destinationURL.deletingLastPathComponent()
+        let values = try? destDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+        let available = values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map { Int64($0) } ?? Int64.max
+        if totalBytes > 0 && available < totalBytes {
+            throw DownloadError.insufficientDiskSpace(required: totalBytes, available: available)
+        }
+
         let descriptor = try validFileDescriptor()
         let targetBytes: off_t = max(0, off_t(totalBytes))
         if Darwin.ftruncate(descriptor, targetBytes) != 0 {

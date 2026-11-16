@@ -10,6 +10,43 @@ public enum DownloadStatus: Codable, Equatable, Sendable {
     case failed(reason: String)
 }
 
+/// Errors occurring during download lifecycle, integrity validation, and storage.
+public enum DownloadError: Error, LocalizedError, Equatable, Sendable {
+    case checksumMismatch(expected: String, actual: String)
+    case insufficientDiskSpace(required: Int64, available: Int64)
+    case failed(reason: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .checksumMismatch(let expected, let actual):
+            return "SHA-256 checksum mismatch: expected \(expected), but computed \(actual)"
+        case .insufficientDiskSpace(let required, let available):
+            let reqMB = Double(required) / 1_048_576.0
+            let availMB = Double(available) / 1_048_576.0
+            return String(format: "Insufficient disk space: required %.2f MB, available %.2f MB", reqMB, availMB)
+        case .failed(let reason):
+            return reason
+        }
+    }
+}
+
+extension DownloadStatus {
+    public static func failed(error: DownloadError) -> DownloadStatus {
+        .failed(reason: error.errorDescription ?? error.localizedDescription)
+    }
+
+    public static func failed(error: Error) -> DownloadStatus {
+        .failed(reason: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+    }
+
+    public var failureReason: String? {
+        if case .failed(let reason) = self {
+            return reason
+        }
+        return nil
+    }
+}
+
 /// Core domain model representing a file download task and its state.
 public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
@@ -29,6 +66,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public var preferredChunkCount: Int?
     public var etag: String?
     public var lastModified: String?
+    public var expectedChecksum: String?
+    public var checksumVerified: Bool?
 
     /// Overall progress of the download, ranging from 0.0 to 1.0.
     public var progress: Double {
@@ -72,7 +111,9 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         headers: [String: String] = [:],
         preferredChunkCount: Int? = nil,
         etag: String? = nil,
-        lastModified: String? = nil
+        lastModified: String? = nil,
+        expectedChecksum: String? = nil,
+        checksumVerified: Bool? = nil
     ) {
         self.id = id
         self.url = url
@@ -102,12 +143,15 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.preferredChunkCount = preferredChunkCount
         self.etag = etag
         self.lastModified = lastModified
+        self.expectedChecksum = expectedChecksum
+        self.checksumVerified = checksumVerified
     }
 
     enum CodingKeys: String, CodingKey {
         case id, url, filename, destinationURL, totalBytes, downloadedBytes
         case status, chunks, supportsRange, createdAt, completedAt, category, bytesPerSecond, headers
         case preferredChunkCount, etag, lastModified
+        case expectedChecksum, checksumVerified
     }
 
     public init(from decoder: Decoder) throws {
@@ -129,6 +173,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.preferredChunkCount = try container.decodeIfPresent(Int.self, forKey: .preferredChunkCount)
         self.etag = try container.decodeIfPresent(String.self, forKey: .etag)
         self.lastModified = try container.decodeIfPresent(String.self, forKey: .lastModified)
+        self.expectedChecksum = try container.decodeIfPresent(String.self, forKey: .expectedChecksum)
+        self.checksumVerified = try container.decodeIfPresent(Bool.self, forKey: .checksumVerified)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -150,5 +196,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         try container.encodeIfPresent(preferredChunkCount, forKey: .preferredChunkCount)
         try container.encodeIfPresent(etag, forKey: .etag)
         try container.encodeIfPresent(lastModified, forKey: .lastModified)
+        try container.encodeIfPresent(expectedChecksum, forKey: .expectedChecksum)
+        try container.encodeIfPresent(checksumVerified, forKey: .checksumVerified)
     }
 }

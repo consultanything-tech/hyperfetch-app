@@ -495,7 +495,10 @@ impl DownloadEngine {
         // Step 3: Pre-allocate file if size is known and resumable
         let writer = FileWriter::new(&task.destination_path)?;
         if task.resumable && task.total_bytes > 0 {
-            let _ = writer.allocate(task.total_bytes).await;
+            if let Err(e) = writer.allocate(task.total_bytes).await {
+                let err_msg = format!("Insufficient disk space: pre-allocation failed for {} bytes ({})", task.total_bytes, e);
+                return Err(DownloaderError::Io(err_msg));
+            }
         }
 
         // Step 4: Transition to Downloading

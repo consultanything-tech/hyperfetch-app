@@ -29,6 +29,9 @@ pub enum DownloaderError {
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
 
+    #[error("I/O error: {0}")]
+    Io(String),
+
     #[error("Operation cancelled")]
     Cancelled,
 
@@ -44,6 +47,9 @@ pub enum DownloaderError {
     #[error("Engine error: {0}")]
     Other(String),
 }
+
+/// Type alias matching Swift/API naming conventions.
+pub type DownloadError = DownloaderError;
 
 impl From<reqwest::Error> for DownloaderError {
     fn from(err: reqwest::Error) -> Self {

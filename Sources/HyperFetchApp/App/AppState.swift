@@ -231,6 +231,9 @@ public final class AppState: ObservableObject {
     /// Prefilled filename when presenting AddDownloadSheet.
     @Published public var prefilledFilename: String = ""
 
+    /// Shared instance reference for lifecycle hooks and synchronous flushes.
+    public private(set) static weak var shared: AppState?
+
     private static let defaultDownloadDirectoryKey = "com.hyperfetch.defaultDownloadDirectory"
     private static let defaultChunkCountKey = "com.hyperfetch.defaultChunkCount"
     private static let sortOptionKey = "com.hyperfetch.sortOption"
@@ -516,6 +519,24 @@ public final class AppState: ObservableObject {
         }
 
         notificationManager.requestAuthorization()
+
+        Self.shared = self
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.flushSync()
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.flushSync()
+        }
 
         // Start listening to the QueueManager stream
         startListeningToQueue()
@@ -988,6 +1009,11 @@ public final class AppState: ObservableObject {
 
     // MARK: - Queue Actions
 
+    /// Synchronously flushes state persistence to disk on app termination or background transition.
+    nonisolated public func flushSync() {
+        queueManager.flushSync()
+    }
+
     /// Adds a new download task.
     public func addTask(
         url: URL,
@@ -995,6 +1021,7 @@ public final class AppState: ObservableObject {
         filename: String? = nil,
         headers: [String: String] = [:],
         chunkCount: Int? = nil,
+        expectedChecksum: String? = nil,
         autoStart: Bool = true
     ) {
         if sidebarSelection != .status(.all) && sidebarSelection != .status(.active) {
@@ -1008,6 +1035,7 @@ public final class AppState: ObservableObject {
                     filename: filename,
                     headers: headers,
                     preferredChunkCount: chunkCount ?? self.defaultChunkCount,
+                    expectedChecksum: expectedChecksum,
                     autoStart: autoStart
                 )
                 self.selectedTaskId = newTask.id

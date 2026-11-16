@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import CryptoKit
 @testable import DownloadKit
 
 // MARK: - Isolated Mock URL Protocol for Engine Tests
@@ -1140,5 +1141,199 @@ struct DownloadEngineTests {
         #expect(updatedTask.lastModified == "Wed, 22 Oct 2025 00:00:00 GMT")
         #expect(updatedTask.status == .completed)
         #expect(updatedTask.downloadedBytes == 500)
+    }
+
+    // MARK: - SHA-256 Checksum Verification Tests
+
+    @Test("SHA-256 checksum verification succeeds and marks task verified when hash matches")
+    func testSHA256ChecksumVerificationMatching() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/verified-dataset.bin")!
+        let totalSize = 64 * 1024 // 64 KB
+        let payload = Data((0..<totalSize).map { UInt8(($0 * 17 + 5) & 0xFF) })
+
+        let digest = SHA256.hash(data: payload)
+        let hexString = digest.map { String(format: "%02x", $0) }.joined()
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"verified-dataset.bin\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 206,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Range": "bytes 0-\(totalSize - 1)/\(totalSize)",
+                        "Content-Length": "\(totalSize)",
+                        "Content-Type": "application/octet-stream"
+                    ]
+                )!
+                return (response, payload)
+            }
+            return (HTTPURLResponse(url: testURL, statusCode: 405, httpVersion: "HTTP/1.1", headerFields: nil)!, nil)
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("verified-dataset.bin")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL,
+            expectedChecksum: "  " + hexString.uppercased() + "  " // Test whitespace and uppercase normalization
+        )
+
+        let engine = DownloadEngine(session: session)
+        let completedTask = try await engine.startDownload(task: task)
+
+        #expect(completedTask.status == .completed)
+        #expect(completedTask.checksumVerified == true)
+        #expect(FileManager.default.fileExists(atPath: destinationURL.path))
+    }
+
+    @Test("SHA-256 checksum verification fails with DownloadError.checksumMismatch when hash does not match")
+    func testSHA256ChecksumVerificationMismatch() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/corrupted-dataset.bin")!
+        let totalSize = 32 * 1024
+        let payload = Data((0..<totalSize).map { UInt8(($0 * 13 + 3) & 0xFF) })
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(totalSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"corrupted-dataset.bin\""
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 206,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Range": "bytes 0-\(totalSize - 1)/\(totalSize)",
+                        "Content-Length": "\(totalSize)",
+                        "Content-Type": "application/octet-stream"
+                    ]
+                )!
+                return (response, payload)
+            }
+            return (HTTPURLResponse(url: testURL, statusCode: 405, httpVersion: "HTTP/1.1", headerFields: nil)!, nil)
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("corrupted-dataset.bin")
+        let bogusChecksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // Hash of empty string
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL,
+            expectedChecksum: bogusChecksum
+        )
+
+        let engine = DownloadEngine(session: session)
+
+        do {
+            _ = try await engine.startDownload(task: task)
+            Issue.record("Expected checksum mismatch error to be thrown")
+        } catch let error as DownloadError {
+            if case .checksumMismatch(let expected, let actual) = error {
+                #expect(expected == bogusChecksum)
+                let actualDigest = SHA256.hash(data: payload)
+                let expectedActualHex = actualDigest.map { String(format: "%02x", $0) }.joined()
+                #expect(actual == expectedActualHex)
+            } else {
+                Issue.record("Expected checksumMismatch error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+
+        let recordedTask = await engine.task(for: task.id)
+        #expect(recordedTask?.checksumVerified == false)
+        if case .failed(let reason) = recordedTask?.status {
+            #expect(reason.contains("SHA-256 checksum mismatch"))
+        } else {
+            Issue.record("Expected status to be .failed, got \(String(describing: recordedTask?.status))")
+        }
+    }
+
+    @Test("Pre-flight disk capacity check throws insufficientDiskSpace when required exceeds volume capacity")
+    func testPreFlightInsufficientDiskSpace() async throws {
+        EngineMockURLProtocol.reset()
+        let session = makeSession()
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testURL = URL(string: "https://engine.example.com/files/giant-file.iso")!
+        // Huge size that definitely exceeds available capacity
+        let hugeSize: Int64 = Int64.max - 1
+
+        EngineMockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "\(hugeSize)",
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"giant-file.iso\""
+                    ]
+                )!
+                return (response, nil)
+            }
+            return (HTTPURLResponse(url: testURL, statusCode: 405, httpVersion: "HTTP/1.1", headerFields: nil)!, nil)
+        }
+
+        let destinationURL = tempDir.appendingPathComponent("giant-file.iso")
+        let task = DownloadTaskModel(
+            url: testURL,
+            destinationURL: destinationURL,
+            totalBytes: hugeSize,
+            supportsRange: true
+        )
+
+        let engine = DownloadEngine(session: session)
+
+        do {
+            _ = try await engine.startDownload(task: task)
+            Issue.record("Expected insufficientDiskSpace error to be thrown")
+        } catch let error as DownloadError {
+            if case .insufficientDiskSpace(let required, _) = error {
+                #expect(required == hugeSize)
+            } else {
+                Issue.record("Expected insufficientDiskSpace error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+
+        let recordedTask = await engine.task(for: task.id)
+        if case .failed(let reason) = recordedTask?.status {
+            #expect(reason.contains("Insufficient disk space"))
+        } else {
+            Issue.record("Expected status to be .failed, got \(String(describing: recordedTask?.status))")
+        }
     }
 }

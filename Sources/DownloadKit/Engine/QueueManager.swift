@@ -98,6 +98,7 @@ public actor QueueManager {
         filename: String? = nil,
         headers: [String: String] = [:],
         preferredChunkCount: Int? = nil,
+        expectedChecksum: String? = nil,
         autoStart: Bool = true
     ) async throws -> DownloadTaskModel {
         let task = DownloadTaskModel(
@@ -106,9 +107,15 @@ public actor QueueManager {
             destinationURL: destinationURL,
             status: autoStart ? .idle : .paused,
             headers: headers,
-            preferredChunkCount: preferredChunkCount
+            preferredChunkCount: preferredChunkCount,
+            expectedChecksum: expectedChecksum
         )
         return try await addTask(task, autoStart: autoStart)
+    }
+
+    /// Synchronously flushes state persistence to disk on critical lifecycle events.
+    nonisolated public func flushSync() {
+        statePersister?.flushSync()
     }
 
     /// Adds an existing task model to the queue.

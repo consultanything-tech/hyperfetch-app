@@ -13,6 +13,7 @@ public protocol StatePersisting: Sendable {
     func saveTask(_ task: DownloadTaskModel, immediate: Bool) async throws
     func deleteTask(id: UUID) async throws
     func flush() async throws
+    func flushSync()
 }
 
 extension StatePersisting {
@@ -20,6 +21,24 @@ extension StatePersisting {
         try await saveTask(task, immediate: true)
     }
     public func flush() async throws {}
+    public func flushSync() {}
+}
+
+private final class SyncStateBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tasks: [DownloadTaskModel] = []
+
+    func set(_ newTasks: [DownloadTaskModel]) {
+        lock.withLock {
+            tasks = newTasks
+        }
+    }
+
+    func get() -> [DownloadTaskModel] {
+        lock.withLock {
+            tasks
+        }
+    }
 }
 
 /// Thread-safe actor persisting download tasks to disk using atomic JSON file operations.
@@ -30,6 +49,7 @@ public actor JSONStatePersister: StatePersisting {
     private var cachedTasks: [DownloadTaskModel]?
     private var pendingDebounceTask: Task<Void, Never>?
     private let debounceInterval: Duration
+    private let syncBox = SyncStateBox()
 
     /// Default storage location inside the application support directory.
     public static var defaultStorageURL: URL {
@@ -61,6 +81,7 @@ public actor JSONStatePersister: StatePersisting {
         pendingDebounceTask?.cancel()
         pendingDebounceTask = nil
         cachedTasks = tasks
+        syncBox.set(tasks)
         let parentDir = storageURL.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: parentDir.path) {
             try fileManager.createDirectory(
@@ -83,6 +104,7 @@ public actor JSONStatePersister: StatePersisting {
     public func load() async throws -> [DownloadTaskModel] {
         let rawTasks = loadRawTasks()
         cachedTasks = rawTasks
+        syncBox.set(rawTasks)
         return rawTasks.map { autoRecover(task: $0) }
     }
 
@@ -95,6 +117,7 @@ public actor JSONStatePersister: StatePersisting {
             currentTasks.append(task)
         }
         cachedTasks = currentTasks
+        syncBox.set(currentTasks)
 
         if immediate {
             pendingDebounceTask?.cancel()
@@ -125,6 +148,34 @@ public actor JSONStatePersister: StatePersisting {
         }
     }
 
+    /// Synchronously flushes in-memory tasks to disk atomically without awaiting or debouncing.
+    nonisolated public func flushSync() {
+        let tasks = syncBox.get()
+        guard !tasks.isEmpty else { return }
+
+        let fm = FileManager.default
+        let parentDir = storageURL.deletingLastPathComponent()
+        if !fm.fileExists(atPath: parentDir.path) {
+            try? fm.createDirectory(
+                at: parentDir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(tasks) else { return }
+
+        do {
+            try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+        } catch {
+            try? data.write(to: storageURL, options: [.atomic])
+        }
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storageURL.path)
+    }
+
     /// Removes a download task with the given identifier and persists changes atomically.
     public func deleteTask(id: UUID) async throws {
         pendingDebounceTask?.cancel()
@@ -133,6 +184,7 @@ public actor JSONStatePersister: StatePersisting {
         guard currentTasks.contains(where: { $0.id == id }) else { return }
         currentTasks.removeAll(where: { $0.id == id })
         cachedTasks = currentTasks
+        syncBox.set(currentTasks)
         try await save(tasks: currentTasks)
     }
 

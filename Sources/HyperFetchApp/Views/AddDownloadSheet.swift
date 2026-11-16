@@ -782,12 +782,16 @@ public struct AddDownloadSheet: View {
             headers["Referer"] = trimmedReferrer
         }
 
+        let trimmedChecksum = sha256Checksum.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalChecksum = trimmedChecksum.isEmpty ? nil : trimmedChecksum
+
         appState.addTask(
             url: url,
             destinationURL: destinationFile,
             filename: finalFilename,
             headers: headers,
             chunkCount: chunkCount,
+            expectedChecksum: finalChecksum,
             autoStart: autoStart
         )
 
