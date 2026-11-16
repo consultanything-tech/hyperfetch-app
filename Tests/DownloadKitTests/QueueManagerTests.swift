@@ -733,4 +733,66 @@ struct QueueManagerTests {
         #expect(persistentPaused?.status == .paused)
         #expect(await queueManager.activeCount == 0)
     }
+
+    // MARK: - Test 13: O(1) Task Lookup & Reducing Concurrency Pause Order
+
+    @Test("task(for:) returns correct task with many items in queue via O(1) lookup")
+    func testTaskLookup_correctWithManyTasks() async throws {
+        let qm = QueueManager(maxConcurrentDownloads: 1)
+        var ids: [UUID] = []
+        for i in 0..<50 {
+            let url = URL(string: "https://example.com/file\(i).zip")!
+            let task = try await qm.addTask(url: url, autoStart: false)
+            ids.append(task.id)
+        }
+        let found = await qm.task(for: ids.last!)
+        #expect(found != nil)
+        #expect(found?.url.absoluteString == "https://example.com/file49.zip")
+    }
+
+    @Test("setMaxConcurrentDownloads pauses last-added tasks, not first-added")
+    func testReducingConcurrency_pausesLowerPriorityTasksFirst() async throws {
+        QueueMockURLProtocol.reset()
+        let session = makeSession()
+        let engine = DownloadEngine(session: session)
+        let qm = QueueManager(engine: engine, maxConcurrentDownloads: 3)
+
+        let url1 = URL(string: "https://queue.example.com/concur1.bin")!
+        let url2 = URL(string: "https://queue.example.com/concur2.bin")!
+        let url3 = URL(string: "https://queue.example.com/concur3.bin")!
+
+        registerMockFile(url: url1, size: 8192, delay: 0.1)
+        registerMockFile(url: url2, size: 8192, delay: 0.1)
+        registerMockFile(url: url3, size: 8192, delay: 0.1)
+
+        let t1 = try await qm.addTask(url: url1, autoStart: true)
+        let t2 = try await qm.addTask(url: url2, autoStart: true)
+        let t3 = try await qm.addTask(url: url3, autoStart: true)
+
+        #expect(await qm.task(for: t1.id) != nil)
+        #expect(await qm.task(for: t2.id) != nil)
+        #expect(await qm.task(for: t3.id) != nil)
+
+        for _ in 0..<30 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if await qm.activeCount == 3 { break }
+        }
+
+        #expect(await qm.activeCount == 3)
+
+        // Lower concurrency to 2. t3 was added last, so it should be paused first.
+        await qm.setMaxConcurrentDownloads(2)
+        #expect(await qm.activeCount == 2)
+
+        let pausedT3 = await qm.task(for: t3.id)
+        #expect(pausedT3?.status == .paused)
+
+        let runningT1 = await qm.task(for: t1.id)
+        #expect(runningT1?.status != .paused)
+
+        let runningT2 = await qm.task(for: t2.id)
+        #expect(runningT2?.status != .paused)
+
+        await qm.pauseAll()
+    }
 }
