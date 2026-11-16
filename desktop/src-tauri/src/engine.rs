@@ -180,6 +180,23 @@ impl DownloadEngine {
         auto_start: bool,
         headers: Option<HashMap<String, String>>,
     ) -> Result<DownloadTask, EngineError> {
+        {
+            let tasks_lock = self.tasks.read().await;
+            if let Some(existing) = tasks_lock.iter().find(|t| {
+                t.url == url
+                    && t.status != DownloadState::Completed
+                    && t.status != DownloadState::Failed
+                    && t.status != DownloadState::Cancelled
+            }) {
+                let existing_task = existing.clone();
+                drop(tasks_lock);
+                if auto_start && existing_task.status == DownloadState::Paused {
+                    let _ = self.resume_download(&existing_task.id).await;
+                }
+                return Ok(existing_task);
+            }
+        }
+
         let resolved_name = filename
             .filter(|f| !f.trim().is_empty())
             .map(|f| sanitize_filename(&f))
@@ -241,6 +258,11 @@ impl DownloadEngine {
         }
 
         Ok(task)
+    }
+
+    /// Resumes a paused download task (delegates to start_or_resume).
+    pub async fn resume_download(&self, id: &str) -> Result<(), EngineError> {
+        self.start_or_resume(id).await
     }
 
     /// Starts or resumes downloading a task by its ID.
@@ -938,5 +960,62 @@ mod tests {
         assert_eq!(updated.etag.as_deref(), Some("\"v2-etag\""));
         assert_eq!(updated.downloaded_bytes, 0);
         assert!(updated.chunks.iter().all(|c| c.downloaded_bytes == 0));
+    }
+
+    #[tokio::test]
+    async fn test_engine_duplicate_url_returns_existing_task() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_file = temp_dir.path().join("tasks.json");
+        let engine = DownloadEngine::with_state_path(state_file);
+
+        let url = "https://example.com/files/duplicate.zip".to_string();
+        let task1 = engine
+            .add_download(
+                url.clone(),
+                Some("duplicate.zip".to_string()),
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(task1.status, DownloadState::Pending);
+
+        // Adding duplicate URL with auto_start = false returns the existing task without increasing task count
+        let task2 = engine
+            .add_download(
+                url.clone(),
+                Some("duplicate.zip".to_string()),
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(task2.id, task1.id);
+        let tasks = engine.get_tasks().await;
+        assert_eq!(tasks.len(), 1);
+
+        // Pause task and add with auto_start = true: returns existing task
+        engine.pause(&task1.id).await.unwrap();
+        let paused_task = engine.get_task(&task1.id).await.unwrap();
+        assert_eq!(paused_task.status, DownloadState::Paused);
+
+        let task3 = engine
+            .add_download(
+                url.clone(),
+                None,
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(task3.id, task1.id);
+        let tasks_after = engine.get_tasks().await;
+        assert_eq!(tasks_after.len(), 1);
     }
 }

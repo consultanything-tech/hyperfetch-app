@@ -27,6 +27,11 @@ public actor QueueManager {
         }
     }
 
+    private func isFailedStatus(_ status: DownloadStatus) -> Bool {
+        if case .failed = status { return true }
+        return false
+    }
+
     /// Number of downloads currently executing in the engine.
     public var activeCount: Int {
         activeTasks.count
@@ -112,6 +117,16 @@ public actor QueueManager {
         _ task: DownloadTaskModel,
         autoStart: Bool = true
     ) async throws -> DownloadTaskModel {
+        if let existingIdx = taskQueue.firstIndex(where: {
+            $0.url == task.url && $0.status != .completed && !isFailedStatus($0.status)
+        }) {
+            let existing = taskQueue[existingIdx]
+            if autoStart && existing.status == .paused {
+                try await resumeTask(id: existing.id)
+            }
+            return existing
+        }
+
         var newTask = task
         newTask.status = autoStart ? .idle : .paused
         taskQueue.append(newTask)

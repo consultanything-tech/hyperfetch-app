@@ -795,4 +795,27 @@ struct QueueManagerTests {
 
         await qm.pauseAll()
     }
+
+    // MARK: - Test 14: Duplicate URL Detection
+
+    @Test("Adding duplicate URL returns existing task without increasing queue count")
+    func testAddTask_duplicateURLReturnsExistingTask() async throws {
+        let qm = QueueManager(maxConcurrentDownloads: 2)
+        let url = URL(string: "https://example.com/duplicate_test.bin")!
+
+        let task1 = try await qm.addTask(url: url, autoStart: false)
+        let initialTasks = await qm.tasks()
+        #expect(initialTasks.count == 1)
+        #expect(task1.status == .paused)
+
+        // Adding duplicate URL while paused returns existing task without increasing queue count
+        let task2 = try await qm.addTask(url: url, autoStart: false)
+        #expect(task2.id == task1.id)
+        #expect(await qm.tasks().count == 1)
+
+        // Adding duplicate URL with autoStart = true resumes the task and returns existing task
+        let task3 = try await qm.addTask(url: url, autoStart: true)
+        #expect(task3.id == task1.id)
+        #expect(await qm.tasks().count == 1)
+    }
 }

@@ -6,6 +6,8 @@
 const PRIMARY_PORT = 31415;
 const FALLBACK_PORT = 31416;
 
+const INLINE_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico']);
+
 const DOWNLOADABLE_EXTENSIONS = new Set([
   // Archives
   'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'lz4', 'cab', 'wim', 'jar', 'war', 'ear', 'z',
@@ -17,8 +19,8 @@ const DOWNLOADABLE_EXTENSIONS = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub', 'txt', 'md', 'tex', 'pages', 'numbers', 'key',
   // Data & Code
   'json', 'xml', 'yaml', 'yml', 'sql', 'sqlite', 'db', 'sqlite3', 'parquet', 'avro', 'arrow', 'feather', 'py', 'js', 'ts', 'sh', 'c', 'cpp', 'h', 'rs', 'go', 'swift', 'java', 'kt', 'rb', 'php', 'cs',
-  // Images
-  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tiff', 'bmp', 'heic', 'heif', 'ico', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'dng',
+  // Heavy / Pro Images & Design Assets
+  'tiff', 'bmp', 'heic', 'heif', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'dng',
   // Installers
   'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm', 'apk', 'aab', 'ipa'
 ]);
@@ -167,7 +169,15 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     return;
   }
 
-  const isExtMatch = Boolean(ext && DOWNLOADABLE_EXTENSIONS.has(ext));
+  // Exclude standard inline web images unless they are heavy assets (> 5MB)
+  if (ext && INLINE_IMAGE_EXTENSIONS.has(ext)) {
+    if (!downloadItem.fileSize || downloadItem.fileSize <= 5 * 1024 * 1024) {
+      safeSuggest();
+      return;
+    }
+  }
+
+  const isExtMatch = Boolean(ext && (DOWNLOADABLE_EXTENSIONS.has(ext) || INLINE_IMAGE_EXTENSIONS.has(ext)));
   const isMimeMatch = isDownloadableMime(downloadItem.mime);
   const isLargeFile = Boolean(downloadItem.fileSize && downloadItem.fileSize > 1024 * 1024);
 
