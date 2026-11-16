@@ -1435,6 +1435,36 @@ public final class AppState: ObservableObject {
             }
         }
 
+        localhostBridge.onTransfersRequested = { [weak self] in
+            guard let self else { return [] }
+            struct TransfersBox: @unchecked Sendable {
+                let items: [[String: Any]]
+            }
+            let extract: @MainActor () -> TransfersBox = {
+                TransfersBox(items: self.tasks.map { task in
+                    [
+                        "id": task.id.uuidString,
+                        "filename": task.filename,
+                        "total_bytes": task.totalBytes,
+                        "downloaded_bytes": task.downloadedBytes,
+                        "speed": Int64(task.bytesPerSecond),
+                        "eta": Int64(task.eta),
+                        "status": task.status.displayName.lowercased(),
+                        "progress": task.progress
+                    ]
+                })
+            }
+            if Thread.isMainThread {
+                return MainActor.assumeIsolated {
+                    extract()
+                }.items
+            } else {
+                return DispatchQueue.main.sync {
+                    extract()
+                }.items
+            }
+        }
+
         Task {
             do {
                 let port = try await localhostBridge.start()

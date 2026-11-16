@@ -75,6 +75,7 @@ public final class LocalhostBridge: @unchecked Sendable {
     ) -> Void
     public typealias SheetHandler = @Sendable (_ url: String?, _ filename: String?) -> Void
     public typealias ThemeHandler = @Sendable (_ mode: String) -> Void
+    public typealias TransfersHandler = @Sendable () -> [[String: Any]]
 
     public let preferredPort: UInt16
     public let fallbackPort: UInt16
@@ -85,6 +86,7 @@ public final class LocalhostBridge: @unchecked Sendable {
     private var _onDownloadRequested: DownloadHandler?
     private var _onSheetRequested: SheetHandler?
     private var _onAppearanceChangeRequested: ThemeHandler?
+    private var _onTransfersRequested: TransfersHandler?
 
     public var onDownloadRequested: DownloadHandler? {
         get {
@@ -122,6 +124,19 @@ public final class LocalhostBridge: @unchecked Sendable {
             lock.lock()
             defer { lock.unlock() }
             _onAppearanceChangeRequested = newValue
+        }
+    }
+
+    public var onTransfersRequested: TransfersHandler? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onTransfersRequested
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _onTransfersRequested = newValue
         }
     }
 
@@ -507,6 +522,18 @@ public final class LocalhostBridge: @unchecked Sendable {
                     "app": "HyperFetch",
                     "version": version,
                     "port": Int(port)
+                ],
+                allowedOrigin: allowedOrigin,
+                connection: connection
+            )
+
+        case ("GET", "/transfers"), ("GET", "/queue"):
+            let transfers = onTransfersRequested?() ?? []
+            sendJSONResponse(
+                status: 200,
+                json: [
+                    "status": "ok",
+                    "transfers": transfers
                 ],
                 allowedOrigin: allowedOrigin,
                 connection: connection

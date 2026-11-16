@@ -410,4 +410,41 @@ struct LocalhostBridgeTests {
         bridge.stop()
         #expect(bridge.isRunning == false)
     }
+
+    @Test("Bridge /transfers and /queue return status ok and active transfer list")
+    func testBridge_transfersAndQueueEndpoints() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39180, fallbackPort: 39181)
+        bridge.onTransfersRequested = {
+            [
+                [
+                    "id": "11111111-2222-3333-4444-555555555555",
+                    "filename": "archive.zip",
+                    "total_bytes": 10485760,
+                    "downloaded_bytes": 5242880,
+                    "speed": 1048576,
+                    "eta": 5,
+                    "status": "downloading",
+                    "progress": 0.5
+                ]
+            ]
+        }
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        for path in ["/transfers", "/queue"] {
+            var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+            req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let httpResponse = response as! HTTPURLResponse
+            #expect(httpResponse.statusCode == 200)
+
+            let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            #expect(json["status"] as? String == "ok")
+            let list = json["transfers"] as? [[String: Any]]
+            #expect(list?.count == 1)
+            #expect(list?.first?["filename"] as? String == "archive.zip")
+            #expect(list?.first?["status"] as? String == "downloading")
+            #expect(list?.first?["progress"] as? Double == 0.5)
+        }
+    }
 }

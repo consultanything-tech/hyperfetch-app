@@ -58,6 +58,59 @@
         </div>
       </div>
 
+      <!-- Advanced Filters Accordion Card -->
+      <details class="card advanced-card" id="advancedCard">
+        <summary class="advanced-summary">
+          <div class="advanced-header">
+            <span class="card-title">Advanced Filters</span>
+            <span class="accordion-hint">Size threshold, exclusions, token</span>
+          </div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="advanced-body">
+          <div class="form-field">
+            <label for="minSizeSelect" class="field-label">Minimum File Size</label>
+            <select id="minSizeSelect" class="form-select">
+              <option value="0">Any Size</option>
+              <option value="1048576">1 MB</option>
+              <option value="5242880">5 MB</option>
+              <option value="10485760">10 MB</option>
+              <option value="52428800">50 MB</option>
+              <option value="104857600">100 MB</option>
+            </select>
+            <span class="field-hint">Files smaller than this limit bypass HyperFetch.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="excludedDomainsInput" class="field-label">Excluded Domains</label>
+            <textarea id="excludedDomainsInput" class="form-textarea" rows="2" placeholder="e.g. docs.google.com, github.com"></textarea>
+            <span class="field-hint">Comma or newline separated list of domains to bypass.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="bridgeTokenInput" class="field-label">Bridge API Token</label>
+            <input type="password" id="bridgeTokenInput" class="form-input" placeholder="Optional API token">
+            <span class="field-hint">Shared secret for bridge authentication (CWE-346).</span>
+          </div>
+        </div>
+      </details>
+
+      <!-- Active Downloads Section -->
+      <div class="card transfers-card" id="transfersSection">
+        <div class="transfers-header">
+          <div class="transfers-title-row">
+            <span class="card-title">Active Downloads</span>
+            <span id="transfersCountBadge" class="transfers-count-badge">0</span>
+          </div>
+          <span class="transfers-subtitle">Live bridge telemetry</span>
+        </div>
+        <div id="transfersList" class="transfers-list">
+          <div class="transfers-empty">No active downloads</div>
+        </div>
+      </div>
+
       <!-- Actions -->
       <div class="actions">
         <button id="openAppBtn" class="btn btn-secondary">

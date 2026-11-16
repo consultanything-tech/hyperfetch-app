@@ -49,11 +49,13 @@ function isDownloadableMime(mime) {
 let settings = {
   enabled: true,
   interceptAll: false,
+  excludedDomains: [],
+  minFileSize: 0,
   bridgeToken: ''
 };
 
 // Initialize settings from chrome.storage
-chrome.storage.local.get(['enabled', 'interceptAll', 'bridgeToken'], (res) => {
+chrome.storage.local.get(['enabled', 'interceptAll', 'excludedDomains', 'minFileSize', 'bridgeToken'], (res) => {
   const err = chrome.runtime.lastError;
   if (err) {
     console.warn('[HyperFetch] Error reading storage settings:', err);
@@ -62,6 +64,8 @@ chrome.storage.local.get(['enabled', 'interceptAll', 'bridgeToken'], (res) => {
   if (res) {
     if (res.enabled !== undefined) settings.enabled = res.enabled;
     if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
+    if (res.excludedDomains !== undefined) settings.excludedDomains = Array.isArray(res.excludedDomains) ? res.excludedDomains : [];
+    if (res.minFileSize !== undefined) settings.minFileSize = Number(res.minFileSize) || 0;
     if (res.bridgeToken !== undefined) settings.bridgeToken = res.bridgeToken;
   }
   updateBadge();
@@ -70,9 +74,34 @@ chrome.storage.local.get(['enabled', 'interceptAll', 'bridgeToken'], (res) => {
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.enabled) settings.enabled = changes.enabled.newValue;
   if (changes.interceptAll) settings.interceptAll = changes.interceptAll.newValue;
+  if (changes.excludedDomains) settings.excludedDomains = Array.isArray(changes.excludedDomains.newValue) ? changes.excludedDomains.newValue : [];
+  if (changes.minFileSize) settings.minFileSize = Number(changes.minFileSize.newValue) || 0;
   if (changes.bridgeToken) settings.bridgeToken = changes.bridgeToken.newValue;
   updateBadge();
 });
+
+function getHostname(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    return (u.hostname || '').toLowerCase();
+  } catch (e) {
+    return '';
+  }
+}
+
+function matchesExcludedDomain(hostname, excludedDomains) {
+  if (!hostname || !Array.isArray(excludedDomains) || excludedDomains.length === 0) {
+    return false;
+  }
+  for (const rawDomain of excludedDomains) {
+    const domain = (rawDomain || '').trim().toLowerCase();
+    if (!domain) continue;
+    if (hostname === domain || hostname.endsWith('.' + domain)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function updateBadge() {
   try {
@@ -149,6 +178,21 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   }
 
   if (processedDownloadIds.has(downloadItem.id)) {
+    safeSuggest();
+    return;
+  }
+
+  // Domain exclusion check
+  const itemHost = getHostname(downloadItem.url) || getHostname(targetUrl);
+  if (matchesExcludedDomain(itemHost, settings.excludedDomains)) {
+    console.log(`[HyperFetch] Host '${itemHost}' is in excluded domains list, skipping interception:`, targetUrl);
+    safeSuggest();
+    return;
+  }
+
+  // Minimum file size check
+  if (settings.minFileSize > 0 && downloadItem.fileSize > 0 && downloadItem.fileSize < settings.minFileSize) {
+    console.log(`[HyperFetch] Download item size (${downloadItem.fileSize} B) is smaller than minFileSize (${settings.minFileSize} B), skipping interception:`, targetUrl);
     safeSuggest();
     return;
   }
@@ -295,11 +339,9 @@ async function tryPostDownload(port, payload) {
   try {
     const headers = {
       'Content-Type': 'application/json',
-      'X-HyperFetch-Client': 'extension'
+      'X-HyperFetch-Client': 'extension',
+      'X-HyperFetch-Token': settings.bridgeToken || ''
     };
-    if (settings.bridgeToken) {
-      headers['X-HyperFetch-Token'] = settings.bridgeToken;
-    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1200);
     const response = await fetch(`http://127.0.0.1:${port}/add`, {
@@ -324,11 +366,9 @@ async function tryPostDownload(port, payload) {
 async function checkPortStatus(port) {
   try {
     const headers = {
-      'X-HyperFetch-Client': 'extension'
+      'X-HyperFetch-Client': 'extension',
+      'X-HyperFetch-Token': settings.bridgeToken || ''
     };
-    if (settings.bridgeToken) {
-      headers['X-HyperFetch-Token'] = settings.bridgeToken;
-    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 400);
     const resp = await fetch(`http://127.0.0.1:${port}/status`, {
@@ -480,11 +520,9 @@ async function checkHyperFetchStatus() {
   for (const port of ports) {
     try {
       const headers = {
-        'X-HyperFetch-Client': 'extension'
+        'X-HyperFetch-Client': 'extension',
+        'X-HyperFetch-Token': settings.bridgeToken || ''
       };
-      if (settings.bridgeToken) {
-        headers['X-HyperFetch-Token'] = settings.bridgeToken;
-      }
       const resp = await fetch(`http://127.0.0.1:${port}/status`, {
         method: 'GET',
         headers: headers

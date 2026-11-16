@@ -31,6 +31,17 @@ public enum DownloadError: Error, LocalizedError, Equatable, Sendable {
 }
 
 extension DownloadStatus {
+    public var displayName: String {
+        switch self {
+        case .idle: return "Queued"
+        case .probing: return "Probing"
+        case .downloading: return "Downloading"
+        case .paused: return "Paused"
+        case .completed: return "Completed"
+        case .failed: return "Failed"
+        }
+    }
+
     public static func failed(error: DownloadError) -> DownloadStatus {
         .failed(reason: error.errorDescription ?? error.localizedDescription)
     }
@@ -75,6 +86,14 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
             return min(1.0, max(0.0, Double(downloadedBytes) / Double(totalBytes)))
         }
         return status == .completed ? 1.0 : 0.0
+    }
+
+    /// Estimated time remaining in seconds.
+    public var eta: Double {
+        guard status == .downloading, bytesPerSecond > 0, totalBytes > downloadedBytes else {
+            return 0
+        }
+        return Double(totalBytes - downloadedBytes) / bytesPerSecond
     }
 
     /// Base directory for HyperFetch downloads under the user's Downloads directory (~/Downloads/HyperFetch/).

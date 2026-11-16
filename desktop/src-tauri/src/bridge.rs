@@ -695,6 +695,18 @@ async fn post_theme_handler(
     )
 }
 
+/// GET /transfers and GET /queue handler
+async fn get_transfers_handler(State(state): State<BridgeState>) -> Response {
+    let tasks = state.engine.get_tasks().await;
+    json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "status": "ok",
+            "transfers": tasks,
+        }),
+    )
+}
+
 /// 404 Fallback
 async fn not_found_handler(req: Request) -> Response {
     error_response(
@@ -713,6 +725,8 @@ pub fn create_router(state: BridgeState) -> Router {
         .route("/download", get(get_add_handler).post(post_add_handler))
         .route("/sheet", get(get_sheet_handler).post(post_sheet_handler))
         .route("/theme", get(get_theme_handler).post(post_theme_handler))
+        .route("/transfers", get(get_transfers_handler))
+        .route("/queue", get(get_transfers_handler))
         .fallback(not_found_handler)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -968,6 +982,22 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, task_id);
         assert_eq!(tasks[0].filename, "custom_installer.dmg");
+
+        // Verify GET /transfers and GET /queue return the task
+        for path in ["/transfers", "/queue"] {
+            let resp = client
+                .get(format!("http://127.0.0.1:{}{}", port, path))
+                .header("X-HyperFetch-Client", "extension")
+                .send()
+                .await
+                .expect("GET transfers failed");
+            assert_eq!(resp.status(), StatusCode::OK);
+            let json: serde_json::Value = resp.json().await.expect("Failed to parse json");
+            assert_eq!(json["status"], "ok");
+            let transfers = json["transfers"].as_array().expect("transfers should be array");
+            assert_eq!(transfers.len(), 1);
+            assert_eq!(transfers[0]["filename"], "custom_installer.dmg");
+        }
 
         bridge.stop();
         let _ = handle.await;
