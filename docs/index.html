@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HyperFetch — High-Speed Native Download Manager for Windows &amp; macOS</title>
-  <meta name="description" content="The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, seamless Chrome, Edge &amp; Safari auto-capture, and zero telemetry.">
+  <meta name="description" content="The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, parallel probing, ETag integrity verification, scheduled quiet hours, and zero telemetry.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
 
   <!-- Tailwind CSS CDN -->
@@ -235,7 +235,7 @@
 
     <!-- Subtitle -->
     <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto font-normal leading-relaxed mb-10">
-      The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, seamless Chrome, Edge &amp; Safari auto-capture, smart categorized folders, and zero telemetry.
+      The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, parallel probing, ETag integrity verification, scheduled quiet hours, and zero telemetry.
     </p>
 
     <!-- Dual CTA Buttons -->
@@ -395,6 +395,28 @@
                 </li>
               </ul>
             </div>
+
+            <!-- Lifetime Telemetry Widget -->
+            <div>
+              <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2 px-1 flex items-center justify-between">
+                <span>Lifetime Telemetry</span>
+                <span class="text-cyberCyan text-[9px] font-mono">Persistent</span>
+              </div>
+              <div class="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5 font-mono text-[11px]">
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-400">Transferred:</span>
+                  <span id="lifetimeTransferred" class="text-white font-semibold">142.8 GB</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-400">Completed:</span>
+                  <span class="text-emerald-400 font-semibold">28 files</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-400">Time Saved:</span>
+                  <span class="text-cyberCyan font-semibold">4h 12m</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Bottom Telemetry Card & Ko-fi Support -->
@@ -406,7 +428,7 @@
                   <span id="telemetryPulseDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span class="text-[11px] font-semibold text-slate-300">Total Bandwidth</span>
                 </div>
-                <span class="text-[9.5px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">UNLIMITED</span>
+                <button id="scheduleBadgeBtn" onclick="toggleQuietHours()" title="Click to toggle Quiet Hours Bandwidth Schedule" class="text-[9.5px] font-mono font-semibold px-2 py-0.5 rounded transition-all cursor-pointer bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 select-none">SCHEDULE: UNLIMITED</button>
               </div>
 
               <div class="flex items-baseline justify-between">
@@ -455,12 +477,21 @@
         </div>
 
         <!-- Main Content Area with Modern Toolbar & Dual View Modes -->
-        <div class="md:col-span-3 flex flex-col justify-between bg-[#0C1017]/90 min-h-[480px]" id="simulatorContainer">
+        <div class="md:col-span-3 flex flex-col justify-between bg-[#0C1017]/90 min-h-[480px] relative overflow-hidden" id="simulatorContainer">
+          <!-- Duplicate URL Toast -->
+          <div id="duplicateToast" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 rounded-xl bg-amber-500/95 text-slate-950 font-medium text-xs shadow-2xl backdrop-blur-md border border-amber-400/50 flex items-center gap-2.5 transition-all duration-300">
+            <span class="text-base">⚠️</span>
+            <div>
+              <span class="font-bold">Duplicate URL Detected:</span>
+              <span class="opacity-90"><span id="duplicateToastFilename">Xcode_16.2_Release.xip</span> is already in queue — refocused existing task.</span>
+            </div>
+          </div>
+
           <!-- Top Toolbar -->
           <div class="h-14 px-4 bg-[#141923]/80 border-b border-white/10 flex items-center justify-between gap-3 select-none shrink-0">
             <!-- Left Action Buttons -->
             <div class="flex items-center gap-2">
-              <button onclick="resetSimulation()" class="h-8 px-3 rounded-lg bg-appleBlue hover:bg-[#0077ED] active:scale-95 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-appleBlue/25 transition-all cursor-pointer" title="Simulate adding new download">
+              <button onclick="handleNewDownload()" class="h-8 px-3 rounded-lg bg-appleBlue hover:bg-[#0077ED] active:scale-95 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-appleBlue/25 transition-all cursor-pointer" title="Simulate adding new download">
                 <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 <span>+ New</span>
               </button>
@@ -526,6 +557,12 @@
                         <span id="activeFilename" class="font-bold text-sm text-white truncate">Xcode_16.2_Release.xip</span>
                         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
                           ⚡ Multi-Chunk
+                        </span>
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="ETag validated for byte-level integrity across pause/resume">
+                          🛡️ ETag: 3a5f…c12
+                        </span>
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20" title="Dual HEAD + GET 0-0 range race completed in 12ms">
+                          ⚡ Parallel Probe (12ms)
                         </span>
                         <span id="activeStatusPill" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-successGreen/20 text-successGreen border border-successGreen/30">Downloading</span>
                       </div>
@@ -798,7 +835,10 @@
             <!-- Bottom Destination Footer Bar -->
             <div class="text-[11px] text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 pt-3 border-t border-white/5">
               <span>Destination: <code id="destinationPath" class="text-slate-300 font-mono">~/Downloads/HyperFetch/</code></span>
-              <span>Sparse allocation: <span id="sparseStatus"><span class="text-successGreen">Enabled</span> (ftruncate)</span></span>
+              <div class="flex items-center gap-3">
+                <span>Sparse allocation: <span id="sparseStatus"><span class="text-successGreen">Enabled</span> (ftruncate)</span></span>
+                <span>• Auto-reveal on complete: <span class="text-cyberCyan font-semibold">Enabled</span></span>
+              </div>
             </div>
           </div>
         </div>
@@ -845,62 +885,62 @@
         </div>
         <h3 class="text-lg font-bold text-white mb-2">Accelerated Multi-Chunk Streaming</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Splits large files across up to 16 concurrent HTTP Range streams. Saturates your gigabit fiber connection by bypassing per-connection server-side throttling.
+          Splits large files across up to 16 concurrent HTTP Range streams with an 8-connection per-host guard to saturate gigabit fiber while preventing server 429 rate limiting.
         </p>
       </div>
 
       <!-- Feature 2 -->
       <div class="glass-card glass-card-hover rounded-2xl p-6 sm:p-7 relative overflow-hidden">
-        <div class="w-12 h-12 rounded-xl bg-cyberCyan/20 border border-cyberCyan/30 flex items-center justify-center text-cyberCyan mb-5">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+        <div class="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">Direct Sparse Disk Pre-Allocation</h3>
+        <h3 class="text-lg font-bold text-white mb-2">Parallel Probing &amp; Zero-Latency Setup</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Atomic disk pre-allocation and direct offset streaming write incoming chunks directly into place for zero fragmentation on both Windows and macOS.
+          Simultaneously races lightweight HEAD and GET range=0-0 probes with jittered backoff. Bypasses misconfigured CDNs and servers that drop HEAD requests for immediate download starts.
         </p>
       </div>
 
       <!-- Feature 3 -->
       <div class="glass-card glass-card-hover rounded-2xl p-6 sm:p-7 relative overflow-hidden">
-        <div class="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 mb-5">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">Browser Companion &amp; Auto-Capture</h3>
+        <h3 class="text-lg font-bold text-white mb-2">ETag Verification &amp; Safe Resumption</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Seamless Chrome, Edge, Brave, and Safari integration with companion auto-launch captures downloads automatically. Supports custom file-type filters and holding <kbd class="px-1.5 py-0.5 rounded bg-white/10 text-[11px]">Alt</kbd> to bypass.
+          Retains server ETag and Last-Modified headers. On reconnect or manual resume, verifies remote file checksums before writing chunks, eliminating partial file corruption.
         </p>
       </div>
 
       <!-- Feature 4 -->
       <div class="glass-card glass-card-hover rounded-2xl p-6 sm:p-7 relative overflow-hidden">
         <div class="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-5">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">Smart Categorized Folders</h3>
+        <h3 class="text-lg font-bold text-white mb-2">Duplicate URL Protection &amp; Smart Interception</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Auto-routes incoming downloads into orderly folders: <code class="text-slate-300 font-mono text-xs">Applications</code>, <code class="text-slate-300 font-mono text-xs">Archives</code>, <code class="text-slate-300 font-mono text-xs">Documents</code>, <code class="text-slate-300 font-mono text-xs">Video</code>, and <code class="text-slate-300 font-mono text-xs">Music</code>.
+          Real-time duplicate detection automatically unpauses and refocuses existing tasks instead of wasting bandwidth on identical downloads. Companion filters out inline thumbnails and tracking pixels.
         </p>
       </div>
 
       <!-- Feature 5 -->
       <div class="glass-card glass-card-hover rounded-2xl p-6 sm:p-7 relative overflow-hidden">
-        <div class="w-12 h-12 rounded-xl bg-successGreen/20 border border-successGreen/30 flex items-center justify-center text-successGreen mb-5">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">In-App Auto-Updates</h3>
+        <h3 class="text-lg font-bold text-white mb-2">Bandwidth Scheduling &amp; Quiet Hours</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Always stay on the latest version. Built-in GitHub Releases query checks, background downloads, and performs seamless in-place updates without browser redirects.
+          Built-in quiet hours profile lets you configure daytime bandwidth ceilings for video calls and team workflows, switching automatically to uncapped throughput during off-peak hours.
         </p>
       </div>
 
       <!-- Feature 6 -->
       <div class="glass-card glass-card-hover rounded-2xl p-6 sm:p-7 relative overflow-hidden">
-        <div class="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-5">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        <div class="w-12 h-12 rounded-xl bg-cyberCyan/20 border border-cyberCyan/30 flex items-center justify-center text-cyberCyan mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
         </div>
-        <h3 class="text-lg font-bold text-white mb-2">100% Native &amp; Zero Telemetry</h3>
+        <h3 class="text-lg font-bold text-white mb-2">100% Native, Lifetime Stats &amp; Zero Bloat</h3>
         <p class="text-sm text-slate-400 leading-relaxed">
-          Compact ~6 MB binary, idling under 40 MB of RAM. No Chromium / Electron bloat, no bundled promo software, no background trackers. Completely open source.
+          Pure Swift 6 and Rust implementation idling at under 40 MB of RAM. Retains persistent lifetime transfer statistics, automatically reveals completed files, and includes zero ads or tracking.
         </p>
       </div>
     </div>
@@ -991,6 +1031,34 @@
             <td class="p-4 sm:p-5 text-slate-400">Paid upgrades</td>
             <td class="p-4 sm:p-5 text-slate-500">Browser update</td>
           </tr>
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="p-4 sm:p-5 font-medium text-slate-200">ETag Safe Resumption</td>
+            <td class="p-4 sm:p-5 font-bold text-successGreen bg-appleBlue/10 border-x border-appleBlue/20">Automatic (Zero corruption)</td>
+            <td class="p-4 sm:p-5 text-slate-400">Basic</td>
+            <td class="p-4 sm:p-5 text-amber-400/80">Paid Pro</td>
+            <td class="p-4 sm:p-5 text-rose-400">None (Restarts)</td>
+          </tr>
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="p-4 sm:p-5 font-medium text-slate-200">Bandwidth Quiet Hours</td>
+            <td class="p-4 sm:p-5 font-bold text-cyberCyan bg-appleBlue/10 border-x border-appleBlue/20">Built-in Schedule</td>
+            <td class="p-4 sm:p-5 text-slate-400">Manual Slider</td>
+            <td class="p-4 sm:p-5 text-amber-400/80">Paid Pro</td>
+            <td class="p-4 sm:p-5 text-rose-400">None</td>
+          </tr>
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="p-4 sm:p-5 font-medium text-slate-200">Duplicate URL Protection</td>
+            <td class="p-4 sm:p-5 font-bold text-successGreen bg-appleBlue/10 border-x border-appleBlue/20">Smart Refocus &amp; Unpause</td>
+            <td class="p-4 sm:p-5 text-slate-400">Warns or Duplicates</td>
+            <td class="p-4 sm:p-5 text-slate-400">Duplicate .1</td>
+            <td class="p-4 sm:p-5 text-rose-400">Duplicate (1)</td>
+          </tr>
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="p-4 sm:p-5 font-medium text-slate-200">Host Rate-Limit Guard</td>
+            <td class="p-4 sm:p-5 font-bold text-cyberCyan bg-appleBlue/10 border-x border-appleBlue/20">8 conns/host limit</td>
+            <td class="p-4 sm:p-5 text-slate-400">Uncapped</td>
+            <td class="p-4 sm:p-5 text-slate-400">Uncapped</td>
+            <td class="p-4 sm:p-5 text-slate-500">Single stream</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1046,9 +1114,9 @@
           <li class="flex items-start gap-3">
             <span class="w-6 h-6 rounded-full bg-white/10 text-white font-mono text-xs flex items-center justify-center shrink-0 mt-0.5">4</span>
             <div>
-              <p class="font-medium text-white">Instant Interception</p>
+              <p class="font-medium text-white">Instant Interception &amp; Smart Filtering</p>
               <p class="text-slate-400 text-xs mt-0.5">
-                Any triggered download is automatically forwarded to HyperFetch’s local listener on port <code class="text-cyberCyan font-mono">31415</code>. Hold <kbd class="px-1 py-0.5 rounded bg-white/10 text-[10px]">Alt</kbd> while clicking to bypass.
+                Any triggered download is automatically forwarded to HyperFetch’s local listener on port <code class="text-cyberCyan font-mono">31415</code> with real-time duplicate URL protection and task refocusing. Built-in Smart Image Filtering automatically ignores inline tracking pixels, ads, and icons under configurable size thresholds. Hold <kbd class="px-1 py-0.5 rounded bg-white/10 text-[10px]">Alt</kbd> while clicking to bypass.
               </p>
             </div>
           </li>
@@ -1187,6 +1255,8 @@
 
     // Interactive Live Simulator Engine (v1.2.0 Cross-Platform)
     let isDownloading = true;
+    let isQuietHours = false;
+    let duplicateToastTimeout = null;
     let progressPercent = 68.4;
     let transferredMB = 8480;
     const totalMB = 12400; // 12.4 GB
@@ -1205,6 +1275,56 @@
       { id: 7, progress: 54.0, baseSpeed: 9.9 },
       { id: 8, progress: 50.1, baseSpeed: 10.5 }
     ];
+
+    // Bandwidth Scheduling / Quiet Hours Toggle
+    function toggleQuietHours() {
+      isQuietHours = !isQuietHours;
+      const scheduleBtn = document.getElementById('scheduleBadgeBtn');
+      if (scheduleBtn) {
+        if (isQuietHours) {
+          scheduleBtn.textContent = '🌙 QUIET HOURS (2.5 MB/s CAP)';
+          scheduleBtn.className = 'text-[9.5px] font-mono font-semibold px-2 py-0.5 rounded transition-all cursor-pointer bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 select-none';
+        } else {
+          scheduleBtn.textContent = 'SCHEDULE: UNLIMITED';
+          scheduleBtn.className = 'text-[9.5px] font-mono font-semibold px-2 py-0.5 rounded transition-all cursor-pointer bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 select-none';
+        }
+      }
+      if (isDownloading) {
+        updateUI();
+      }
+    }
+
+    // Duplicate URL Detection & Refocusing Handler
+    function handleNewDownload() {
+      const toast = document.getElementById('duplicateToast');
+      const activeCard = document.getElementById('demoActiveCard');
+      const duplicateToastFilename = document.getElementById('duplicateToastFilename');
+
+      // Sync filename with current platform
+      if (duplicateToastFilename) {
+        duplicateToastFilename.textContent = (currentPlatform === 'macos') ? 'Xcode_16.2_Release.xip' : 'HyperFetch_Windows_x64_Setup.exe';
+      }
+
+      // If paused, auto-unpause & refocus
+      if (!isDownloading) {
+        toggleDownloadSimulation();
+      }
+
+      if (toast) {
+        toast.classList.remove('hidden');
+      }
+      if (activeCard) {
+        activeCard.classList.add('ring-2', 'ring-amber-400/80');
+      }
+
+      if (duplicateToastTimeout) {
+        clearTimeout(duplicateToastTimeout);
+      }
+      duplicateToastTimeout = setTimeout(() => {
+        if (toast) toast.classList.add('hidden');
+        if (activeCard) activeCard.classList.remove('ring-2', 'ring-amber-400/80');
+      }, 3000);
+    }
 
     // Platform Switcher: macOS vs Windows 11
     function setPlatformMode(platform) {
@@ -1225,6 +1345,7 @@
       const completedFilename = document.getElementById('completedFilename');
       const compactCompletedFilename = document.getElementById('compactCompletedFilename');
       const completedDetails = document.getElementById('completedDetails');
+      const duplicateToastFilename = document.getElementById('duplicateToastFilename');
 
       if (platform === 'macos') {
         if (btnMac) btnMac.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer bg-white/15 text-white font-semibold shadow-xs';
@@ -1253,6 +1374,7 @@
         if (completedFilename) completedFilename.textContent = 'macOS_Sonoma_14.5.dmg';
         if (compactCompletedFilename) compactCompletedFilename.textContent = 'macOS_Sonoma_14.5.dmg';
         if (completedDetails) completedDetails.textContent = '13.1 GB • Completed • ~/Downloads/HyperFetch/Archives/';
+        if (duplicateToastFilename) duplicateToastFilename.textContent = 'Xcode_16.2_Release.xip';
       } else {
         if (btnWin) btnWin.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer bg-white/15 text-white font-semibold shadow-xs';
         if (btnMac) btnMac.className = 'px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white';
@@ -1280,6 +1402,7 @@
         if (completedFilename) completedFilename.textContent = 'Windows11_24H2_English_x64.iso';
         if (compactCompletedFilename) compactCompletedFilename.textContent = 'Windows11_24H2_English_x64.iso';
         if (completedDetails) completedDetails.textContent = '6.24 GB • Completed • %USERPROFILE%\\Downloads\\HyperFetch\\Archives\\';
+        if (duplicateToastFilename) duplicateToastFilename.textContent = 'HyperFetch_Windows_x64_Setup.exe';
       }
 
       // Re-apply active search filter if any
@@ -1340,6 +1463,10 @@
         if (!isLive) {
           bar.style.height = '18%';
           bar.className = 'spark-bar flex-1 rounded-xs bg-slate-700 h-[18%] transition-all duration-300';
+        } else if (isQuietHours) {
+          const h = Math.max(12, Math.min(26, 18 + (Math.random() - 0.5) * 8));
+          bar.style.height = `${h}%`;
+          bar.className = 'spark-bar flex-1 rounded-xs bg-amber-400/80 transition-all duration-300';
         } else {
           const jitter = (Math.random() - 0.5) * 15;
           const h = Math.max(20, Math.min(100, baseHeights[idx] + jitter));
@@ -1414,8 +1541,8 @@
           compactStatusDot.className = 'w-2 h-2 rounded-full shrink-0 bg-successGreen animate-pulse';
           compactStatusDot.title = 'Downloading';
         }
-        if (mainSpeedText) mainSpeedText.className = 'text-cyberCyan font-bold';
-        if (compactSpeedText) compactSpeedText.className = 'text-cyberCyan font-semibold';
+        if (mainSpeedText) mainSpeedText.className = isQuietHours ? 'text-amber-400 font-bold' : 'text-cyberCyan font-bold';
+        if (compactSpeedText) compactSpeedText.className = isQuietHours ? 'text-amber-400 font-semibold' : 'text-cyberCyan font-semibold';
         if (activeCountBadge) activeCountBadge.textContent = '1';
         if (titlebarCountText) titlebarCountText.textContent = '1 active download';
         if (sidebarDownloadingCount) sidebarDownloadingCount.textContent = '1';
@@ -1449,18 +1576,33 @@
     function updateUI() {
       if (!isDownloading) return;
 
-      // Realistic speed fluctuation (82 to 88 MB/s)
-      const jitter = (Math.random() - 0.5) * 4;
-      currentSpeedMBps = Math.max(76, Math.min(92, 84.6 + jitter));
+      if (isQuietHours) {
+        // Quiet Hours active: Bandwidth capped around 2.5 MB/s (2.3 to 2.7 MB/s)
+        const qJitter = (Math.random() - 0.5) * 0.4;
+        currentSpeedMBps = Math.max(2.1, Math.min(2.9, 2.5 + qJitter));
+      } else {
+        // Uncapped gigabit speed fluctuation (80 to 90 MB/s)
+        const jitter = (Math.random() - 0.5) * 4;
+        currentSpeedMBps = Math.max(78, Math.min(92, 84.6 + jitter));
+      }
 
       // Advance chunks
       let chunkSpeedSum = 0;
       chunks.forEach((chunk) => {
-        const cSpeedJitter = (Math.random() - 0.5) * 1.5;
-        const cSpeed = Math.max(7.5, (chunk.baseSpeed + cSpeedJitter));
+        let cSpeed = 0;
+        if (isQuietHours) {
+          // Individual chunk speeds ~0.3 MB/s
+          const cSpeedJitter = (Math.random() - 0.5) * 0.05;
+          cSpeed = Math.max(0.18, Math.min(0.42, (currentSpeedMBps / chunks.length) + cSpeedJitter));
+          chunk.progress += 0.015 + Math.random() * 0.01;
+        } else {
+          // Normal chunk speeds ~10 MB/s each
+          const cSpeedJitter = (Math.random() - 0.5) * 1.5;
+          cSpeed = Math.max(7.5, (chunk.baseSpeed + cSpeedJitter));
+          chunk.progress += 0.35 + Math.random() * 0.4;
+        }
         chunkSpeedSum += cSpeed;
 
-        chunk.progress += 0.35 + Math.random() * 0.4;
         if (chunk.progress > 100) chunk.progress = 100;
 
         const spdEl = document.getElementById(`c${chunk.id}-speed`);
@@ -1474,6 +1616,8 @@
         if (segEl) {
           if (chunk.progress >= 99) {
             segEl.className = 'h-full flex-1 rounded-xs bg-successGreen transition-all duration-300';
+          } else if (isQuietHours) {
+            segEl.className = 'h-full flex-1 rounded-xs bg-amber-400/80 transition-all duration-300';
           } else {
             segEl.className = 'h-full flex-1 rounded-xs bg-cyberCyan transition-all duration-300';
           }
@@ -1496,6 +1640,17 @@
       const remainingMB = totalMB - transferredMB;
       const etaSeconds = Math.max(1, Math.round(remainingMB / currentSpeedMBps));
 
+      let etaDisplay = `${etaSeconds}s`;
+      if (etaSeconds >= 3600) {
+        const hrs = Math.floor(etaSeconds / 3600);
+        const mins = Math.floor((etaSeconds % 3600) / 60);
+        etaDisplay = `${hrs}h ${mins}m`;
+      } else if (etaSeconds >= 60) {
+        const mins = Math.floor(etaSeconds / 60);
+        const secs = etaSeconds % 60;
+        etaDisplay = `${mins}m ${secs}s`;
+      }
+
       // Update DOM - Comfortable View
       const transferredText = document.getElementById('transferredText');
       const mainSpeedText = document.getElementById('mainSpeedText');
@@ -1505,9 +1660,12 @@
       const overallPercentText = document.getElementById('overallPercentText');
 
       if (transferredText) transferredText.textContent = `${(transferredMB / 1024).toFixed(2)} GB`;
-      if (mainSpeedText) mainSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
+      if (mainSpeedText) {
+        mainSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
+        mainSpeedText.className = isQuietHours ? 'text-amber-400 font-bold' : 'text-cyberCyan font-bold';
+      }
       if (sidebarTotalSpeed) sidebarTotalSpeed.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
-      if (etaText) etaText.textContent = `${etaSeconds}s`;
+      if (etaText) etaText.textContent = etaDisplay;
       if (overallProgressBar) overallProgressBar.style.width = `${progressPercent.toFixed(1)}%`;
       if (overallPercentText) overallPercentText.textContent = `${progressPercent.toFixed(1)}%`;
 
@@ -1517,7 +1675,10 @@
       const compactPercentText = document.getElementById('compactPercentText');
 
       if (compactProgressBar) compactProgressBar.style.width = `${progressPercent.toFixed(1)}%`;
-      if (compactSpeedText) compactSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
+      if (compactSpeedText) {
+        compactSpeedText.textContent = `${currentSpeedMBps.toFixed(1)} MB/s`;
+        compactSpeedText.className = isQuietHours ? 'text-amber-400 font-semibold' : 'text-cyberCyan font-semibold';
+      }
       if (compactPercentText) compactPercentText.textContent = `${progressPercent.toFixed(1)}%`;
 
       // Animate sidebar sparklines with subtle jitter
