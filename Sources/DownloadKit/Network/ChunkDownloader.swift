@@ -230,7 +230,8 @@ public final class ChunkDownloader: ChunkDownloading, Sendable {
 
                 if isTransientNetworkError(error) && attempt < maxAttempts {
                     do {
-                        try await Task.sleep(nanoseconds: UInt64(attempt * 500_000_000))
+                        let jitterNs = UInt64.random(in: 0..<200_000_000)
+                        try await Task.sleep(nanoseconds: UInt64(attempt * 500_000_000) + jitterNs)
                         continue
                     } catch {
                         chunk.status = .pending

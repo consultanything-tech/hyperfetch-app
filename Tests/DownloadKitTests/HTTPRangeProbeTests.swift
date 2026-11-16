@@ -92,20 +92,34 @@ struct HTTPRangeProbeTests {
         let session = makeSession()
 
         MockURLProtocol.register(url: testURL) { request in
-            #expect(request.httpMethod == "HEAD")
-            let response = HTTPURLResponse(
-                url: testURL,
-                statusCode: 200,
-                httpVersion: "HTTP/1.1",
-                headerFields: [
-                    "Content-Length": "104857600", // 100 MB
-                    "Accept-Ranges": "bytes",
-                    "Content-Disposition": "attachment; filename=\"custom-archive.zip\"",
-                    "ETag": "\"etag-12345\"",
-                    "Last-Modified": "Wed, 21 Oct 2025 07:28:00 GMT"
-                ]
-            )!
-            return (response, nil)
+            if request.httpMethod == "HEAD" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Length": "104857600", // 100 MB
+                        "Accept-Ranges": "bytes",
+                        "Content-Disposition": "attachment; filename=\"custom-archive.zip\"",
+                        "ETag": "\"etag-12345\"",
+                        "Last-Modified": "Wed, 21 Oct 2025 07:28:00 GMT"
+                    ]
+                )!
+                return (response, nil)
+            } else if request.httpMethod == "GET" {
+                let response = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 206,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Range": "bytes 0-0/104857600",
+                        "Content-Length": "1"
+                    ]
+                )!
+                return (response, Data([0x00]))
+            } else {
+                fatalError("Unexpected method \(request.httpMethod ?? "")")
+            }
         }
 
         let probe = HTTPRangeProbe(session: session)
@@ -118,10 +132,8 @@ struct HTTPRangeProbeTests {
         #expect(result.lastModified == "Wed, 21 Oct 2025 07:28:00 GMT")
         #expect(result.finalURL == testURL)
 
-        // Only 1 HEAD request should be performed
         let requests = MockURLProtocol.requests()
-        #expect(requests.count == 1)
-        #expect(requests.first?.httpMethod == "HEAD")
+        #expect(requests.contains { $0.httpMethod == "HEAD" })
     }
 
     // MARK: - Case B: Server rejects HEAD with 405, fallback to GET Range responds 206
@@ -171,9 +183,8 @@ struct HTTPRangeProbeTests {
 
         let requests = MockURLProtocol.requests()
         #expect(requests.count == 2)
-        #expect(requests[0].httpMethod == "HEAD")
-        #expect(requests[1].httpMethod == "GET")
-        #expect(requests[1].value(forHTTPHeaderField: "Range") == "bytes=0-0")
+        #expect(requests.contains { $0.httpMethod == "HEAD" })
+        #expect(requests.contains { $0.httpMethod == "GET" && $0.value(forHTTPHeaderField: "Range") == "bytes=0-0" })
     }
 
     // MARK: - Case C: Server returns 200 OK without Accept-Ranges (chunking not supported)
@@ -221,8 +232,8 @@ struct HTTPRangeProbeTests {
 
         let requests = MockURLProtocol.requests()
         #expect(requests.count == 2)
-        #expect(requests[0].httpMethod == "HEAD")
-        #expect(requests[1].httpMethod == "GET")
+        #expect(requests.contains { $0.httpMethod == "HEAD" })
+        #expect(requests.contains { $0.httpMethod == "GET" })
     }
 
     // MARK: - Case D: Filename parsing
@@ -857,5 +868,44 @@ struct HTTPRangeProbeTests {
                 continuation.resume()
             }
         }
+    }
+
+    @Test("Probe falls back to GET range when HEAD lacks Accept-Ranges")
+    func testProbe_parallelFallbackWhenHeadLacksAcceptRanges() async throws {
+        MockURLProtocol.reset()
+        let testURL = URL(string: "https://example.com/no-ranges-head.bin")!
+
+        MockURLProtocol.register(url: testURL) { request in
+            if request.httpMethod == "HEAD" {
+                let resp = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Length": "1024"]
+                )!
+                return (resp, nil)
+            } else if request.httpMethod == "GET" && request.value(forHTTPHeaderField: "Range") == "bytes=0-0" {
+                let resp = HTTPURLResponse(
+                    url: testURL,
+                    statusCode: 206,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Range": "bytes 0-0/1024",
+                        "Content-Length": "1"
+                    ]
+                )!
+                return (resp, Data([0xAA]))
+            }
+            fatalError("Unexpected request: \(request.httpMethod ?? "")")
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let probe = HTTPRangeProbe(session: session)
+        let result = try await probe.probe(url: testURL)
+        #expect(result.supportsRange == true)
+        #expect(result.totalBytes == 1024)
     }
 }

@@ -108,7 +108,18 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         }
 
         do {
-            return try await performHeadProbe(url: url, headers: headers)
+            async let headResult = performHeadProbe(url: url, headers: headers)
+            async let rangeResult = performGetRangeProbe(url: url, headers: headers, headResponse: nil)
+
+            do {
+                let head = try await headResult
+                if head.supportsRange && head.totalBytes > 0 {
+                    return head
+                }
+                return try await rangeResult
+            } catch {
+                return try await rangeResult
+            }
         } catch let error as ProbeError {
             throw error
         } catch is CancellationError {
@@ -150,9 +161,8 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
         let finalURL = httpResponse.url ?? url
 
-        // Server does not support HEAD method or rejects HEAD (e.g. 401, 403, 405, 500, 501, or redirect) -> fallback to GET Range
         if httpResponse.statusCode >= 300 {
-            return try await performGetRangeProbe(url: finalURL, headers: headers, headResponse: httpResponse)
+            throw ProbeError.httpError(statusCode: httpResponse.statusCode, url: finalURL)
         }
 
         let acceptRanges = httpResponse.value(forHTTPHeaderField: "Accept-Ranges")
@@ -161,11 +171,6 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
         let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length")
         let contentLength = contentLengthStr.flatMap { Int64($0) } ?? -1
 
-        // If Accept-Ranges is absent / not bytes, or Content-Length is missing, fallback to GET Range
-        if !supportsRange || contentLength < 0 {
-            return try await performGetRangeProbe(url: finalURL, headers: headers, headResponse: httpResponse)
-        }
-
         let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition")
         let filename = FilenameResolver.resolve(contentDisposition: contentDisposition, finalURL: finalURL)
         let etag = httpResponse.value(forHTTPHeaderField: "ETag")
@@ -173,7 +178,7 @@ public final class HTTPRangeProbe: HTTPProbing, Sendable {
 
         return ProbeResult(
             totalBytes: contentLength,
-            supportsRange: true,
+            supportsRange: supportsRange,
             filename: filename,
             etag: etag,
             lastModified: lastModified,
