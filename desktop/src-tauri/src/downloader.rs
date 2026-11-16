@@ -214,7 +214,7 @@ fn apply_custom_headers(
     req.header(ACCEPT_ENCODING, "identity")
 }
 
-/// Probes a remote URL using HEAD (falling back to GET Range 0-0) to inspect capabilities and metadata.
+/// Probes a remote URL using HEAD and GET Range 0-0 in parallel to inspect capabilities and metadata.
 pub async fn probe_url(
     client: &Client,
     url: &str,
@@ -222,163 +222,154 @@ pub async fn probe_url(
 ) -> Result<ProbeResult, DownloaderError> {
     let _parsed_url = Url::parse(url).map_err(|e| DownloaderError::InvalidUrl(e.to_string()))?;
 
-    // Attempt 1: HEAD request
-    let head_req = apply_custom_headers(client.head(url), headers);
-    let head_result = head_req.send().await;
+    let head_fut = apply_custom_headers(client.head(url), headers).send();
+    let get_fut = apply_custom_headers(client.get(url), headers)
+        .header(RANGE, "bytes=0-0")
+        .send();
 
-    let needs_get_fallback;
+    let (head_result, get_result) = tokio::join!(head_fut, get_fut);
+
     let mut head_response_opt = None;
 
-    match head_result {
-        Ok(res) => {
-            let status = res.status();
-            if status.is_success() {
-                let accept_ranges_val = res
-                    .headers()
-                    .get(ACCEPT_RANGES)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                let supports_range = accept_ranges_val.to_lowercase().contains("bytes");
-
-                let content_len = res
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok());
-
-                if supports_range && content_len.is_some() {
-                    let final_url = res.url().to_string();
-                    let is_redirect = final_url != url;
-                    let mime_type = res
-                        .headers()
-                        .get(CONTENT_TYPE)
-                        .and_then(|v| v.to_str().ok())
-                        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
-
-                    let disp_filename = res
-                        .headers()
-                        .get(CONTENT_DISPOSITION)
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(parse_content_disposition);
-
-                    let suggested_filename = Some(
-                        disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
-                    );
-
-                    return Ok(ProbeResult {
-                        content_length: content_len,
-                        accept_ranges: true,
-                        suggested_filename,
-                        mime_type,
-                        is_redirect,
-                        final_url,
-                    });
-                } else {
-                    // Fall back to GET Range 0-0 to verify range support or content length
-                    head_response_opt = Some((
-                        res.url().to_string(),
-                        res.headers().clone(),
-                        content_len,
-                    ));
-                    needs_get_fallback = true;
-                }
-            } else {
-                needs_get_fallback = true;
-            }
-        }
-        Err(_) => {
-            needs_get_fallback = true;
-        }
-    }
-
-    // Attempt 2: GET with Range: bytes=0-0 fallback
-    if needs_get_fallback {
-        let get_req = apply_custom_headers(client.get(url), headers).header(RANGE, "bytes=0-0");
-        let get_res = get_req.send().await.map_err(DownloaderError::from)?;
-
-        let final_url = get_res.url().to_string();
-        let is_redirect = final_url != url;
-        let status = get_res.status();
-
-        let (_head_url, head_headers, head_content_len) = head_response_opt.unwrap_or_else(|| {
-            (final_url.clone(), HeaderMap::new(), None)
-        });
-
-        let mime_type = get_res
-            .headers()
-            .get(CONTENT_TYPE)
-            .or_else(|| head_headers.get(CONTENT_TYPE))
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
-
-        let disp_filename = get_res
-            .headers()
-            .get(CONTENT_DISPOSITION)
-            .or_else(|| head_headers.get(CONTENT_DISPOSITION))
-            .and_then(|v| v.to_str().ok())
-            .and_then(parse_content_disposition);
-
-        let suggested_filename = Some(
-            disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
-        );
-
-        if status == StatusCode::PARTIAL_CONTENT {
-            // 206 Partial Content: Byte-range supported
-            let total_bytes = get_res
+    if let Ok(res) = head_result {
+        let status = res.status();
+        if status.is_success() {
+            let accept_ranges_val = res
                 .headers()
-                .get(CONTENT_RANGE)
+                .get(ACCEPT_RANGES)
                 .and_then(|v| v.to_str().ok())
-                .and_then(parse_content_range_total)
-                .or(head_content_len);
+                .unwrap_or("");
+            let supports_range = accept_ranges_val.to_lowercase().contains("bytes");
 
-            return Ok(ProbeResult {
-                content_length: total_bytes,
-                accept_ranges: true,
-                suggested_filename,
-                mime_type,
-                is_redirect,
-                final_url,
-            });
-        } else if status == StatusCode::OK {
-            // 200 OK: Server does not honor Range request, single stream only
-            let content_len = get_res
+            let content_len = res
                 .headers()
                 .get(CONTENT_LENGTH)
                 .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or(head_content_len);
+                .and_then(|s| s.parse::<u64>().ok());
 
-            return Ok(ProbeResult {
-                content_length: content_len,
-                accept_ranges: false,
-                suggested_filename,
-                mime_type,
-                is_redirect,
-                final_url,
-            });
-        } else if status == StatusCode::RANGE_NOT_SATISFIABLE {
-            // 416: Could be an empty 0-byte file
-            let total_bytes = get_res
-                .headers()
-                .get(CONTENT_RANGE)
-                .and_then(|v| v.to_str().ok())
-                .and_then(parse_content_range_total)
-                .or(Some(0));
+            if supports_range && content_len.is_some() {
+                let final_url = res.url().to_string();
+                let is_redirect = final_url != url;
+                let mime_type = res
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
 
-            return Ok(ProbeResult {
-                content_length: total_bytes,
-                accept_ranges: true,
-                suggested_filename,
-                mime_type,
-                is_redirect,
-                final_url,
-            });
-        } else if !status.is_success() {
-            return Err(DownloaderError::HttpError {
-                status: status.as_u16(),
-                message: format!("Probe failed with HTTP status {}", status),
-            });
+                let disp_filename = res
+                    .headers()
+                    .get(CONTENT_DISPOSITION)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_content_disposition);
+
+                let suggested_filename = Some(
+                    disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
+                );
+
+                return Ok(ProbeResult {
+                    content_length: content_len,
+                    accept_ranges: true,
+                    suggested_filename,
+                    mime_type,
+                    is_redirect,
+                    final_url,
+                });
+            } else {
+                // Fall back to GET Range 0-0 to verify range support or content length
+                head_response_opt = Some((
+                    res.url().to_string(),
+                    res.headers().clone(),
+                    content_len,
+                ));
+            }
         }
+    }
+
+    // Resolve from get_result (which already ran in parallel)
+    let get_res = get_result.map_err(DownloaderError::from)?;
+
+    let final_url = get_res.url().to_string();
+    let is_redirect = final_url != url;
+    let status = get_res.status();
+
+    let (_head_url, head_headers, head_content_len) = head_response_opt.unwrap_or_else(|| {
+        (final_url.clone(), HeaderMap::new(), None)
+    });
+
+    let mime_type = get_res
+        .headers()
+        .get(CONTENT_TYPE)
+        .or_else(|| head_headers.get(CONTENT_TYPE))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
+
+    let disp_filename = get_res
+        .headers()
+        .get(CONTENT_DISPOSITION)
+        .or_else(|| head_headers.get(CONTENT_DISPOSITION))
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_content_disposition);
+
+    let suggested_filename = Some(
+        disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
+    );
+
+    if status == StatusCode::PARTIAL_CONTENT {
+        // 206 Partial Content: Byte-range supported
+        let total_bytes = get_res
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range_total)
+            .or(head_content_len);
+
+        return Ok(ProbeResult {
+            content_length: total_bytes,
+            accept_ranges: true,
+            suggested_filename,
+            mime_type,
+            is_redirect,
+            final_url,
+        });
+    } else if status == StatusCode::OK {
+        // 200 OK: Server does not honor Range request, single stream only
+        let content_len = get_res
+            .headers()
+            .get(CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .or(head_content_len);
+
+        return Ok(ProbeResult {
+            content_length: content_len,
+            accept_ranges: false,
+            suggested_filename,
+            mime_type,
+            is_redirect,
+            final_url,
+        });
+    } else if status == StatusCode::RANGE_NOT_SATISFIABLE {
+        // 416: Could be an empty 0-byte file
+        let total_bytes = get_res
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range_total)
+            .or(Some(0));
+
+        return Ok(ProbeResult {
+            content_length: total_bytes,
+            accept_ranges: true,
+            suggested_filename,
+            mime_type,
+            is_redirect,
+            final_url,
+        });
+    } else if !status.is_success() {
+        return Err(DownloaderError::HttpError {
+            status: status.as_u16(),
+            message: format!("Probe failed with HTTP status {}", status),
+        });
     }
 
     Err(DownloaderError::Other("Unable to probe URL".to_string()))

@@ -2,7 +2,7 @@ use crate::downloader::sanitize_filename;
 use crate::engine::DownloadEngine;
 use axum::{
     body::Bytes,
-    extract::{Query, Request, State},
+    extract::{DefaultBodyLimit, Query, Request, State},
     http::{
         header::{self, HeaderMap, HeaderName, HeaderValue},
         Method, StatusCode,
@@ -19,7 +19,7 @@ use std::sync::{Arc, RwLock};
 
 pub const DEFAULT_PREFERRED_PORT: u16 = 31415;
 pub const DEFAULT_FALLBACK_PORT: u16 = 31416;
-pub const BRIDGE_VERSION: &str = "1.1.3";
+pub const BRIDGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_NAME: &str = "HyperFetch";
 
 /// Deserializes optional boolean values from either standard JSON booleans or string equivalents.
@@ -706,6 +706,7 @@ pub fn create_router(state: BridgeState) -> Router {
             state.clone(),
             vapt_security_middleware,
         ))
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .with_state(state)
 }
 
@@ -904,7 +905,7 @@ mod tests {
         let json: serde_json::Value = resp.json().await.expect("Failed to parse json");
         assert_eq!(json["status"], "ok");
         assert_eq!(json["app"], "HyperFetch");
-        assert_eq!(json["version"], "1.1.3");
+        assert_eq!(json["version"], BRIDGE_VERSION);
         assert_eq!(json["port"], port);
 
         bridge.stop();

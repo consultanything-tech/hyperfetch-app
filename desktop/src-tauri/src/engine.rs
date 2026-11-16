@@ -56,6 +56,9 @@ impl SpeedTracker {
         let now = Instant::now();
         self.window.push_back((now, bytes));
         self.prune(now);
+        while self.window.len() > 500 {
+            self.window.pop_front();
+        }
     }
 
     pub fn current_speed(&mut self) -> u64 {
@@ -751,6 +754,15 @@ mod tests {
 
         let speed = tracker.current_speed();
         assert!(speed > 0);
+    }
+
+    #[test]
+    fn test_speed_tracker_window_cap() {
+        let mut tracker = SpeedTracker::new(Duration::from_secs(60));
+        for _ in 0..1000 {
+            tracker.record(10);
+        }
+        assert_eq!(tracker.window.len(), 500);
     }
 
     #[tokio::test]
