@@ -551,4 +551,105 @@ struct StatePersistenceTests {
 
         #expect((permissions.intValue & 0o777) == 0o600)
     }
+
+    // MARK: - Test 8: Debounce Rapid Writes
+
+    @Test("Debounced saveTask collapses rapid writes within debounce window")
+    func testSaveTask_debouncesRapidWrites() async throws {
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storageURL = tempDir.appendingPathComponent("debounce_test.json")
+        let persister = JSONStatePersister(storageURL: storageURL, debounceInterval: .milliseconds(200))
+
+        var task = DownloadTaskModel(
+            url: URL(string: "https://example.com/debounced.bin")!,
+            filename: "debounced.bin"
+        )
+
+        // Rapid writes with immediate: false
+        for i in 1...10 {
+            task.downloadedBytes = Int64(i * 100)
+            try await persister.saveTask(task, immediate: false)
+        }
+
+        // Before debounce window finishes, file should not exist on disk
+        #expect(!FileManager.default.fileExists(atPath: storageURL.path))
+
+        // Wait for debounce interval to pass
+        try await Task.sleep(for: .milliseconds(350))
+
+        // Disk should now contain the final debounced write
+        #expect(FileManager.default.fileExists(atPath: storageURL.path))
+        let loaded = try await persister.load()
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.downloadedBytes == 1000)
+
+        // Test explicit flush
+        task.downloadedBytes = 2000
+        try await persister.saveTask(task, immediate: false)
+        try await persister.flush()
+
+        let flushedData = try await persister.load()
+        #expect(flushedData.first?.downloadedBytes == 2000)
+    }
+
+    // MARK: - Test 9: Immediate Flushes Instantly
+
+    @Test("Immediate saveTask flushes state to disk instantly without debounce delay")
+    func testSaveTask_immediateFlushesInstantly() async throws {
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storageURL = tempDir.appendingPathComponent("immediate_test.json")
+        // Use a long debounce interval to ensure the write is immediate
+        let persister = JSONStatePersister(storageURL: storageURL, debounceInterval: .seconds(10))
+
+        let task = DownloadTaskModel(
+            url: URL(string: "https://example.com/immediate.bin")!,
+            filename: "immediate.bin",
+            totalBytes: 5000,
+            downloadedBytes: 1500,
+            status: .downloading
+        )
+
+        try await persister.saveTask(task, immediate: true)
+
+        // Verify state is written to disk immediately without waiting
+        #expect(FileManager.default.fileExists(atPath: storageURL.path))
+        let loaded = try await persister.load()
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.id == task.id)
+        #expect(loaded.first?.downloadedBytes == 1500)
+    }
+
+    // MARK: - Test 10: Compact Encoding
+
+    @Test("Compact JSON encoding produces single-line data without pretty printed indentation")
+    func testCompactEncoding() async throws {
+        let tempDir = try createTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storageURL = tempDir.appendingPathComponent("compact_test.json")
+        let persister = JSONStatePersister(storageURL: storageURL)
+
+        let task = DownloadTaskModel(
+            url: URL(string: "https://example.com/compact.bin")!,
+            filename: "compact.bin",
+            totalBytes: 2048,
+            downloadedBytes: 1024,
+            status: .paused
+        )
+
+        try await persister.saveTask(task, immediate: true)
+
+        let data = try Data(contentsOf: storageURL)
+        guard let jsonString = String(data: data, encoding: .utf8) else {
+            Issue.record("Failed to read JSON string from state file")
+            return
+        }
+
+        #expect(!jsonString.isEmpty)
+        #expect(!jsonString.contains("\n"))
+    }
 }

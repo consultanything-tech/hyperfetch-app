@@ -70,7 +70,7 @@ public actor DownloadEngine {
         taskStore[id]?.status = .paused
         taskStore[id]?.bytesPerSecond = 0.0
         if let task = taskStore[id] {
-            try? await statePersister?.saveTask(task)
+            try? await statePersister?.saveTask(task, immediate: true)
         }
     }
 
@@ -89,7 +89,7 @@ public actor DownloadEngine {
         task.status = .paused
         task.bytesPerSecond = 0.0
         taskStore[task.id] = task
-        try? await statePersister?.saveTask(task)
+        try? await statePersister?.saveTask(task, immediate: true)
         progressHandler?(task)
         throw CancellationError()
     }
@@ -126,7 +126,7 @@ public actor DownloadEngine {
             currentTask.status = .probing
             taskStore[currentTask.id] = currentTask
             progressHandler?(currentTask)
-            try? await statePersister?.saveTask(currentTask)
+            try? await statePersister?.saveTask(currentTask, immediate: true)
 
             do {
                 let probeResult = try await probe.probe(url: currentTask.url, headers: currentTask.headers)
@@ -156,7 +156,7 @@ public actor DownloadEngine {
                 currentTask.totalBytes = -1
             }
             taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
+            try? await statePersister?.saveTask(currentTask, immediate: true)
         }
 
         // Step 2: Chunk setup and partitioning
@@ -183,7 +183,7 @@ public actor DownloadEngine {
                 currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: -1)]
             }
             taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
+            try? await statePersister?.saveTask(currentTask, immediate: true)
         }
 
         // Pre-allocate destination file if range supported and totalBytes > 0
@@ -194,7 +194,7 @@ public actor DownloadEngine {
             } catch {
                 currentTask.status = .failed(reason: error.localizedDescription)
                 taskStore[currentTask.id] = currentTask
-                try? await statePersister?.saveTask(currentTask)
+                try? await statePersister?.saveTask(currentTask, immediate: true)
                 progressHandler?(currentTask)
                 throw error
             }
@@ -207,7 +207,7 @@ public actor DownloadEngine {
         currentTask.status = .downloading
         taskStore[currentTask.id] = currentTask
         progressHandler?(currentTask)
-        try? await statePersister?.saveTask(currentTask)
+        try? await statePersister?.saveTask(currentTask, immediate: true)
 
         do {
             try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
@@ -233,7 +233,7 @@ public actor DownloadEngine {
                 currentTask.chunks = [Chunk(index: 0, startOffset: 0, endOffset: -1)]
                 taskStore[currentTask.id] = currentTask
                 try? await writer.allocate(totalBytes: 0)
-                try? await statePersister?.saveTask(currentTask)
+                try? await statePersister?.saveTask(currentTask, immediate: true)
                 progressHandler?(currentTask)
 
                 if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
@@ -255,7 +255,7 @@ public actor DownloadEngine {
                     currentTask.status = .failed(reason: error.localizedDescription)
                     currentTask.bytesPerSecond = 0.0
                     taskStore[currentTask.id] = currentTask
-                    try? await statePersister?.saveTask(currentTask)
+                    try? await statePersister?.saveTask(currentTask, immediate: true)
                     progressHandler?(currentTask)
                     throw error
                 }
@@ -266,7 +266,7 @@ public actor DownloadEngine {
                 currentTask.status = .failed(reason: error.localizedDescription)
                 currentTask.bytesPerSecond = 0.0
                 taskStore[currentTask.id] = currentTask
-                try? await statePersister?.saveTask(currentTask)
+                try? await statePersister?.saveTask(currentTask, immediate: true)
                 progressHandler?(currentTask)
                 throw error
             }
@@ -305,7 +305,7 @@ public actor DownloadEngine {
         currentTask.headers.removeValue(forKey: "authorization")
 
         taskStore[currentTask.id] = currentTask
-        try? await statePersister?.saveTask(currentTask)
+        try? await statePersister?.saveTask(currentTask, immediate: true)
         progressHandler?(currentTask)
         return currentTask
     }
@@ -363,7 +363,7 @@ public actor DownloadEngine {
                         if let idx = storedTask.chunks.firstIndex(where: { $0.index == completedChunk.index }) {
                             storedTask.chunks[idx] = completedChunk
                             taskStore[storedTask.id] = storedTask
-                            try? await statePersister?.saveTask(storedTask)
+                            try? await statePersister?.saveTask(storedTask, immediate: false)
                         }
                     }
                 }

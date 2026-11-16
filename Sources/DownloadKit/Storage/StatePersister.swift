@@ -10,8 +10,16 @@ import OSLog
 public protocol StatePersisting: Sendable {
     func save(tasks: [DownloadTaskModel]) async throws
     func load() async throws -> [DownloadTaskModel]
-    func saveTask(_ task: DownloadTaskModel) async throws
+    func saveTask(_ task: DownloadTaskModel, immediate: Bool) async throws
     func deleteTask(id: UUID) async throws
+    func flush() async throws
+}
+
+extension StatePersisting {
+    public func saveTask(_ task: DownloadTaskModel) async throws {
+        try await saveTask(task, immediate: true)
+    }
+    public func flush() async throws {}
 }
 
 /// Thread-safe actor persisting download tasks to disk using atomic JSON file operations.
@@ -20,6 +28,8 @@ public actor JSONStatePersister: StatePersisting {
     private let fileManager: FileManager
     private let logger = Logger(subsystem: "com.hyperfetch.downloadkit", category: "JSONStatePersister")
     private var cachedTasks: [DownloadTaskModel]?
+    private var pendingDebounceTask: Task<Void, Never>?
+    private let debounceInterval: Duration
 
     /// Default storage location inside the application support directory.
     public static var defaultStorageURL: URL {
@@ -30,15 +40,26 @@ public actor JSONStatePersister: StatePersisting {
             .appendingPathComponent("downloads_state.json")
     }
 
-    public init(storageURL: URL = JSONStatePersister.defaultStorageURL, fileManager: FileManager = .default) {
+    public init(
+        storageURL: URL = JSONStatePersister.defaultStorageURL,
+        fileManager: FileManager = .default,
+        debounceInterval: Duration = .milliseconds(500)
+    ) {
         self.storageURL = storageURL
         self.fileManager = fileManager
+        self.debounceInterval = debounceInterval
+    }
+
+    deinit {
+        pendingDebounceTask?.cancel()
     }
 
     // MARK: - StatePersisting Implementation
 
     /// Persists the collection of tasks atomically to disk.
     public func save(tasks: [DownloadTaskModel]) async throws {
+        pendingDebounceTask?.cancel()
+        pendingDebounceTask = nil
         cachedTasks = tasks
         let parentDir = storageURL.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: parentDir.path) {
@@ -66,7 +87,7 @@ public actor JSONStatePersister: StatePersisting {
     }
 
     /// Updates or inserts a single download task and persists the updated task list atomically.
-    public func saveTask(_ task: DownloadTaskModel) async throws {
+    public func saveTask(_ task: DownloadTaskModel, immediate: Bool = false) async throws {
         var currentTasks = cachedTasks ?? loadRawTasks()
         if let index = currentTasks.firstIndex(where: { $0.id == task.id }) {
             currentTasks[index] = task
@@ -74,11 +95,40 @@ public actor JSONStatePersister: StatePersisting {
             currentTasks.append(task)
         }
         cachedTasks = currentTasks
-        try await save(tasks: currentTasks)
+
+        if immediate {
+            pendingDebounceTask?.cancel()
+            pendingDebounceTask = nil
+            try await save(tasks: currentTasks)
+        } else {
+            pendingDebounceTask?.cancel()
+            let tasks = currentTasks
+            let interval = debounceInterval
+            pendingDebounceTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: interval)
+                    guard !Task.isCancelled else { return }
+                    try await self?.save(tasks: tasks)
+                } catch {
+                    // Cancelled or error
+                }
+            }
+        }
+    }
+
+    /// Flushes any pending debounced save immediately to disk.
+    public func flush() async throws {
+        pendingDebounceTask?.cancel()
+        pendingDebounceTask = nil
+        if let tasks = cachedTasks {
+            try await save(tasks: tasks)
+        }
     }
 
     /// Removes a download task with the given identifier and persists changes atomically.
     public func deleteTask(id: UUID) async throws {
+        pendingDebounceTask?.cancel()
+        pendingDebounceTask = nil
         var currentTasks = cachedTasks ?? loadRawTasks()
         guard currentTasks.contains(where: { $0.id == id }) else { return }
         currentTasks.removeAll(where: { $0.id == id })
@@ -138,7 +188,7 @@ public actor JSONStatePersister: StatePersisting {
     private func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = .sortedKeys
         return encoder
     }
 
