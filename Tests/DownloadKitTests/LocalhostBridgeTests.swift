@@ -148,7 +148,7 @@ struct LocalhostBridgeTests {
 
     @Test("GET /status returns 200 OK with app information")
     func testGetStatus() async throws {
-        let bridge = LocalhostBridge(preferredPort: 39165, fallbackPort: 39166, version: "1.1.4")
+        let bridge = LocalhostBridge(preferredPort: 39165, fallbackPort: 39166, version: "1.2.0")
         let port = try await bridge.start()
         defer { bridge.stop() }
 
@@ -165,7 +165,7 @@ struct LocalhostBridgeTests {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         #expect(json?["status"] as? String == "ok")
         #expect(json?["app"] as? String == "HyperFetch")
-        #expect(json?["version"] as? String == "1.1.4")
+        #expect(json?["version"] as? String == "1.2.0")
         #expect(json?["port"] as? Int == Int(port))
     }
 
