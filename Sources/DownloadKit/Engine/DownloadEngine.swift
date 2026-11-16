@@ -74,6 +74,26 @@ public actor DownloadEngine {
         }
     }
 
+    private func cancelAndPause(
+        task: inout DownloadTaskModel,
+        writer: (any FileWriting)? = nil,
+        progressHandler: (@Sendable (DownloadTaskModel) -> Void)?
+    ) async throws -> Never {
+        if let writer = writer {
+            try? await writer.sync()
+            await writer.close()
+        }
+        if let latest = taskStore[task.id] {
+            task = latest
+        }
+        task.status = .paused
+        task.bytesPerSecond = 0.0
+        taskStore[task.id] = task
+        try? await statePersister?.saveTask(task)
+        progressHandler?(task)
+        throw CancellationError()
+    }
+
     /// Starts or resumes a download task.
     public func startDownload(
         task: DownloadTaskModel,
@@ -98,12 +118,7 @@ public actor DownloadEngine {
         taskStore[currentTask.id] = currentTask
 
         if Task.isCancelled {
-            currentTask.status = .paused
-            currentTask.bytesPerSecond = 0.0
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
-            throw CancellationError()
+            try await cancelAndPause(task: &currentTask, writer: nil, progressHandler: progressHandler)
         }
 
         // Step 1: Probe remote resource if idle or size unknown
@@ -132,17 +147,9 @@ public actor DownloadEngine {
                     }
                 }
             } catch is CancellationError {
-                currentTask.status = .paused
-                taskStore[currentTask.id] = currentTask
-                try? await statePersister?.saveTask(currentTask)
-                progressHandler?(currentTask)
-                throw CancellationError()
+                try await cancelAndPause(task: &currentTask, writer: nil, progressHandler: progressHandler)
             } catch ProbeError.cancelled {
-                currentTask.status = .paused
-                taskStore[currentTask.id] = currentTask
-                try? await statePersister?.saveTask(currentTask)
-                progressHandler?(currentTask)
-                throw CancellationError()
+                try await cancelAndPause(task: &currentTask, writer: nil, progressHandler: progressHandler)
             } catch {
                 print("[DownloadEngine] Warning: probe failed for \(currentTask.url): \(error). Falling back to direct single-stream download.")
                 currentTask.supportsRange = false
@@ -194,14 +201,7 @@ public actor DownloadEngine {
         }
 
         if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
-            try? await writer.sync()
-            await writer.close()
-            currentTask.status = .paused
-            currentTask.bytesPerSecond = 0.0
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
-            throw CancellationError()
+            try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
         }
 
         currentTask.status = .downloading
@@ -212,52 +212,20 @@ public actor DownloadEngine {
         do {
             try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
         } catch is CancellationError {
-            try? await writer.sync()
-            await writer.close()
-
-            if let latest = taskStore[currentTask.id] {
-                currentTask = latest
-            }
-            currentTask.status = .paused
-            currentTask.bytesPerSecond = 0.0
-            taskStore[currentTask.id] = currentTask
-            try? await statePersister?.saveTask(currentTask)
-            progressHandler?(currentTask)
-            throw CancellationError()
+            try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
         } catch {
             if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
-                try? await writer.sync()
-                await writer.close()
-
-                if let latest = taskStore[currentTask.id] {
-                    currentTask = latest
-                }
-                currentTask.status = .paused
-                currentTask.bytesPerSecond = 0.0
-                taskStore[currentTask.id] = currentTask
-                try? await statePersister?.saveTask(currentTask)
-                progressHandler?(currentTask)
-                throw CancellationError()
+                try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
             }
 
-            if isRangeNotSupportedError(error) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
+            if (isRangeNotSupportedError(error) || isRateLimitError(error)) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
                 print("[DownloadEngine] Server does not support range requests or rate-limited concurrent connections for task \(currentTask.id) (\(error)). Seamlessly falling back to direct single-stream download.")
                 if isRateLimitError(error) {
                     try? await Task.sleep(for: rateLimitBackoffDuration)
                 }
 
                 if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
-                    try? await writer.sync()
-                    await writer.close()
-                    if let latest = taskStore[currentTask.id] {
-                        currentTask = latest
-                    }
-                    currentTask.status = .paused
-                    currentTask.bytesPerSecond = 0.0
-                    taskStore[currentTask.id] = currentTask
-                    try? await statePersister?.saveTask(currentTask)
-                    progressHandler?(currentTask)
-                    throw CancellationError()
+                    try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
                 }
 
                 currentTask.supportsRange = false
@@ -269,48 +237,16 @@ public actor DownloadEngine {
                 progressHandler?(currentTask)
 
                 if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
-                    try? await writer.sync()
-                    await writer.close()
-                    if let latest = taskStore[currentTask.id] {
-                        currentTask = latest
-                    }
-                    currentTask.status = .paused
-                    currentTask.bytesPerSecond = 0.0
-                    taskStore[currentTask.id] = currentTask
-                    try? await statePersister?.saveTask(currentTask)
-                    progressHandler?(currentTask)
-                    throw CancellationError()
+                    try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
                 }
 
                 do {
                     try await executeChunks(for: currentTask.id, writer: writer, progressHandler: progressHandler)
                 } catch is CancellationError {
-                    try? await writer.sync()
-                    await writer.close()
-
-                    if let latest = taskStore[currentTask.id] {
-                        currentTask = latest
-                    }
-                    currentTask.status = .paused
-                    currentTask.bytesPerSecond = 0.0
-                    taskStore[currentTask.id] = currentTask
-                    try? await statePersister?.saveTask(currentTask)
-                    progressHandler?(currentTask)
-                    throw CancellationError()
+                    try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
                 } catch {
                     if Task.isCancelled || taskStore[currentTask.id]?.status == .paused {
-                        try? await writer.sync()
-                        await writer.close()
-
-                        if let latest = taskStore[currentTask.id] {
-                            currentTask = latest
-                        }
-                        currentTask.status = .paused
-                        currentTask.bytesPerSecond = 0.0
-                        taskStore[currentTask.id] = currentTask
-                        try? await statePersister?.saveTask(currentTask)
-                        progressHandler?(currentTask)
-                        throw CancellationError()
+                        try await cancelAndPause(task: &currentTask, writer: writer, progressHandler: progressHandler)
                     }
 
                     try? await writer.sync()
@@ -448,23 +384,27 @@ public actor DownloadEngine {
             case .serverDoesNotSupportRange:
                 return true
             case .httpError(let statusCode):
-                return statusCode == 416 || statusCode == 501 || statusCode == 429 || statusCode == 403 || statusCode == 503
+                return statusCode == 416 || statusCode == 501
             default:
                 break
             }
         }
         let desc = error.localizedDescription
-        return desc.contains("206") || desc.contains("range") || desc.contains("Range") ||
-               desc.contains("429") || desc.contains("403") || desc.contains("503") ||
-               desc.localizedCaseInsensitiveContains("too many requests")
+        return desc.contains("206") || desc.contains("range") || desc.contains("Range")
+    }
+
+    func exposedIsRangeNotSupportedError(_ error: Error) -> Bool {
+        isRangeNotSupportedError(error)
+    }
+
+    func exposedIsRateLimitError(_ error: Error) -> Bool {
+        isRateLimitError(error)
     }
 
     private func isRateLimitError(_ error: Error) -> Bool {
         if let chunkError = error as? ChunkDownloadError {
             if case .httpError(let statusCode) = chunkError {
-                if statusCode == 429 || statusCode == 503 {
-                    return true
-                }
+                return statusCode == 429 || statusCode == 503
             }
         }
         let desc = error.localizedDescription

@@ -963,8 +963,8 @@ struct DownloadEngineTests {
         #expect(diskData == expectedData)
     }
 
-    @Test("DownloadEngine seamlessly falls back to single-stream when server rate limits multi-chunk with HTTP 403")
-    func testDownloadEngineFallsBackToSingleStreamWhenServerRateLimitsWith403() async throws {
+    @Test("DownloadEngine surfaces failure when server returns HTTP 403 for chunk request")
+    func testDownloadEngineSurfacesFailureOn403() async throws {
         EngineMockURLProtocol.reset()
         let session = makeSession()
         let tempDir = try createTempDir()
@@ -972,7 +972,6 @@ struct DownloadEngineTests {
 
         let testURL = URL(string: "https://engine.example.com/files/forbidden_chunk_video.mp4")!
         let totalSize = 500_000
-        let expectedData = Data((0..<totalSize).map { UInt8(($0 * 17 + 3) & 0xFF) })
 
         EngineMockURLProtocol.register(url: testURL) { request in
             if request.httpMethod == "HEAD" {
@@ -1010,7 +1009,7 @@ struct DownloadEngineTests {
                             "Content-Type": "video/mp4"
                         ]
                     )!
-                    return (response, expectedData)
+                    return (response, Data(count: totalSize))
                 }
             }
             fatalError("Unexpected HTTP method \(request.httpMethod ?? "")")
@@ -1029,16 +1028,45 @@ struct DownloadEngineTests {
             rateLimitBackoffDuration: .milliseconds(10)
         )
 
-        let completedTask = try await engine.startDownload(task: task)
+        await #expect(throws: (any Error).self) {
+            _ = try await engine.startDownload(task: task)
+        }
 
-        #expect(completedTask.status == .completed)
-        #expect(completedTask.completedAt != nil)
-        #expect(completedTask.downloadedBytes == Int64(totalSize))
-        #expect(completedTask.progress == 1.0)
-        #expect(completedTask.supportsRange == false)
+        if let recordedTask = await engine.task(for: task.id) {
+            switch recordedTask.status {
+            case .failed(let reason):
+                #expect(!reason.isEmpty)
+            default:
+                Issue.record("Expected task status to be .failed, got \(recordedTask.status)")
+            }
+        }
+    }
 
-        let diskData = try Data(contentsOf: destinationURL)
-        #expect(diskData.count == totalSize)
-        #expect(diskData == expectedData)
+    // MARK: - Error Classification Tests
+
+    @Test("isRangeNotSupportedError returns true only for 416 and 501")
+    func testErrorClassification_rangeErrors() async throws {
+        let engine = DownloadEngine()
+        let err416 = ChunkDownloadError.httpError(statusCode: 416)
+        #expect(await engine.exposedIsRangeNotSupportedError(err416) == true)
+        let err501 = ChunkDownloadError.httpError(statusCode: 501)
+        #expect(await engine.exposedIsRangeNotSupportedError(err501) == true)
+        let err403 = ChunkDownloadError.httpError(statusCode: 403)
+        #expect(await engine.exposedIsRangeNotSupportedError(err403) == false)
+        let err503 = ChunkDownloadError.httpError(statusCode: 503)
+        #expect(await engine.exposedIsRangeNotSupportedError(err503) == false)
+        let err429 = ChunkDownloadError.httpError(statusCode: 429)
+        #expect(await engine.exposedIsRangeNotSupportedError(err429) == false)
+    }
+
+    @Test("isRateLimitError returns true for 429 and 503")
+    func testErrorClassification_rateLimitErrors() async throws {
+        let engine = DownloadEngine()
+        let err429 = ChunkDownloadError.httpError(statusCode: 429)
+        #expect(await engine.exposedIsRateLimitError(err429) == true)
+        let err503 = ChunkDownloadError.httpError(statusCode: 503)
+        #expect(await engine.exposedIsRateLimitError(err503) == true)
+        let err403 = ChunkDownloadError.httpError(statusCode: 403)
+        #expect(await engine.exposedIsRateLimitError(err403) == false)
     }
 }
