@@ -6,6 +6,8 @@
 const PRIMARY_PORT = 31415;
 const FALLBACK_PORT = 31416;
 
+const INLINE_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico']);
+
 const DOWNLOADABLE_EXTENSIONS = new Set([
   // Archives
   'zip', 'dmg', 'pkg', 'iso', 'tar', 'gz', 'tgz', '7z', 'rar', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'lz4', 'cab', 'wim', 'jar', 'war', 'ear', 'z',
@@ -17,8 +19,8 @@ const DOWNLOADABLE_EXTENSIONS = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub', 'txt', 'md', 'tex', 'pages', 'numbers', 'key',
   // Data & Code
   'json', 'xml', 'yaml', 'yml', 'sql', 'sqlite', 'db', 'sqlite3', 'parquet', 'avro', 'arrow', 'feather', 'py', 'js', 'ts', 'sh', 'c', 'cpp', 'h', 'rs', 'go', 'swift', 'java', 'kt', 'rb', 'php', 'cs',
-  // Images
-  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tiff', 'bmp', 'heic', 'heif', 'ico', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'dng',
+  // Heavy / Pro Images & Design Assets
+  'tiff', 'bmp', 'heic', 'heif', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'dng',
   // Installers
   'exe', 'msi', 'bin', 'app', 'xip', 'deb', 'rpm', 'apk', 'aab', 'ipa'
 ]);
@@ -167,7 +169,15 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     return;
   }
 
-  const isExtMatch = Boolean(ext && DOWNLOADABLE_EXTENSIONS.has(ext));
+  // Exclude standard inline web images unless they are heavy assets (> 5MB)
+  if (ext && INLINE_IMAGE_EXTENSIONS.has(ext)) {
+    if (!downloadItem.fileSize || downloadItem.fileSize <= 5 * 1024 * 1024) {
+      safeSuggest();
+      return;
+    }
+  }
+
+  const isExtMatch = Boolean(ext && (DOWNLOADABLE_EXTENSIONS.has(ext) || INLINE_IMAGE_EXTENSIONS.has(ext)));
   const isMimeMatch = isDownloadableMime(downloadItem.mime);
   const isLargeFile = Boolean(downloadItem.fileSize && downloadItem.fileSize > 1024 * 1024);
 
@@ -183,10 +193,11 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   // the browser download; if it fails/rejects, safeSuggest() lets the browser
   // continue natively without freezing.
   processedDownloadIds.add(downloadItem.id);
+  setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
 
   (async () => {
     try {
-      const cookieString = await getMergedCookies(targetUrl, rawUrl, downloadItem.referrer);
+      const cookieString = await getMergedCookies(targetUrl);
       const headers = {
         'User-Agent': navigator.userAgent,
         'Referer': downloadItem.referrer || '',
@@ -217,45 +228,18 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         showErrorBadge();
         // Resolve filename so the browser's original in-flight download continues cleanly
         safeSuggest({ filename: filename || fallbackName });
-        setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
       }
     } catch (err) {
       console.error('[HyperFetch] Error during async interception:', err);
       safeSuggest({ filename: filename || fallbackName });
-      setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
     }
   })();
 
   return true; // Keep suggest callback active for async determination
 });
 
-async function getMergedCookies(url1, url2, referrer) {
-  const cookieMap = new Map();
-  const urls = [];
-  if (url1) urls.push(url1);
-  if (url2 && !urls.includes(url2)) urls.push(url2);
-  if (referrer && !urls.includes(referrer)) urls.push(referrer);
-
-  for (const target of urls) {
-    if (!target) continue;
-    const cookieStr = await getCookiesForUrl(target);
-    if (cookieStr) {
-      const parts = cookieStr.split('; ');
-      for (const part of parts) {
-        const eqIdx = part.indexOf('=');
-        if (eqIdx !== -1) {
-          const name = part.substring(0, eqIdx).trim();
-          const val = part.substring(eqIdx + 1).trim();
-          if (name && !cookieMap.has(name)) {
-            cookieMap.set(name, val);
-          }
-        }
-      }
-    }
-  }
-
-  if (cookieMap.size === 0) return '';
-  return Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+async function getMergedCookies(targetUrl) {
+  return getCookiesForUrl(targetUrl);
 }
 
 async function getCookiesForUrl(url) {
