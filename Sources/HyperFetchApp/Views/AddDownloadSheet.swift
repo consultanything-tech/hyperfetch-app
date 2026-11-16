@@ -773,7 +773,6 @@ public struct AddDownloadSheet: View {
                 .standardizedFileURL
         }
 
-        appState.defaultChunkCount = chunkCount
         appState.defaultDownloadDirectoryURL = destinationFolderURL
 
         let trimmedReferrer = referrerURL.trimmingCharacters(in: .whitespacesAndNewlines)

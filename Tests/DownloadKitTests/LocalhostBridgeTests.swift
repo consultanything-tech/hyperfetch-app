@@ -388,4 +388,26 @@ struct LocalhostBridgeTests {
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         #expect(json["version"] as? String == "2.0.0")
     }
+
+    @Test("Bridge stop is reentrant and safe when invoked during event handler")
+    func testBridge_stopReentrancy() async throws {
+        let bridge = LocalhostBridge(preferredPort: 39170, fallbackPort: 39171)
+        let port = try await bridge.start()
+        #expect(bridge.isRunning == true)
+
+        bridge.onDownloadRequested = { [weak bridge] _, _, _, _ in
+            bridge?.stop()
+        }
+
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
+        let payload: [String: Any] = ["url": "https://example.com/reentrant.zip"]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        _ = try? await URLSession.shared.data(for: req)
+        bridge.stop()
+        #expect(bridge.isRunning == false)
+    }
 }

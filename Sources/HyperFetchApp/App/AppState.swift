@@ -268,6 +268,8 @@ public final class AppState: ObservableObject {
     @Published public var scheduleEndHour: Int {
         didSet { UserDefaults.standard.set(scheduleEndHour, forKey: Self.scheduleEndHourKey) }
     }
+    @AppStorage("autoOpenOnCompletion") public var autoOpenOnCompletion: Bool = false
+    private var preScheduleSpeedLimit: SpeedLimitPreset? = nil
 
     public static let availableCompletionSounds = ["Glass", "Hero", "Ping", "Pop", "Purr", "Tink", "Mute"]
 
@@ -562,9 +564,22 @@ public final class AppState: ObservableObject {
                         // Crosses midnight, e.g. 22:00 to 06:00
                         inSchedule = currentHour >= self.scheduleStartHour || currentHour < self.scheduleEndHour
                     }
-                    if inSchedule && self.speedLimitPreset == .unlimited {
-                        self.setSpeedLimitPreset(.normal)
+                    if inSchedule {
+                        if self.preScheduleSpeedLimit == nil {
+                            self.preScheduleSpeedLimit = self.speedLimitPreset
+                        }
+                        if self.speedLimitPreset == .unlimited {
+                            self.setSpeedLimitPreset(.normal)
+                        }
+                    } else {
+                        if let previous = self.preScheduleSpeedLimit {
+                            self.setSpeedLimitPreset(previous)
+                            self.preScheduleSpeedLimit = nil
+                        }
                     }
+                } else if let previous = self.preScheduleSpeedLimit {
+                    self.setSpeedLimitPreset(previous)
+                    self.preScheduleSpeedLimit = nil
                 }
 
                 self.cachedActiveSocketCount = self.computeActiveSocketCount()
@@ -1117,6 +1132,34 @@ public final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Queue Reordering Actions
+
+    public func moveTaskUp(id: UUID) {
+        guard let idx = tasks.firstIndex(where: { $0.id == id }), idx > 0 else { return }
+        Task {
+            await queueManager.moveTask(id: id, toIndex: idx - 1)
+        }
+    }
+
+    public func moveTaskDown(id: UUID) {
+        guard let idx = tasks.firstIndex(where: { $0.id == id }), idx < tasks.count - 1 else { return }
+        Task {
+            await queueManager.moveTask(id: id, toIndex: idx + 1)
+        }
+    }
+
+    public func moveTaskToTop(id: UUID) {
+        Task {
+            await queueManager.moveTask(id: id, toIndex: 0)
+        }
+    }
+
+    public func moveTaskToBottom(id: UUID) {
+        Task {
+            await queueManager.moveTask(id: id, toIndex: tasks.count - 1)
+        }
+    }
+
     /// Previews the currently selected completion chime sound.
     public func playTestSound() {
         guard completionSoundName != "Mute" else { return }
@@ -1319,6 +1362,11 @@ public final class AppState: ObservableObject {
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Convenience overload to open a downloaded file.
+    public func openFile(_ task: DownloadTaskModel) {
+        openFile(task: task)
     }
 
     /// Copies the task's source URL to the system clipboard.
@@ -1614,6 +1662,10 @@ public final class AppState: ObservableObject {
 
                     if autoRevealOnCompletion {
                         NSWorkspace.shared.activateFileViewerSelecting([task.destinationURL])
+                    }
+
+                    if autoOpenOnCompletion {
+                        openFile(task)
                     }
 
                     if showCompletionNotification {

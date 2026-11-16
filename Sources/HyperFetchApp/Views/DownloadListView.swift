@@ -393,6 +393,44 @@ public struct DownloadListView: View {
 
         Divider()
 
+        Menu {
+            let taskIndex = appState.tasks.firstIndex(where: { $0.id == task.id })
+            let isFirst = taskIndex == 0
+            let isLast = taskIndex == (appState.tasks.count - 1)
+
+            Button {
+                appState.moveTaskToTop(id: task.id)
+            } label: {
+                Label("Move to Top", systemImage: "arrow.up.to.line")
+            }
+            .disabled(isFirst)
+
+            Button {
+                appState.moveTaskUp(id: task.id)
+            } label: {
+                Label("Move Up", systemImage: "arrow.up")
+            }
+            .disabled(isFirst)
+
+            Button {
+                appState.moveTaskDown(id: task.id)
+            } label: {
+                Label("Move Down", systemImage: "arrow.down")
+            }
+            .disabled(isLast)
+
+            Button {
+                appState.moveTaskToBottom(id: task.id)
+            } label: {
+                Label("Move to Bottom", systemImage: "arrow.down.to.line")
+            }
+            .disabled(isLast)
+        } label: {
+            Label("Queue Position", systemImage: "arrow.up.arrow.down")
+        }
+
+        Divider()
+
         Button("Remove from List", role: .destructive) {
             appState.remove(id: task.id, deleteFile: false)
         }

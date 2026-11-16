@@ -162,6 +162,13 @@ private struct GeneralSettingsTab: View {
                         .padding(.vertical, 4)
 
                     Toggle("Automatically reveal file in Finder when download completes", isOn: $appState.autoRevealOnCompletion)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Auto-Open Completed Files", isOn: $appState.autoOpenOnCompletion)
+                        Text("Automatically launch or open files once download finishes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 

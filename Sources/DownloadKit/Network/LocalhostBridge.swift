@@ -125,6 +125,7 @@ public final class LocalhostBridge: @unchecked Sendable {
         }
     }
 
+    private static let queueKey = DispatchSpecificKey<Void>()
     private let queue = DispatchQueue(label: "com.hyperfetch.localhostbridge", qos: .userInitiated)
     private var listener: NWListener?
     private var currentPort: UInt16?
@@ -133,14 +134,20 @@ public final class LocalhostBridge: @unchecked Sendable {
 
     /// Whether the bridge is currently active and listening.
     public var isRunning: Bool {
-        queue.sync {
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            return listener != nil && currentPort != nil
+        }
+        return queue.sync {
             listener != nil && currentPort != nil
         }
     }
 
     /// The active listening port, or `nil` if not running.
     public var listeningPort: UInt16? {
-        queue.sync { currentPort }
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            return currentPort
+        }
+        return queue.sync { currentPort }
     }
 
     public init(
@@ -155,6 +162,7 @@ public final class LocalhostBridge: @unchecked Sendable {
         self.bridgeToken = bridgeToken
         self.version = version
         self.onDownloadRequested = onDownloadRequested
+        queue.setSpecific(key: Self.queueKey, value: ())
     }
 
     deinit {
@@ -182,7 +190,7 @@ public final class LocalhostBridge: @unchecked Sendable {
 
     /// Stops the localhost bridge and closes all active connections.
     public func stop() {
-        queue.sync {
+        let teardown = {
             for (_, connection) in self.connectionMap {
                 connection.cancel()
             }
@@ -196,6 +204,12 @@ public final class LocalhostBridge: @unchecked Sendable {
                 self.listener = nil
             }
             self.currentPort = nil
+        }
+
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            teardown()
+        } else {
+            queue.sync(execute: teardown)
         }
     }
 
