@@ -1,6 +1,6 @@
 use crate::downloader::{probe_url, ProbeResult};
 use crate::engine::DownloadEngine;
-use crate::models::DownloadTask;
+use crate::models::{AllTimeStats, DownloadTask};
 use crate::storage::FileWriter;
 use std::collections::HashMap;
 use std::path::Path;
@@ -185,6 +185,11 @@ pub fn get_default_download_dir(category: Option<String>) -> String {
     FileWriter::get_default_download_dir(category.as_deref())
         .to_string_lossy()
         .to_string()
+}
+
+#[tauri::command]
+pub async fn get_all_time_stats(state: State<'_, AppState>) -> Result<AllTimeStats, String> {
+    Ok(state.engine.get_all_time_stats().await)
 }
 
 #[cfg(test)]

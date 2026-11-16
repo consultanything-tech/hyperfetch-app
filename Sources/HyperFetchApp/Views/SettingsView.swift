@@ -157,6 +157,11 @@ private struct GeneralSettingsTab: View {
 
                         Spacer()
                     }
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    Toggle("Automatically reveal file in Finder when download completes", isOn: $appState.autoRevealOnCompletion)
                 }
             }
 
@@ -208,6 +213,31 @@ private struct GeneralSettingsTab: View {
                     Text("Global rate limiter caps aggregate download bandwidth across all active tasks.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    Toggle("Enable bandwidth schedule (quiet hours)", isOn: $appState.isBandwidthScheduleEnabled)
+
+                    if appState.isBandwidthScheduleEnabled {
+                        HStack(spacing: 12) {
+                            Picker("Quiet Hours Start", selection: $appState.scheduleStartHour) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Text(String(format: "%02d:00", hour)).tag(hour)
+                                }
+                            }
+                            Picker("End", selection: $appState.scheduleEndHour) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Text(String(format: "%02d:00", hour)).tag(hour)
+                                }
+                            }
+                        }
+                        .padding(.top, 2)
+
+                        Text("Automatically throttles to Normal speed (2 MB/s) during scheduled quiet hours.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

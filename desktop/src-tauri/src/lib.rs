@@ -225,6 +225,7 @@ pub fn run() {
             commands::open_file,
             commands::open_containing_folder,
             commands::get_default_download_dir,
+            commands::get_all_time_stats,
             updater::check_for_updates,
         ])
         .run(tauri::generate_context!())

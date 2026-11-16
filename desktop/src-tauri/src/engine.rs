@@ -2,7 +2,7 @@ use crate::downloader::{
     calculate_chunks, download_task_content, fallback_filename_from_url, probe_url,
     sanitize_filename, DownloaderError,
 };
-use crate::models::{DownloadCategory, DownloadState, DownloadTask};
+use crate::models::{AllTimeStats, DownloadCategory, DownloadState, DownloadTask};
 use crate::storage::{FileWriter, StorageError};
 use reqwest::Client;
 use std::collections::{HashMap, VecDeque};
@@ -96,6 +96,7 @@ pub struct DownloadEngine {
     pub cancellation_handles: Arc<RwLock<HashMap<String, broadcast::Sender<()>>>>,
     pub client: Client,
     pub state_file: PathBuf,
+    pub all_time_stats: Arc<RwLock<AllTimeStats>>,
 }
 
 impl DownloadEngine {
@@ -108,6 +109,45 @@ impl DownloadEngine {
             .join("tasks.json")
     }
 
+    /// Derives the stats persistence path (`stats.json`) sibling to the task state file.
+    pub fn stats_file_path(state_file: &Path) -> PathBuf {
+        state_file.with_file_name("stats.json")
+    }
+
+    /// Reads all-time statistics from disk if available, otherwise returning defaults.
+    pub fn load_stats_from_disk(path: &Path) -> AllTimeStats {
+        if !path.exists() {
+            return AllTimeStats::default();
+        }
+        let data = match std::fs::read_to_string(path) {
+            Ok(d) => d,
+            Err(_) => return AllTimeStats::default(),
+        };
+        serde_json::from_str(&data).unwrap_or_default()
+    }
+
+    /// Persists all-time statistics to disk atomically.
+    pub async fn save_stats_to_disk(&self, stats: &AllTimeStats) -> Result<(), EngineError> {
+        let stats_path = Self::stats_file_path(&self.state_file);
+        let json = serde_json::to_string_pretty(stats)?;
+
+        if let Some(parent) = stats_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        let tmp_file = stats_path.with_extension("tmp");
+        std::fs::write(&tmp_file, json)?;
+        std::fs::rename(&tmp_file, &stats_path)?;
+        Ok(())
+    }
+
+    /// Returns a snapshot of the current all-time statistics.
+    pub async fn get_all_time_stats(&self) -> AllTimeStats {
+        self.all_time_stats.read().await.clone()
+    }
+
     /// Creates a new `DownloadEngine` using default state persistence path.
     pub fn new() -> Self {
         Self::with_state_path(Self::default_state_path())
@@ -117,6 +157,8 @@ impl DownloadEngine {
     pub fn with_state_path(state_path: impl Into<PathBuf>) -> Self {
         let state_file = state_path.into();
         let loaded_tasks = Self::load_tasks_from_disk(&state_file);
+        let stats_file = Self::stats_file_path(&state_file);
+        let loaded_stats = Self::load_stats_from_disk(&stats_file);
 
         let client = Client::builder()
             .tcp_keepalive(Duration::from_secs(30))
@@ -128,6 +170,7 @@ impl DownloadEngine {
             cancellation_handles: Arc::new(RwLock::new(HashMap::new())),
             client,
             state_file,
+            all_time_stats: Arc::new(RwLock::new(loaded_stats)),
         }
     }
 
@@ -305,6 +348,7 @@ impl DownloadEngine {
                 handles.remove(&task_id);
             }
 
+            let mut completed_task_bytes: Option<u64> = None;
             let mut tasks = engine.tasks.write().await;
             if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
                 t.speed = 0;
@@ -325,6 +369,13 @@ impl DownloadEngine {
                             c.downloaded_bytes = c.total_bytes;
                         }
                         t.error = None;
+
+                        let task_bytes = if t.total_bytes > 0 {
+                            t.total_bytes
+                        } else {
+                            t.downloaded_bytes
+                        };
+                        completed_task_bytes = Some(task_bytes);
                     }
                     Err(DownloaderError::Cancelled) => {
                         if t.status != DownloadState::Cancelled {
@@ -338,6 +389,14 @@ impl DownloadEngine {
                 }
             }
             drop(tasks);
+
+            if let Some(task_bytes) = completed_task_bytes {
+                let mut stats = engine.all_time_stats.write().await;
+                stats.total_downloaded_bytes += task_bytes;
+                stats.total_completed_count += 1;
+                let _ = engine.save_stats_to_disk(&stats).await;
+            }
+
             let _ = engine.save_state().await;
         });
 
@@ -1017,5 +1076,38 @@ mod tests {
         assert_eq!(task3.id, task1.id);
         let tasks_after = engine.get_tasks().await;
         assert_eq!(tasks_after.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_engine_all_time_stats_tracking_and_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_file = temp_dir.path().join("tasks.json");
+
+        let engine = DownloadEngine::with_state_path(&state_file);
+        let initial_stats = engine.get_all_time_stats().await;
+        assert_eq!(initial_stats.total_downloaded_bytes, 0);
+        assert_eq!(initial_stats.total_completed_count, 0);
+
+        // Update stats and save to disk
+        {
+            let mut stats = engine.all_time_stats.write().await;
+            stats.total_downloaded_bytes += 4096;
+            stats.total_completed_count += 2;
+            engine.save_stats_to_disk(&stats).await.unwrap();
+        }
+
+        let updated_stats = engine.get_all_time_stats().await;
+        assert_eq!(updated_stats.total_downloaded_bytes, 4096);
+        assert_eq!(updated_stats.total_completed_count, 2);
+
+        // Verify stats.json file exists on disk
+        let stats_file = DownloadEngine::stats_file_path(&state_file);
+        assert!(stats_file.exists());
+
+        // Recreate engine pointing to the same state file and assert persistence
+        let restored_engine = DownloadEngine::with_state_path(&state_file);
+        let restored_stats = restored_engine.get_all_time_stats().await;
+        assert_eq!(restored_stats.total_downloaded_bytes, 4096);
+        assert_eq!(restored_stats.total_completed_count, 2);
     }
 }

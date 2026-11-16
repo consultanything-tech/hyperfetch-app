@@ -244,6 +244,27 @@ public final class AppState: ObservableObject {
     private static let playCompletionSoundKey = "com.hyperfetch.playCompletionSound"
     private static let completionSoundNameKey = "com.hyperfetch.completionSoundName"
     private static let showCompletionNotificationKey = "com.hyperfetch.showCompletionNotification"
+    private static let allTimeDownloadedBytesKey = "allTimeDownloadedBytes"
+    private static let allTimeCompletedCountKey = "allTimeCompletedCount"
+    private static let autoRevealOnCompletionKey = "autoRevealOnCompletion"
+    private static let isBandwidthScheduleEnabledKey = "isBandwidthScheduleEnabled"
+    private static let scheduleStartHourKey = "scheduleStartHour"
+    private static let scheduleEndHourKey = "scheduleEndHour"
+
+    @Published public var allTimeDownloadedBytes: Int64
+    @Published public var allTimeCompletedCount: Int
+    @Published public var autoRevealOnCompletion: Bool {
+        didSet { UserDefaults.standard.set(autoRevealOnCompletion, forKey: Self.autoRevealOnCompletionKey) }
+    }
+    @Published public var isBandwidthScheduleEnabled: Bool {
+        didSet { UserDefaults.standard.set(isBandwidthScheduleEnabled, forKey: Self.isBandwidthScheduleEnabledKey) }
+    }
+    @Published public var scheduleStartHour: Int {
+        didSet { UserDefaults.standard.set(scheduleStartHour, forKey: Self.scheduleStartHourKey) }
+    }
+    @Published public var scheduleEndHour: Int {
+        didSet { UserDefaults.standard.set(scheduleEndHour, forKey: Self.scheduleEndHourKey) }
+    }
 
     public static let availableCompletionSounds = ["Glass", "Hero", "Ping", "Pop", "Purr", "Tink", "Mute"]
 
@@ -470,6 +491,13 @@ public final class AppState: ObservableObject {
             self.viewMode = .comfortable
         }
 
+        self.allTimeDownloadedBytes = (UserDefaults.standard.object(forKey: Self.allTimeDownloadedBytesKey) as? NSNumber)?.int64Value ?? 0
+        self.allTimeCompletedCount = UserDefaults.standard.integer(forKey: Self.allTimeCompletedCountKey)
+        self.autoRevealOnCompletion = UserDefaults.standard.bool(forKey: Self.autoRevealOnCompletionKey)
+        self.isBandwidthScheduleEnabled = UserDefaults.standard.bool(forKey: Self.isBandwidthScheduleEnabledKey)
+        self.scheduleStartHour = UserDefaults.standard.object(forKey: Self.scheduleStartHourKey) as? Int ?? 9
+        self.scheduleEndHour = UserDefaults.standard.object(forKey: Self.scheduleEndHourKey) as? Int ?? 18
+
         let speedBytes = initialSpeed.bytesPerSecond
         let qm = queueManager ?? QueueManager(
             statePersister: JSONStatePersister(),
@@ -503,6 +531,20 @@ public final class AppState: ObservableObject {
                 let current = self.totalDownloadSpeed
                 self.speedHistory.removeFirst()
                 self.speedHistory.append(current)
+
+                if self.isBandwidthScheduleEnabled {
+                    let currentHour = Calendar.current.component(.hour, from: Date())
+                    let inSchedule: Bool
+                    if self.scheduleStartHour <= self.scheduleEndHour {
+                        inSchedule = currentHour >= self.scheduleStartHour && currentHour < self.scheduleEndHour
+                    } else {
+                        // Crosses midnight, e.g. 22:00 to 06:00
+                        inSchedule = currentHour >= self.scheduleStartHour || currentHour < self.scheduleEndHour
+                    }
+                    if inSchedule && self.speedLimitPreset == .unlimited {
+                        self.setSpeedLimitPreset(.normal)
+                    }
+                }
 
                 self.cachedActiveSocketCount = self.computeActiveSocketCount()
                 self.cachedAllocatedMemoryMB = self.computeAllocatedMemoryMB()
@@ -1174,6 +1216,11 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Convenience setter for download speed limit preset.
+    public func setSpeedLimitPreset(_ preset: SpeedLimitPreset) {
+        setSpeedLimit(preset: preset)
+    }
+
     // MARK: - Launch at Login Management
 
     /// Toggles Launch at Login and updates system registration and stored preference.
@@ -1531,6 +1578,16 @@ public final class AppState: ObservableObject {
         if !isInitialLoad {
             for task in tasksToProcess {
                 if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
+                    let bytes = task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes
+                    self.allTimeDownloadedBytes += bytes
+                    self.allTimeCompletedCount += 1
+                    UserDefaults.standard.set(self.allTimeDownloadedBytes, forKey: Self.allTimeDownloadedBytesKey)
+                    UserDefaults.standard.set(self.allTimeCompletedCount, forKey: Self.allTimeCompletedCountKey)
+
+                    if autoRevealOnCompletion {
+                        NSWorkspace.shared.activateFileViewerSelecting([task.destinationURL])
+                    }
+
                     if showCompletionNotification {
                         notificationManager.sendDownloadCompletedNotification(task: task, playSound: false)
                     }

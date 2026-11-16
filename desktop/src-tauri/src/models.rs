@@ -210,6 +210,13 @@ pub enum ViewMode {
     Compact,
 }
 
+/// Persistent all-time download metrics retained across app sessions.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllTimeStats {
+    pub total_downloaded_bytes: u64,
+    pub total_completed_count: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +306,14 @@ mod tests {
         let view = ViewMode::Comfortable;
         let json_view = serde_json::to_string(&view).unwrap();
         assert_eq!(json_view, "\"comfortable\"");
+
+        let stats = AllTimeStats {
+            total_downloaded_bytes: 1048576,
+            total_completed_count: 5,
+        };
+        let json_stats = serde_json::to_string(&stats).unwrap();
+        let decoded: AllTimeStats = serde_json::from_str(&json_stats).unwrap();
+        assert_eq!(decoded, stats);
     }
 
     #[test]
