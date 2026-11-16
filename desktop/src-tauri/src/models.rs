@@ -183,6 +183,10 @@ pub struct DownloadTask {
     pub created_at: u64,
     pub completed_at: Option<u64>,
     pub headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub etag: Option<String>,
+    #[serde(default)]
+    pub last_modified: Option<String>,
 }
 
 impl DownloadTask {
@@ -306,5 +310,59 @@ mod tests {
         assert_eq!(chunk.total_bytes, 100);
         assert_eq!(chunk.downloaded_bytes, 0);
         assert!(!chunk.completed);
+    }
+
+    #[test]
+    fn test_download_task_etag_last_modified_serde() {
+        let task_json = r#"{
+            "id": "test-task-1",
+            "url": "https://example.com/file.iso",
+            "filename": "file.iso",
+            "destination_path": "/tmp/file.iso",
+            "total_bytes": 1024,
+            "downloaded_bytes": 512,
+            "status": "downloading",
+            "category": "archives",
+            "speed": 100,
+            "eta": 5,
+            "resumable": true,
+            "error": null,
+            "chunks": [],
+            "created_at": 1700000000,
+            "completed_at": null,
+            "headers": null,
+            "etag": "\"abc-123\"",
+            "last_modified": "Sun, 15 Nov 2026 00:00:00 GMT"
+        }"#;
+
+        let task: DownloadTask = serde_json::from_str(task_json).unwrap();
+        assert_eq!(task.etag, Some("\"abc-123\"".to_string()));
+        assert_eq!(task.last_modified, Some("Sun, 15 Nov 2026 00:00:00 GMT".to_string()));
+
+        let serialized = serde_json::to_string(&task).unwrap();
+        assert!(serialized.contains("\"etag\":\"\\\"abc-123\\\"\""));
+
+        // Omitted etag and last_modified defaults to None
+        let minimal_json = r#"{
+            "id": "test-task-2",
+            "url": "https://example.com/file2.iso",
+            "filename": "file2.iso",
+            "destination_path": "/tmp/file2.iso",
+            "total_bytes": 1024,
+            "downloaded_bytes": 0,
+            "status": "pending",
+            "category": "archives",
+            "speed": 0,
+            "eta": 0,
+            "resumable": true,
+            "error": null,
+            "chunks": [],
+            "created_at": 1700000000,
+            "completed_at": null,
+            "headers": null
+        }"#;
+        let task2: DownloadTask = serde_json::from_str(minimal_json).unwrap();
+        assert_eq!(task2.etag, None);
+        assert_eq!(task2.last_modified, None);
     }
 }

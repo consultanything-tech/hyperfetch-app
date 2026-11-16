@@ -345,4 +345,52 @@ struct DownloadModelTests {
             #expect(decoded == status)
         }
     }
+
+    @Test("DownloadTaskModel with etag and lastModified roundtrips via Codable")
+    func testETagAndLastModifiedCodable() throws {
+        let task = DownloadTaskModel(
+            url: URL(string: "https://example.com/file.bin")!,
+            filename: "file.bin",
+            etag: "\"33a64df551425fcc55e4d42a148795d9f25f89d4\"",
+            lastModified: "Wed, 21 Oct 2025 07:28:00 GMT"
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(task)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(DownloadTaskModel.self, from: data)
+
+        #expect(decoded.etag == "\"33a64df551425fcc55e4d42a148795d9f25f89d4\"")
+        #expect(decoded.lastModified == "Wed, 21 Oct 2025 07:28:00 GMT")
+    }
+
+    @Test("DownloadTaskModel decodes cleanly when etag and lastModified are omitted")
+    func testMissingETagAndLastModifiedBackwardsCompatibility() throws {
+        let jsonWithoutEtag = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "url": "https://example.com/test.zip",
+            "filename": "test.zip",
+            "destinationURL": "file:///tmp/test.zip",
+            "totalBytes": 1024,
+            "downloadedBytes": 512,
+            "status": { "idle": {} },
+            "chunks": [],
+            "supportsRange": true,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "category": "Archives",
+            "bytesPerSecond": 0.0
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let task = try decoder.decode(DownloadTaskModel.self, from: Data(jsonWithoutEtag.utf8))
+
+        #expect(task.etag == nil)
+        #expect(task.lastModified == nil)
+    }
 }

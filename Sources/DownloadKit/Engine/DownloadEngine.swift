@@ -146,6 +146,14 @@ public actor DownloadEngine {
                         currentTask.destinationURL = parentDir.appendingPathComponent(probeResult.filename)
                     }
                 }
+                // Store or check ETag / Last-Modified
+                if let oldEtag = currentTask.etag, let newEtag = probeResult.etag, oldEtag != newEtag {
+                    print("[DownloadEngine] Remote ETag changed from \(oldEtag) to \(newEtag). Resetting chunk progress to avoid corruption.")
+                    currentTask.downloadedBytes = 0
+                    currentTask.chunks = []
+                }
+                currentTask.etag = probeResult.etag
+                currentTask.lastModified = probeResult.lastModified
             } catch is CancellationError {
                 try await cancelAndPause(task: &currentTask, writer: nil, progressHandler: progressHandler)
             } catch ProbeError.cancelled {

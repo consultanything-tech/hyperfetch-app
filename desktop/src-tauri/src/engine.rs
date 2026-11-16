@@ -225,6 +225,8 @@ impl DownloadEngine {
             created_at: now,
             completed_at: None,
             headers,
+            etag: None,
+            last_modified: None,
         };
 
         {
@@ -330,6 +332,15 @@ impl DownloadEngine {
         if task.total_bytes == 0 || task.chunks.is_empty() {
             match probe_url(&self.client, &task.url, task.headers.as_ref()).await {
                 Ok(probe_result) => {
+                    if let (Some(old_etag), Some(new_etag)) = (&task.etag, &probe_result.etag) {
+                        if old_etag != new_etag {
+                            task.downloaded_bytes = 0;
+                            task.chunks.clear();
+                        }
+                    }
+                    task.etag = probe_result.etag;
+                    task.last_modified = probe_result.last_modified;
+
                     if let Some(len) = probe_result.content_length {
                         task.total_bytes = len;
                     }
@@ -357,6 +368,10 @@ impl DownloadEngine {
                             t.filename = task.filename.clone();
                             t.category = task.category;
                             t.destination_path = task.destination_path.clone();
+                            t.etag = task.etag.clone();
+                            t.last_modified = task.last_modified.clone();
+                            t.downloaded_bytes = task.downloaded_bytes;
+                            t.chunks = task.chunks.clone();
                         }
                     }
                 }
@@ -852,5 +867,76 @@ mod tests {
         assert!(dest_file.exists());
         let disk_bytes = std::fs::read(&dest_file).unwrap();
         assert_eq!(disk_bytes, test_data);
+    }
+
+    #[tokio::test]
+    async fn test_engine_etag_change_resets_chunks() {
+        use crate::models::Chunk;
+        use axum::http::header::{ACCEPT_RANGES, CONTENT_LENGTH, ETAG};
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+        use axum::routing::head;
+        use axum::Router;
+
+        let app = Router::new().route(
+            "/etag_test.bin",
+            head(|| async {
+                (
+                    StatusCode::OK,
+                    [
+                        (ACCEPT_RANGES, "bytes"),
+                        (CONTENT_LENGTH, "5000"),
+                        (ETAG, "\"v2-etag\""),
+                    ],
+                    "",
+                )
+                    .into_response()
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_file = temp_dir.path().join("tasks.json");
+        let dest_file = temp_dir.path().join("etag_test.bin");
+
+        let engine = DownloadEngine::with_state_path(state_file);
+        let url = format!("http://{}/etag_test.bin", addr);
+
+        // Add task without auto_start
+        let task = engine
+            .add_download(
+                url,
+                Some("etag_test.bin".to_string()),
+                Some(dest_file.to_string_lossy().to_string()),
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Simulate existing task state with old etag and partially downloaded chunks
+        {
+            let mut tasks = engine.tasks.write().await;
+            if let Some(t) = tasks.iter_mut().find(|t| t.id == task.id) {
+                t.etag = Some("\"v1-etag\"".to_string());
+                t.downloaded_bytes = 2500;
+                t.chunks = vec![Chunk::new(0, 0, 4999)];
+            }
+        }
+
+        let (cancel_tx, _) = broadcast::channel(1);
+        let mut task_clone = engine.get_task(&task.id).await.unwrap();
+        task_clone.total_bytes = 0;
+        let _ = engine.run_download(&mut task_clone, cancel_tx).await;
+
+        let updated = engine.get_task(&task.id).await.unwrap();
+        assert_eq!(updated.etag.as_deref(), Some("\"v2-etag\""));
+        assert_eq!(updated.downloaded_bytes, 0);
+        assert!(updated.chunks.iter().all(|c| c.downloaded_bytes == 0));
     }
 }

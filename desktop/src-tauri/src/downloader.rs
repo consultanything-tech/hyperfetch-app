@@ -3,7 +3,7 @@ use crate::storage::{FileWriter, StorageError};
 use futures_util::StreamExt;
 use reqwest::header::{
     HeaderMap, ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
-    CONTENT_TYPE, RANGE, USER_AGENT,
+    CONTENT_TYPE, ETAG, LAST_MODIFIED, RANGE, USER_AGENT,
 };
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,8 @@ pub struct ProbeResult {
     pub mime_type: Option<String>,
     pub is_redirect: bool,
     pub final_url: String,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 /// Helper function to perform percent-decoding on a string.
@@ -266,6 +268,17 @@ pub async fn probe_url(
                     disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
                 );
 
+                let etag = res
+                    .headers()
+                    .get(ETAG)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+                let last_modified = res
+                    .headers()
+                    .get(LAST_MODIFIED)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+
                 return Ok(ProbeResult {
                     content_length: content_len,
                     accept_ranges: true,
@@ -273,6 +286,8 @@ pub async fn probe_url(
                     mime_type,
                     is_redirect,
                     final_url,
+                    etag,
+                    last_modified,
                 });
             } else {
                 // Fall back to GET Range 0-0 to verify range support or content length
@@ -314,6 +329,20 @@ pub async fn probe_url(
         disp_filename.unwrap_or_else(|| fallback_filename_from_url(&final_url)),
     );
 
+    let etag = get_res
+        .headers()
+        .get(ETAG)
+        .or_else(|| head_headers.get(ETAG))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let last_modified = get_res
+        .headers()
+        .get(LAST_MODIFIED)
+        .or_else(|| head_headers.get(LAST_MODIFIED))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
     if status == StatusCode::PARTIAL_CONTENT {
         // 206 Partial Content: Byte-range supported
         let total_bytes = get_res
@@ -330,6 +359,8 @@ pub async fn probe_url(
             mime_type,
             is_redirect,
             final_url,
+            etag,
+            last_modified,
         });
     } else if status == StatusCode::OK {
         // 200 OK: Server does not honor Range request, single stream only
@@ -347,6 +378,8 @@ pub async fn probe_url(
             mime_type,
             is_redirect,
             final_url,
+            etag,
+            last_modified,
         });
     } else if status == StatusCode::RANGE_NOT_SATISFIABLE {
         // 416: Could be an empty 0-byte file
@@ -364,6 +397,8 @@ pub async fn probe_url(
             mime_type,
             is_redirect,
             final_url,
+            etag,
+            last_modified,
         });
     } else if !status.is_success() {
         return Err(DownloaderError::HttpError {
@@ -1035,5 +1070,49 @@ mod tests {
         assert_eq!(probe.content_length, Some(10485760));
         assert!(probe.accept_ranges);
         assert_eq!(probe.suggested_filename.as_deref(), Some("data_packet.zip"));
+    }
+
+    #[tokio::test]
+    async fn test_probe_url_etag_and_last_modified() {
+        use axum::http::header::{ACCEPT_RANGES, CONTENT_LENGTH, ETAG, LAST_MODIFIED};
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+        use axum::routing::head;
+        use axum::Router;
+
+        let app = Router::new().route(
+            "/etag_probe",
+            head(|| async {
+                (
+                    StatusCode::OK,
+                    [
+                        (ACCEPT_RANGES, "bytes"),
+                        (CONTENT_LENGTH, "2048"),
+                        (ETAG, "\"test-etag-12345\""),
+                        (LAST_MODIFIED, "Fri, 14 Nov 2026 12:00:00 GMT"),
+                    ],
+                    "",
+                )
+                    .into_response()
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let client = Client::new();
+        let url = format!("http://{}/etag_probe", addr);
+
+        let probe = probe_url(&client, &url, None).await.unwrap();
+        assert_eq!(probe.content_length, Some(2048));
+        assert!(probe.accept_ranges);
+        assert_eq!(probe.etag.as_deref(), Some("\"test-etag-12345\""));
+        assert_eq!(
+            probe.last_modified.as_deref(),
+            Some("Fri, 14 Nov 2026 12:00:00 GMT")
+        );
     }
 }

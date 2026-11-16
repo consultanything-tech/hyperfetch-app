@@ -27,6 +27,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
     public var bytesPerSecond: Double
     public var headers: [String: String]
     public var preferredChunkCount: Int?
+    public var etag: String?
+    public var lastModified: String?
 
     /// Overall progress of the download, ranging from 0.0 to 1.0.
     public var progress: Double {
@@ -68,7 +70,9 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         category: DownloadCategory? = nil,
         bytesPerSecond: Double = 0.0,
         headers: [String: String] = [:],
-        preferredChunkCount: Int? = nil
+        preferredChunkCount: Int? = nil,
+        etag: String? = nil,
+        lastModified: String? = nil
     ) {
         self.id = id
         self.url = url
@@ -96,12 +100,14 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.bytesPerSecond = bytesPerSecond
         self.headers = headers
         self.preferredChunkCount = preferredChunkCount
+        self.etag = etag
+        self.lastModified = lastModified
     }
 
     enum CodingKeys: String, CodingKey {
         case id, url, filename, destinationURL, totalBytes, downloadedBytes
         case status, chunks, supportsRange, createdAt, completedAt, category, bytesPerSecond, headers
-        case preferredChunkCount
+        case preferredChunkCount, etag, lastModified
     }
 
     public init(from decoder: Decoder) throws {
@@ -121,6 +127,8 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         self.bytesPerSecond = try container.decode(Double.self, forKey: .bytesPerSecond)
         self.headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
         self.preferredChunkCount = try container.decodeIfPresent(Int.self, forKey: .preferredChunkCount)
+        self.etag = try container.decodeIfPresent(String.self, forKey: .etag)
+        self.lastModified = try container.decodeIfPresent(String.self, forKey: .lastModified)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -140,5 +148,7 @@ public struct DownloadTaskModel: Identifiable, Codable, Equatable, Sendable {
         try container.encode(bytesPerSecond, forKey: .bytesPerSecond)
         try container.encode(headers, forKey: .headers)
         try container.encodeIfPresent(preferredChunkCount, forKey: .preferredChunkCount)
+        try container.encodeIfPresent(etag, forKey: .etag)
+        try container.encodeIfPresent(lastModified, forKey: .lastModified)
     }
 }

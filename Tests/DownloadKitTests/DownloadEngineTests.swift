@@ -1085,4 +1085,60 @@ struct DownloadEngineTests {
         _ = tracker.currentSpeed()
         #expect(tracker.windowCount <= 500)
     }
+
+    @Test("DownloadEngine resets chunk progress and downloadedBytes when remote ETag changes")
+    func testRemoteETagMismatchResetsProgress() async throws {
+        struct ETagChangeProbe: HTTPProbing {
+            func probe(url: URL, headers: [String: String]) async throws -> ProbeResult {
+                ProbeResult(
+                    totalBytes: 500,
+                    supportsRange: true,
+                    filename: "dataset.bin",
+                    etag: "\"new-etag-456\"",
+                    lastModified: "Wed, 22 Oct 2025 00:00:00 GMT",
+                    finalURL: url
+                )
+            }
+        }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [EngineMockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let testURL = URL(string: "https://engine.example.com/dataset.bin")!
+        let chunkData = Data(repeating: 0xAA, count: 500)
+
+        EngineMockURLProtocol.register(url: testURL) { _ in
+            let response = HTTPURLResponse(
+                url: testURL,
+                statusCode: 206,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Range": "bytes 0-499/500",
+                    "Content-Length": "500"
+                ]
+            )!
+            return (response, chunkData)
+        }
+
+        let oldChunk = Chunk(index: 0, range: 0...499, bytesDownloaded: 250, status: .downloading)
+        let initialTask = DownloadTaskModel(
+            url: testURL,
+            filename: "dataset.bin",
+            totalBytes: -1,
+            downloadedBytes: 250,
+            status: .idle,
+            chunks: [oldChunk],
+            supportsRange: true,
+            etag: "\"old-etag-123\""
+        )
+
+        let engine = DownloadEngine(session: session, probe: ETagChangeProbe())
+        let updatedTask = try await engine.startDownload(task: initialTask)
+
+        #expect(updatedTask.etag == "\"new-etag-456\"")
+        #expect(updatedTask.lastModified == "Wed, 22 Oct 2025 00:00:00 GMT")
+        #expect(updatedTask.status == .completed)
+        #expect(updatedTask.downloadedBytes == 500)
+    }
 }
