@@ -139,8 +139,6 @@ public struct DownloadRowView: View {
                 .onTapGesture(count: 2) {
                     if task.status == .completed {
                         appState.openFile(task: task)
-                    } else {
-                        appState.togglePause(id: task.id)
                     }
                 }
         )
@@ -356,6 +354,7 @@ public struct DownloadRowView: View {
                         .font(.system(size: 10, weight: .bold))
                     Text(AppState.formatSpeed(task.bytesPerSecond))
                         .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .help("\(AppState.formatSpeed(task.bytesPerSecond)) (\(String(format: "%.0f", task.bytesPerSecond * 8 / 1_000_000)) Mbps)")
                 }
                 .foregroundStyle(Theme.success)
                 .lineLimit(1)
@@ -460,67 +459,55 @@ public struct DownloadRowView: View {
         }
     }
 
+    private var primaryActionHelpText: String {
+        if task.status == .downloading || task.status == .probing {
+            return "Pause Download"
+        } else if task.status == .completed {
+            return "Open File"
+        } else {
+            return "Resume Download"
+        }
+    }
+
     private var quickActionButtons: some View {
         HStack(spacing: 4) {
-            // Pause / Resume / Open Primary Action
-            switch task.status {
-            case .downloading, .probing:
-                Button {
+            // Unified Primary Action Button (Pause / Resume / Open)
+            Button {
+                if task.status == .downloading || task.status == .probing {
                     appState.pause(id: task.id)
-                } label: {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 24, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.tactile)
-                .contentShape(Rectangle())
-                .onHover { isActionHovered = $0 }
-                .help("Pause Download")
-
-            case .paused, .idle, .failed:
-                Button {
-                    appState.resume(id: task.id)
-                } label: {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.accent)
-                        .frame(width: 24, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.tactile)
-                .contentShape(Rectangle())
-                .onHover { isActionHovered = $0 }
-                .help("Resume Download")
-
-            case .completed:
-                Button {
+                } else if task.status == .completed {
                     appState.openFile(task: task)
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.accent)
-                        .frame(width: 24, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
-                        )
-                        .contentShape(Rectangle())
+                } else {
+                    appState.resume(id: task.id)
                 }
-                .buttonStyle(.tactile)
+            } label: {
+                Group {
+                    if task.status == .downloading || task.status == .probing {
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textSecondary)
+                    } else if task.status == .completed {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.accent)
+                    } else {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isActionHovered ? Theme.tagBackground : Color.white.opacity(0.001))
+                )
                 .contentShape(Rectangle())
-                .onHover { isActionHovered = $0 }
-                .help("Open File")
             }
+            .id("task-action-\(task.id)")
+            .buttonStyle(.tactile)
+            .contentShape(Rectangle())
+            .onHover { isActionHovered = $0 }
+            .help(primaryActionHelpText)
 
             // Show in Finder
             Button {

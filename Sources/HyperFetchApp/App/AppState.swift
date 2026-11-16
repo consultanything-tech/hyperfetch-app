@@ -177,6 +177,8 @@ public final class AppState: ObservableObject {
     }
 
     private var _cachedFilteredTasks: [DownloadTaskModel]?
+    private var lastPauseTimestamps: [UUID: ContinuousClock.Instant] = [:]
+    private let pauseClock = ContinuousClock()
 
     /// Backward compatibility accessor for single-task selection.
     public var selectedTaskId: UUID? {
@@ -946,7 +948,7 @@ public final class AppState: ObservableObject {
                     destinationURL: destinationURL,
                     filename: filename,
                     headers: headers,
-                    preferredChunkCount: chunkCount,
+                    preferredChunkCount: chunkCount ?? self.defaultChunkCount,
                     autoStart: autoStart
                 )
                 self.selectedTaskId = newTask.id
@@ -961,6 +963,7 @@ public final class AppState: ObservableObject {
 
     /// Pauses an active or queued download task.
     public func pause(id: UUID) {
+        lastPauseTimestamps[id] = pauseClock.now
         if let idx = tasks.firstIndex(where: { $0.id == id }) {
             tasks[idx].status = .paused
             tasks[idx].bytesPerSecond = 0.0
@@ -972,6 +975,9 @@ public final class AppState: ObservableObject {
 
     /// Resumes a paused or failed download task.
     public func resume(id: UUID) {
+        if let timestamp = lastPauseTimestamps[id], pauseClock.now - timestamp < .milliseconds(600) {
+            return
+        }
         if let idx = tasks.firstIndex(where: { $0.id == id }) {
             tasks[idx].status = tasks[idx].totalBytes > 0 ? .downloading : .probing
         }
@@ -1082,6 +1088,9 @@ public final class AppState: ObservableObject {
         case .downloading, .probing:
             pause(id: id)
         case .paused, .idle, .failed:
+            if let timestamp = lastPauseTimestamps[id], pauseClock.now - timestamp < .milliseconds(600) {
+                return
+            }
             resume(id: id)
         case .completed:
             break
@@ -1490,9 +1499,20 @@ public final class AppState: ObservableObject {
     }
 
     private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
+        var tasksToProcess = updatedTasks
+        for i in 0..<tasksToProcess.count {
+            let taskId = tasksToProcess[i].id
+            if let timestamp = lastPauseTimestamps[taskId], pauseClock.now - timestamp < .milliseconds(600) {
+                if tasksToProcess[i].status != .paused {
+                    tasksToProcess[i].status = .paused
+                    tasksToProcess[i].bytesPerSecond = 0.0
+                }
+            }
+        }
+
         // Detect newly completed tasks to trigger notifications and audio alerts
         if !isInitialLoad {
-            for task in updatedTasks {
+            for task in tasksToProcess {
                 if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
                     if showCompletionNotification {
                         notificationManager.sendDownloadCompletedNotification(task: task, playSound: false)
@@ -1506,23 +1526,23 @@ public final class AppState: ObservableObject {
 
         // Track completed IDs
         self.previouslyCompletedTaskIds = Set(
-            updatedTasks.filter { $0.status == .completed }.map(\.id)
+            tasksToProcess.filter { $0.status == .completed }.map(\.id)
         )
 
-        if updatedTasks.isEmpty {
+        if tasksToProcess.isEmpty {
             self.tasks = []
             self.selectedTaskIDs = []
             DockTileController.update(activeCount: 0, progress: 0.0)
             return
         }
 
-        self.tasks = updatedTasks
+        self.tasks = tasksToProcess
 
         // Maintain selection validity
-        let validIds = Set(updatedTasks.map(\.id))
+        let validIds = Set(tasksToProcess.map(\.id))
         let previouslyHadSelection = !selectedTaskIDs.isEmpty
         selectedTaskIDs.formIntersection(validIds)
-        if (isInitialLoad || previouslyHadSelection), selectedTaskIDs.isEmpty, let firstId = updatedTasks.first?.id {
+        if (isInitialLoad || previouslyHadSelection), selectedTaskIDs.isEmpty, let firstId = tasksToProcess.first?.id {
             selectedTaskIDs = [firstId]
         }
 

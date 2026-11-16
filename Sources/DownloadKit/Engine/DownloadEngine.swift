@@ -14,9 +14,11 @@ public actor DownloadEngine {
 
     private var taskStore: [UUID: DownloadTaskModel] = [:]
     private var speedTrackers: [UUID: SpeedTracker] = [:]
+    private var lastProgressEmitTime: [UUID: ContinuousClock.Instant] = [:]
+    private let progressClock = ContinuousClock()
 
     public init(
-        session: URLSession = .shared,
+        session: URLSession = DownloadURLSession.shared,
         probe: (any HTTPProbing)? = nil,
         downloader: (any ChunkDownloading)? = nil,
         fileWriterFactory: (@Sendable (URL) -> any FileWriting)? = nil,
@@ -478,11 +480,13 @@ public actor DownloadEngine {
         guard var task = taskStore[taskId] else { return }
         guard task.status != .paused, !Task.isCancelled else { return }
 
+        var chunkFinished = false
         if let idx = task.chunks.firstIndex(where: { $0.index == chunkIndex }) {
             task.chunks[idx].bytesDownloaded += delta
             if task.chunks[idx].expectedLength > 0 && task.chunks[idx].bytesDownloaded >= task.chunks[idx].expectedLength {
                 task.chunks[idx].bytesDownloaded = task.chunks[idx].expectedLength
                 task.chunks[idx].status = .completed
+                chunkFinished = true
             } else {
                 task.chunks[idx].status = .downloading
             }
@@ -497,7 +501,22 @@ public actor DownloadEngine {
         task.bytesPerSecond = speedTrackers[taskId]?.currentSpeed() ?? 0.0
 
         taskStore[taskId] = task
-        progressHandler?(task)
+
+        let taskFinished = (task.totalBytes > 0 && task.downloadedBytes >= task.totalBytes)
+        let now = progressClock.now
+        let shouldEmit: Bool
+        if chunkFinished || taskFinished {
+            shouldEmit = true
+        } else if let last = lastProgressEmitTime[taskId] {
+            shouldEmit = (now - last) >= .milliseconds(100)
+        } else {
+            shouldEmit = true
+        }
+
+        if shouldEmit {
+            lastProgressEmitTime[taskId] = now
+            progressHandler?(task)
+        }
     }
 }
 

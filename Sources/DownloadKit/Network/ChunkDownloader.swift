@@ -56,12 +56,27 @@ extension ChunkDownloading {
     }
 }
 
+/// High-performance shared URLSession configured for high-throughput multi-chunk concurrent downloads.
+public enum DownloadURLSession {
+    public static let shared: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 32
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.urlCache = nil
+        config.networkServiceType = .responsiveData
+        config.timeoutIntervalForRequest = 30.0
+        config.timeoutIntervalForResource = 86400.0
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
+}
+
 /// Downloads a single chunk using URLSession and writes directly to FileWriting at exact offsets.
 public final class ChunkDownloader: ChunkDownloading, Sendable {
     private let session: URLSession
     public let rateLimiter: (any RateLimiting)?
 
-    public init(session: URLSession = .shared, rateLimiter: (any RateLimiting)? = nil) {
+    public init(session: URLSession = DownloadURLSession.shared, rateLimiter: (any RateLimiting)? = nil) {
         self.session = session
         self.rateLimiter = rateLimiter
     }
