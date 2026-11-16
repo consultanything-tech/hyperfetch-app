@@ -462,11 +462,19 @@ public actor DownloadEngine {
 
 // MARK: - Speed Tracker
 
+extension DownloadEngine {
+    public typealias SpeedTracker = DownloadKit.SpeedTracker
+}
+
 /// Rolling window speed calculator measuring bytes per second using a monotonic ContinuousClock.
 public struct SpeedTracker: Sendable {
     private var window: [(time: ContinuousClock.Instant, bytes: Int64)] = []
     private let clock: ContinuousClock
     private let windowDuration: Duration
+
+    var windowCount: Int {
+        window.count
+    }
 
     public init(windowDuration: Duration = .seconds(1), clock: ContinuousClock = ContinuousClock()) {
         self.windowDuration = windowDuration
@@ -478,6 +486,9 @@ public struct SpeedTracker: Sendable {
         let now = clock.now
         window.append((time: now, bytes: bytes))
         prune(now: now)
+        if window.count > 500 {
+            window.removeFirst(window.count - 500)
+        }
     }
 
     public mutating func currentSpeed() -> Double {

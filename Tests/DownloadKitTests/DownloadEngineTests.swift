@@ -183,9 +183,13 @@ struct DownloadEngineTests {
         #expect(diskData.count == totalSize)
         #expect(diskData == expectedData)
 
-        // Verify that 4 Range GET requests were recorded
+        // Verify that 4 Range GET requests were recorded for chunk downloads
         let requests = EngineMockURLProtocol.requests()
-        let rangeRequests = requests.filter { $0.httpMethod == "GET" && $0.value(forHTTPHeaderField: "Range") != nil }
+        let rangeRequests = requests.filter {
+            $0.httpMethod == "GET" &&
+            $0.value(forHTTPHeaderField: "Range") != nil &&
+            $0.value(forHTTPHeaderField: "Range") != "bytes=0-0"
+        }
         #expect(rangeRequests.count == 4)
     }
 
@@ -1068,5 +1072,17 @@ struct DownloadEngineTests {
         #expect(await engine.exposedIsRateLimitError(err503) == true)
         let err403 = ChunkDownloadError.httpError(statusCode: 403)
         #expect(await engine.exposedIsRateLimitError(err403) == false)
+    }
+
+    // MARK: - SpeedTracker Tests
+
+    @Test("SpeedTracker caps window to 500 entries")
+    func testSpeedTracker_windowCap() {
+        var tracker = DownloadEngine.SpeedTracker()
+        for _ in 0..<1000 {
+            tracker.record(bytes: 1)
+        }
+        _ = tracker.currentSpeed()
+        #expect(tracker.windowCount <= 500)
     }
 }

@@ -60,7 +60,7 @@ extension ChunkDownloading {
 public enum DownloadURLSession {
     public static let shared: URLSession = {
         let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 32
+        config.httpMaximumConnectionsPerHost = 8
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.urlCache = nil
         config.networkServiceType = .responsiveData
