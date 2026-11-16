@@ -79,6 +79,8 @@ public final class LocalhostBridge: @unchecked Sendable {
     public let preferredPort: UInt16
     public let fallbackPort: UInt16
     public let bridgeToken: String?
+    private let maxRequestBodyBytes = 1 * 1024 * 1024 // 1 MB
+    private let version: String
     private let lock = NSLock()
     private var _onDownloadRequested: DownloadHandler?
     private var _onSheetRequested: SheetHandler?
@@ -145,11 +147,13 @@ public final class LocalhostBridge: @unchecked Sendable {
         preferredPort: UInt16 = 31415,
         fallbackPort: UInt16 = 31416,
         bridgeToken: String? = nil,
+        version: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0",
         onDownloadRequested: DownloadHandler? = nil
     ) {
         self.preferredPort = preferredPort
         self.fallbackPort = fallbackPort
         self.bridgeToken = bridgeToken
+        self.version = version
         self.onDownloadRequested = onDownloadRequested
     }
 
@@ -321,12 +325,22 @@ public final class LocalhostBridge: @unchecked Sendable {
                 currentData.append(data)
             }
 
+            if currentData.count > self.maxRequestBodyBytes {
+                self.sendErrorResponse(status: 413, message: "Request body too large (max 1MB)", connection: connection, drainRemaining: true)
+                return
+            }
+
             // Check if full HTTP header delimiter \r\n\r\n is reached
             if let headerEndIndex = self.findHeaderEnd(in: currentData) {
                 let headerData = currentData.subdata(in: 0..<headerEndIndex)
                 let bodyData = currentData.subdata(in: headerEndIndex + 4..<currentData.count)
 
                 let contentLength = self.parseContentLength(from: headerData)
+
+                if contentLength > self.maxRequestBodyBytes {
+                    self.sendErrorResponse(status: 413, message: "Request body too large (max 1MB)", connection: connection, drainRemaining: true)
+                    return
+                }
 
                 if bodyData.count >= contentLength {
                     // Full body received
@@ -477,7 +491,7 @@ public final class LocalhostBridge: @unchecked Sendable {
                 json: [
                     "status": "ok",
                     "app": "HyperFetch",
-                    "version": "1.1.4",
+                    "version": version,
                     "port": Int(port)
                 ],
                 allowedOrigin: allowedOrigin,
@@ -726,7 +740,8 @@ public final class LocalhostBridge: @unchecked Sendable {
         status: Int,
         json: [String: Any],
         allowedOrigin: String? = nil,
-        connection: NWConnection
+        connection: NWConnection,
+        closeAfterSending: Bool = true
     ) {
         let statusText: String
         switch status {
@@ -735,6 +750,7 @@ public final class LocalhostBridge: @unchecked Sendable {
         case 400: statusText = "Bad Request"
         case 403: statusText = "Forbidden"
         case 404: statusText = "Not Found"
+        case 413: statusText = "Payload Too Large"
         default: statusText = "Error"
         }
         let jsonData = (try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])) ?? Data("{}".utf8)
@@ -765,14 +781,15 @@ public final class LocalhostBridge: @unchecked Sendable {
         var fullData = headerString.data(using: .utf8) ?? Data()
         fullData.append(jsonData)
 
-        sendData(fullData, connection: connection)
+        sendData(fullData, connection: connection, closeAfterSending: closeAfterSending)
     }
 
     private func sendErrorResponse(
         status: Int,
         message: String,
         allowedOrigin: String? = nil,
-        connection: NWConnection
+        connection: NWConnection,
+        drainRemaining: Bool = false
     ) {
         sendJSONResponse(
             status: status,
@@ -781,14 +798,44 @@ public final class LocalhostBridge: @unchecked Sendable {
                 "message": message
             ],
             allowedOrigin: allowedOrigin,
-            connection: connection
+            connection: connection,
+            closeAfterSending: !drainRemaining
         )
+        if drainRemaining {
+            drainAndClose(connection)
+        }
     }
 
-    private func sendData(_ data: Data, connection: NWConnection) {
-        connection.send(content: data, completion: .contentProcessed({ [weak self, weak connection] _ in
+    private func drainAndClose(_ connection: NWConnection, remainingBytesToDrain: Int = 10 * 1024 * 1024) {
+        queue.asyncAfter(deadline: .now() + .seconds(3)) { [weak self, weak connection] in
             guard let self = self, let connection = connection else { return }
             self.closeConnection(connection)
+        }
+        drainLoop(connection, remainingBytesToDrain: remainingBytesToDrain)
+    }
+
+    private func drainLoop(_ connection: NWConnection, remainingBytesToDrain: Int) {
+        guard remainingBytesToDrain > 0 else {
+            closeConnection(connection)
+            return
+        }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self, weak connection] data, _, isComplete, error in
+            guard let self = self, let connection = connection else { return }
+            if isComplete || error != nil {
+                self.closeConnection(connection)
+            } else {
+                let bytesRead = data?.count ?? 0
+                self.drainLoop(connection, remainingBytesToDrain: remainingBytesToDrain - bytesRead)
+            }
+        }
+    }
+
+    private func sendData(_ data: Data, connection: NWConnection, closeAfterSending: Bool = true) {
+        connection.send(content: data, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed({ [weak self, weak connection] _ in
+            guard let self = self, let connection = connection else { return }
+            if closeAfterSending {
+                self.closeConnection(connection)
+            }
         }))
     }
 

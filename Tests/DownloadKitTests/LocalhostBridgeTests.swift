@@ -148,7 +148,7 @@ struct LocalhostBridgeTests {
 
     @Test("GET /status returns 200 OK with app information")
     func testGetStatus() async throws {
-        let bridge = LocalhostBridge(preferredPort: 39165, fallbackPort: 39166)
+        let bridge = LocalhostBridge(preferredPort: 39165, fallbackPort: 39166, version: "1.1.4")
         let port = try await bridge.start()
         defer { bridge.stop() }
 
@@ -355,5 +355,37 @@ struct LocalhostBridgeTests {
         #expect(box.headers?["Cookie"] == "SID=abc123xyz; HSID=def456")
         #expect(box.headers?["User-Agent"] == "Mozilla/5.0 Chrome/131.0.0.0")
         #expect(box.headers?["Referer"] == "https://docs.google.com/")
+    }
+
+    @Test("Bridge returns 413 for requests exceeding 1MB body limit")
+    func testBridge_rejectsOversizedBody() async throws {
+        let bridge = LocalhostBridge(preferredPort: 31422, fallbackPort: 31423)
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        let bigBody = Data(repeating: 0x41, count: 2 * 1024 * 1024)
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/add")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("\(bigBody.count)", forHTTPHeaderField: "Content-Length")
+        req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
+        req.httpBody = bigBody
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let httpResponse = response as! HTTPURLResponse
+        #expect(httpResponse.statusCode == 413)
+    }
+
+    @Test("Bridge /status version matches injected version string")
+    func testBridge_statusReturnsInjectedVersion() async throws {
+        let bridge = LocalhostBridge(preferredPort: 31424, fallbackPort: 31425, version: "2.0.0")
+        let port = try await bridge.start()
+        defer { bridge.stop() }
+
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/status")!)
+        req.setValue("extension", forHTTPHeaderField: "X-HyperFetch-Client")
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        #expect(json["version"] as? String == "2.0.0")
     }
 }
