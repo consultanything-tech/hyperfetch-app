@@ -187,6 +187,35 @@ pub struct DownloadTask {
     pub etag: Option<String>,
     #[serde(default)]
     pub last_modified: Option<String>,
+    #[serde(default)]
+    pub preferred_chunk_count: Option<usize>,
+    #[serde(default)]
+    pub expected_checksum: Option<String>,
+    #[serde(default)]
+    pub checksum_verified: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuietHoursConfig {
+    pub enabled: bool,
+    pub start_hour: u8,
+    pub start_minute: u8,
+    pub end_hour: u8,
+    pub end_minute: u8,
+    pub speed_limit_bytes_per_sec: u64, // e.g. 2_000_000 (2 MB/s)
+}
+
+impl Default for QuietHoursConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start_hour: 23,
+            start_minute: 0,
+            end_hour: 7,
+            end_minute: 0,
+            speed_limit_bytes_per_sec: 2_000_000,
+        }
+    }
 }
 
 impl DownloadTask {
@@ -379,5 +408,56 @@ mod tests {
         let task2: DownloadTask = serde_json::from_str(minimal_json).unwrap();
         assert_eq!(task2.etag, None);
         assert_eq!(task2.last_modified, None);
+        assert_eq!(task2.preferred_chunk_count, None);
+        assert_eq!(task2.expected_checksum, None);
+        assert_eq!(task2.checksum_verified, None);
+    }
+
+    #[test]
+    fn test_quiet_hours_config_default_and_serde() {
+        let default_cfg = QuietHoursConfig::default();
+        assert!(!default_cfg.enabled);
+        assert_eq!(default_cfg.start_hour, 23);
+        assert_eq!(default_cfg.start_minute, 0);
+        assert_eq!(default_cfg.end_hour, 7);
+        assert_eq!(default_cfg.end_minute, 0);
+        assert_eq!(default_cfg.speed_limit_bytes_per_sec, 2_000_000);
+
+        let json = serde_json::to_string(&default_cfg).unwrap();
+        let deserialized: QuietHoursConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, default_cfg);
+    }
+
+    #[test]
+    fn test_download_task_checksum_and_chunks_serde() {
+        let task_json = r#"{
+            "id": "test-task-checksum",
+            "url": "https://example.com/file.tar.gz",
+            "filename": "file.tar.gz",
+            "destination_path": "/tmp/file.tar.gz",
+            "total_bytes": 2048,
+            "downloaded_bytes": 2048,
+            "status": "completed",
+            "category": "archives",
+            "speed": 0,
+            "eta": 0,
+            "resumable": true,
+            "error": null,
+            "chunks": [],
+            "created_at": 1700000000,
+            "completed_at": 1700000010,
+            "headers": null,
+            "preferred_chunk_count": 4,
+            "expected_checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "checksum_verified": true
+        }"#;
+
+        let task: DownloadTask = serde_json::from_str(task_json).unwrap();
+        assert_eq!(task.preferred_chunk_count, Some(4));
+        assert_eq!(
+            task.expected_checksum,
+            Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string())
+        );
+        assert_eq!(task.checksum_verified, Some(true));
     }
 }

@@ -226,6 +226,10 @@ pub fn run() {
             commands::open_containing_folder,
             commands::get_default_download_dir,
             commands::get_all_time_stats,
+            commands::get_max_concurrent_downloads,
+            commands::set_max_concurrent_downloads,
+            commands::get_quiet_hours_config,
+            commands::set_quiet_hours_config,
             updater::check_for_updates,
         ])
         .run(tauri::generate_context!())

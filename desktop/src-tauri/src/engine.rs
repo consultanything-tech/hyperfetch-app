@@ -1,16 +1,62 @@
 use crate::downloader::{
-    calculate_chunks, download_task_content, fallback_filename_from_url, probe_url,
-    sanitize_filename, DownloaderError,
+    calculate_chunks, download_task_content_with_limiter, fallback_filename_from_url, probe_url,
+    sanitize_filename, DownloaderError, RateLimiter,
 };
-use crate::models::{AllTimeStats, DownloadCategory, DownloadState, DownloadTask};
+use crate::models::{
+    AllTimeStats, DownloadCategory, DownloadState, DownloadTask, QuietHoursConfig,
+};
 use crate::storage::{FileWriter, StorageError};
+use chrono::Timelike;
 use reqwest::Client;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc, RwLock};
+
+/// Pure helper function checking whether a given hour and minute falls within quiet hours.
+pub fn is_in_quiet_hours(config: &QuietHoursConfig, hour: u8, minute: u8) -> bool {
+    if !config.enabled {
+        return false;
+    }
+    let current_mins = hour as u32 * 60 + minute as u32;
+    let start_mins = config.start_hour as u32 * 60 + config.start_minute as u32;
+    let end_mins = config.end_hour as u32 * 60 + config.end_minute as u32;
+
+    if start_mins == end_mins {
+        return false;
+    }
+
+    if start_mins < end_mins {
+        current_mins >= start_mins && current_mins < end_mins
+    } else {
+        // Overnight span, e.g. 23:00 to 07:00
+        current_mins >= start_mins || current_mins < end_mins
+    }
+}
+
+/// Computes SHA-256 hash of a file on disk and verifies it against expected hex digest.
+pub async fn verify_file_sha256(file_path: &str, expected_hex: &str) -> Result<bool, std::io::Error> {
+    use sha2::{Digest, Sha256};
+    use tokio::io::AsyncReadExt;
+
+    let mut file = tokio::fs::File::open(file_path).await?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+
+    loop {
+        let n = file.read(&mut buffer).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+
+    let actual_hex = format!("{:x}", hasher.finalize());
+    Ok(actual_hex.eq_ignore_ascii_case(expected_hex.trim()))
+}
 
 /// Errors that can occur within the Download Engine.
 #[derive(Debug, Error)]
@@ -97,6 +143,9 @@ pub struct DownloadEngine {
     pub client: Client,
     pub state_file: PathBuf,
     pub all_time_stats: Arc<RwLock<AllTimeStats>>,
+    pub max_concurrent_downloads: Arc<AtomicUsize>,
+    pub quiet_hours: Arc<RwLock<QuietHoursConfig>>,
+    pub rate_limiter: Arc<RateLimiter>,
 }
 
 impl DownloadEngine {
@@ -148,6 +197,53 @@ impl DownloadEngine {
         self.all_time_stats.read().await.clone()
     }
 
+    /// Returns the current maximum number of concurrent downloads.
+    pub fn get_max_concurrent_downloads(&self) -> usize {
+        self.max_concurrent_downloads.load(Ordering::SeqCst)
+    }
+
+    /// Sets the maximum number of concurrent downloads (minimum 1).
+    pub fn set_max_concurrent_downloads(&self, limit: usize) {
+        self.max_concurrent_downloads
+            .store(limit.max(1), Ordering::SeqCst);
+    }
+
+    /// Checks whether quiet hours is currently active according to local time.
+    pub fn is_quiet_hours_active(&self) -> bool {
+        let config = match self.quiet_hours.try_read() {
+            Ok(c) => c.clone(),
+            Err(_) => return false,
+        };
+        let now = chrono::Local::now();
+        is_in_quiet_hours(&config, now.hour() as u8, now.minute() as u8)
+    }
+
+    /// Checks whether quiet hours is active at a specified hour and minute.
+    pub fn is_quiet_hours_active_at(&self, hour: u8, minute: u8) -> bool {
+        let config = match self.quiet_hours.try_read() {
+            Ok(c) => c.clone(),
+            Err(_) => return false,
+        };
+        is_in_quiet_hours(&config, hour, minute)
+    }
+
+    /// Retrieves a copy of the current QuietHoursConfig.
+    pub async fn get_quiet_hours_config(&self) -> QuietHoursConfig {
+        self.quiet_hours.read().await.clone()
+    }
+
+    /// Updates QuietHoursConfig and updates rate limiter limits if in effect.
+    pub async fn set_quiet_hours_config(&self, config: QuietHoursConfig) {
+        let now = chrono::Local::now();
+        let limit = if is_in_quiet_hours(&config, now.hour() as u8, now.minute() as u8) {
+            config.speed_limit_bytes_per_sec
+        } else {
+            0
+        };
+        self.rate_limiter.set_limit(limit);
+        *self.quiet_hours.write().await = config;
+    }
+
     /// Creates a new `DownloadEngine` using default state persistence path.
     pub fn new() -> Self {
         Self::with_state_path(Self::default_state_path())
@@ -161,6 +257,8 @@ impl DownloadEngine {
         let loaded_stats = Self::load_stats_from_disk(&stats_file);
 
         let client = Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(60))
             .tcp_keepalive(Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| Client::new());
@@ -171,6 +269,9 @@ impl DownloadEngine {
             client,
             state_file,
             all_time_stats: Arc::new(RwLock::new(loaded_stats)),
+            max_concurrent_downloads: Arc::new(AtomicUsize::new(3)),
+            quiet_hours: Arc::new(RwLock::new(QuietHoursConfig::default())),
+            rate_limiter: Arc::new(RateLimiter::new(0)),
         }
     }
 
@@ -214,7 +315,7 @@ impl DownloadEngine {
         Ok(())
     }
 
-    /// Adds a new download task.
+    /// Adds a new download task with optional custom chunk count and expected checksum.
     pub async fn add_download(
         &self,
         url: String,
@@ -222,6 +323,8 @@ impl DownloadEngine {
         destination: Option<String>,
         auto_start: bool,
         headers: Option<HashMap<String, String>>,
+        preferred_chunk_count: Option<usize>,
+        expected_checksum: Option<String>,
     ) -> Result<DownloadTask, EngineError> {
         {
             let tasks_lock = self.tasks.read().await;
@@ -287,6 +390,9 @@ impl DownloadEngine {
             headers,
             etag: None,
             last_modified: None,
+            preferred_chunk_count,
+            expected_checksum,
+            checksum_verified: None,
         };
 
         {
@@ -297,7 +403,19 @@ impl DownloadEngine {
         self.save_state().await?;
 
         if auto_start {
-            self.start_or_resume(&id).await?;
+            let active_count = {
+                let tasks = self.tasks.read().await;
+                tasks
+                    .iter()
+                    .filter(|t| {
+                        t.status == DownloadState::Connecting
+                            || t.status == DownloadState::Downloading
+                    })
+                    .count()
+            };
+            if active_count < self.get_max_concurrent_downloads() {
+                self.start_or_resume(&id).await?;
+            }
         }
 
         Ok(task)
@@ -398,6 +516,9 @@ impl DownloadEngine {
             }
 
             let _ = engine.save_state().await;
+
+            // Automatically process next pending task in queue
+            let _ = engine.process_next_pending().await;
         });
 
         Ok(())
@@ -468,10 +589,11 @@ impl DownloadEngine {
             }
         }
 
-        // Step 2: Setup chunks if not yet configured
+        // Step 2: Setup chunks if not yet configured (clamp preferred chunk count between 1 and 16)
         if task.chunks.is_empty() {
+            let chunk_count = task.preferred_chunk_count.unwrap_or(8).clamp(1, 16);
             if task.resumable && task.total_bytes > 0 {
-                task.chunks = calculate_chunks(task.total_bytes, 8);
+                task.chunks = calculate_chunks(task.total_bytes, chunk_count);
             } else {
                 task.chunks = vec![crate::models::Chunk::new(
                     0,
@@ -515,6 +637,7 @@ impl DownloadEngine {
         let task_id_clone = task.id.clone();
         let tasks_ref = Arc::clone(&self.tasks);
         let mut speed_tracker = SpeedTracker::new(Duration::from_secs(2));
+        let engine_clone = self.clone();
 
         let monitor_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(500));
@@ -532,7 +655,22 @@ impl DownloadEngine {
                         }
                     }
                     _ = interval.tick() => {
-                        let speed = speed_tracker.current_speed();
+                        let is_quiet = engine_clone.is_quiet_hours_active();
+                        if is_quiet {
+                            let cfg = engine_clone.quiet_hours.read().await;
+                            engine_clone.rate_limiter.set_limit(cfg.speed_limit_bytes_per_sec);
+                        } else {
+                            engine_clone.rate_limiter.set_limit(0);
+                        }
+
+                        let mut speed = speed_tracker.current_speed();
+                        if is_quiet {
+                            let cfg = engine_clone.quiet_hours.read().await;
+                            if cfg.speed_limit_bytes_per_sec > 0 {
+                                speed = speed.min(cfg.speed_limit_bytes_per_sec);
+                            }
+                        }
+
                         let mut tasks_lock = tasks_ref.write().await;
                         if let Some(t) = tasks_lock.iter_mut().find(|t| t.id == task_id_clone) {
                             if t.status == DownloadState::Downloading {
@@ -550,8 +688,8 @@ impl DownloadEngine {
             }
         });
 
-        // Step 6: Download content (with automatic HTTP 200 single-stream fallback)
-        let download_result = download_task_content(
+        // Step 6: Download content (with automatic HTTP 200 single-stream fallback & quiet hours rate limiting)
+        let download_result = download_task_content_with_limiter(
             &self.client,
             &task.url,
             &mut task.chunks,
@@ -561,6 +699,7 @@ impl DownloadEngine {
             task.headers.as_ref(),
             &cancel_tx,
             &progress_tx,
+            Some(self.rate_limiter.clone()),
         )
         .await;
 
@@ -578,6 +717,47 @@ impl DownloadEngine {
                 t.chunks = task.chunks.clone();
                 t.downloaded_bytes = task.downloaded_bytes;
                 t.resumable = task.resumable;
+            }
+        }
+
+        // Step 7: SHA-256 verification after chunks complete if expected_checksum is present
+        if download_result.is_ok() {
+            if let Some(ref expected) = task.expected_checksum {
+                match verify_file_sha256(&task.destination_path, expected).await {
+                    Ok(true) => {
+                        task.checksum_verified = Some(true);
+                        let mut tasks = self.tasks.write().await;
+                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task.id) {
+                            t.checksum_verified = Some(true);
+                        }
+                    }
+                    Ok(false) => {
+                        task.checksum_verified = Some(false);
+                        {
+                            let mut tasks = self.tasks.write().await;
+                            if let Some(t) = tasks.iter_mut().find(|t| t.id == task.id) {
+                                t.checksum_verified = Some(false);
+                            }
+                        }
+                        return Err(DownloaderError::Other(format!(
+                            "Checksum mismatch for task {}",
+                            task.id
+                        )));
+                    }
+                    Err(e) => {
+                        task.checksum_verified = Some(false);
+                        {
+                            let mut tasks = self.tasks.write().await;
+                            if let Some(t) = tasks.iter_mut().find(|t| t.id == task.id) {
+                                t.checksum_verified = Some(false);
+                            }
+                        }
+                        return Err(DownloaderError::Other(format!(
+                            "Failed to compute SHA-256 checksum for {}: {}",
+                            task.destination_path, e
+                        )));
+                    }
+                }
             }
         }
 
@@ -606,6 +786,7 @@ impl DownloadEngine {
         }
 
         self.save_state().await?;
+        let _ = self.process_next_pending().await;
         Ok(())
     }
 
@@ -631,6 +812,7 @@ impl DownloadEngine {
         }
 
         self.save_state().await?;
+        let _ = self.process_next_pending().await;
         Ok(())
     }
 
@@ -666,6 +848,7 @@ impl DownloadEngine {
         }
 
         self.save_state().await?;
+        let _ = self.process_next_pending().await;
         Ok(())
     }
 
@@ -698,21 +881,73 @@ impl DownloadEngine {
         Ok(())
     }
 
-    /// Resumes all paused, pending, or failed download tasks.
+    /// Starts queued `Pending` tasks up to the concurrency limit.
+    pub fn process_next_pending<'a>(
+        &'a self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), EngineError>> + Send + 'a>> {
+        Box::pin(async move {
+            let max = self.get_max_concurrent_downloads();
+            let tasks_to_start = {
+                let tasks = self.tasks.read().await;
+                let active_count = tasks
+                    .iter()
+                    .filter(|t| {
+                        t.status == DownloadState::Connecting
+                            || t.status == DownloadState::Downloading
+                    })
+                    .count();
+
+                if active_count >= max {
+                    return Ok(());
+                }
+
+                let available_slots = max - active_count;
+                tasks
+                    .iter()
+                    .filter(|t| t.status == DownloadState::Pending)
+                    .take(available_slots)
+                    .map(|t| t.id.clone())
+                    .collect::<Vec<_>>()
+            };
+
+            for id in tasks_to_start {
+                let _ = self.start_or_resume(&id).await;
+            }
+            Ok(())
+        })
+    }
+
+    /// Resumes all paused, pending, or failed download tasks up to concurrency limit.
     pub async fn resume_all(&self) -> Result<(), EngineError> {
-        let resumable_ids: Vec<String> = {
-            let tasks = self.tasks.read().await;
-            tasks
+        let max = self.get_max_concurrent_downloads();
+        let tasks_to_start = {
+            let mut tasks = self.tasks.write().await;
+            for t in tasks.iter_mut() {
+                if t.status == DownloadState::Paused || t.status == DownloadState::Failed {
+                    t.status = DownloadState::Pending;
+                    t.error = None;
+                }
+            }
+            let active_count = tasks
                 .iter()
                 .filter(|t| {
-                    t.status == DownloadState::Paused
-                        || t.status == DownloadState::Pending
-                        || t.status == DownloadState::Failed
+                    t.status == DownloadState::Connecting
+                        || t.status == DownloadState::Downloading
                 })
+                .count();
+
+            let available_slots = max.saturating_sub(active_count);
+            tasks
+                .iter()
+                .filter(|t| t.status == DownloadState::Pending)
+                .take(available_slots)
                 .map(|t| t.id.clone())
-                .collect()
+                .collect::<Vec<_>>()
         };
-        for id in resumable_ids {
+
+        self.save_state().await?;
+
+        for id in tasks_to_start {
             let _ = self.start_or_resume(&id).await;
         }
         Ok(())
@@ -735,6 +970,8 @@ mod tests {
                 Some("custom.zip".to_string()),
                 Some(temp_dir.path().to_string_lossy().to_string()),
                 false,
+                None,
+                None,
                 None,
             )
             .await
@@ -765,6 +1002,8 @@ mod tests {
                 None,
                 Some(temp_dir.path().to_string_lossy().to_string()),
                 false,
+                None,
+                None,
                 None,
             )
             .await
@@ -801,6 +1040,8 @@ mod tests {
                 None,
                 false,
                 None,
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -830,6 +1071,8 @@ mod tests {
                 Some("test_delete.txt".to_string()),
                 Some(file_path.to_string_lossy().to_string()),
                 false,
+                None,
+                None,
                 None,
             )
             .await
@@ -931,6 +1174,8 @@ mod tests {
                 Some(dest_file.to_string_lossy().to_string()),
                 true,
                 None,
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -999,6 +1244,8 @@ mod tests {
                 Some(dest_file.to_string_lossy().to_string()),
                 false,
                 None,
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -1038,6 +1285,8 @@ mod tests {
                 Some(temp_dir.path().to_string_lossy().to_string()),
                 false,
                 None,
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -1051,6 +1300,8 @@ mod tests {
                 Some("duplicate.zip".to_string()),
                 Some(temp_dir.path().to_string_lossy().to_string()),
                 false,
+                None,
+                None,
                 None,
             )
             .await
@@ -1071,6 +1322,8 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
+                None,
                 None,
             )
             .await
@@ -1112,5 +1365,205 @@ mod tests {
         let restored_stats = restored_engine.get_all_time_stats().await;
         assert_eq!(restored_stats.total_downloaded_bytes, 4096);
         assert_eq!(restored_stats.total_completed_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_concurrency_limit_and_queue_processing() {
+        use axum::routing::get;
+        use axum::Router;
+
+        // Server that delays responses so downloads remain active during verification
+        let app = Router::new().route(
+            "/slow/{id}",
+            get(|| async {
+                tokio::time::sleep(Duration::from_millis(600)).await;
+                axum::response::IntoResponse::into_response("done")
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_file = temp_dir.path().join("tasks.json");
+        let engine = DownloadEngine::with_state_path(&state_file);
+
+        // Default concurrency limit is 3
+        assert_eq!(engine.get_max_concurrent_downloads(), 3);
+        engine.set_max_concurrent_downloads(2);
+        assert_eq!(engine.get_max_concurrent_downloads(), 2);
+
+        // Add 4 tasks without auto-start
+        for i in 1..=4 {
+            let _ = engine
+                .add_download(
+                    format!("http://{}/slow/{}", addr, i),
+                    Some(format!("file{}.bin", i)),
+                    Some(
+                        temp_dir
+                            .path()
+                            .join(format!("file{}.bin", i))
+                            .to_string_lossy()
+                            .to_string(),
+                    ),
+                    false,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        let tasks = engine.get_tasks().await;
+        assert_eq!(tasks.len(), 4);
+        assert!(tasks.iter().all(|t| t.status == DownloadState::Pending));
+
+        // resume_all should mark tasks Pending, but only start up to max_concurrent_downloads (2)
+        engine.resume_all().await.unwrap();
+
+        let tasks_after = engine.get_tasks().await;
+        let active_count = tasks_after
+            .iter()
+            .filter(|t| {
+                t.status == DownloadState::Connecting || t.status == DownloadState::Downloading
+            })
+            .count();
+        let pending_count = tasks_after
+            .iter()
+            .filter(|t| t.status == DownloadState::Pending)
+            .count();
+
+        assert_eq!(active_count, 2);
+        assert_eq!(pending_count, 2);
+    }
+
+    #[test]
+    fn test_quiet_hours_overnight_and_daytime_spans() {
+        // 1. Overnight span: 23:00 to 07:00
+        let overnight_cfg = QuietHoursConfig {
+            enabled: true,
+            start_hour: 23,
+            start_minute: 0,
+            end_hour: 7,
+            end_minute: 0,
+            speed_limit_bytes_per_sec: 2_000_000,
+        };
+
+        assert!(is_in_quiet_hours(&overnight_cfg, 23, 0));
+        assert!(is_in_quiet_hours(&overnight_cfg, 23, 30));
+        assert!(is_in_quiet_hours(&overnight_cfg, 0, 0));
+        assert!(is_in_quiet_hours(&overnight_cfg, 3, 15));
+        assert!(is_in_quiet_hours(&overnight_cfg, 6, 59));
+        assert!(!is_in_quiet_hours(&overnight_cfg, 7, 0));
+        assert!(!is_in_quiet_hours(&overnight_cfg, 12, 0));
+        assert!(!is_in_quiet_hours(&overnight_cfg, 22, 59));
+
+        // When disabled, is_in_quiet_hours returns false regardless of time
+        let mut disabled_cfg = overnight_cfg.clone();
+        disabled_cfg.enabled = false;
+        assert!(!is_in_quiet_hours(&disabled_cfg, 23, 30));
+        assert!(!is_in_quiet_hours(&disabled_cfg, 3, 0));
+
+        // 2. Daytime span: 09:30 to 17:30
+        let daytime_cfg = QuietHoursConfig {
+            enabled: true,
+            start_hour: 9,
+            start_minute: 30,
+            end_hour: 17,
+            end_minute: 30,
+            speed_limit_bytes_per_sec: 1_000_000,
+        };
+
+        assert!(!is_in_quiet_hours(&daytime_cfg, 9, 29));
+        assert!(is_in_quiet_hours(&daytime_cfg, 9, 30));
+        assert!(is_in_quiet_hours(&daytime_cfg, 12, 0));
+        assert!(is_in_quiet_hours(&daytime_cfg, 17, 29));
+        assert!(!is_in_quiet_hours(&daytime_cfg, 17, 30));
+        assert!(!is_in_quiet_hours(&daytime_cfg, 20, 0));
+    }
+
+    #[tokio::test]
+    async fn test_engine_quiet_hours_getter_setter() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_file = temp_dir.path().join("tasks.json");
+        let engine = DownloadEngine::with_state_path(&state_file);
+
+        let initial_cfg = engine.get_quiet_hours_config().await;
+        assert!(!initial_cfg.enabled);
+
+        let new_cfg = QuietHoursConfig {
+            enabled: true,
+            start_hour: 22,
+            start_minute: 0,
+            end_hour: 6,
+            end_minute: 0,
+            speed_limit_bytes_per_sec: 1_500_000,
+        };
+
+        engine.set_quiet_hours_config(new_cfg.clone()).await;
+        let retrieved = engine.get_quiet_hours_config().await;
+        assert_eq!(retrieved, new_cfg);
+
+        assert!(engine.is_quiet_hours_active_at(23, 0));
+        assert!(!engine.is_quiet_hours_active_at(12, 0));
+    }
+
+    #[test]
+    fn test_dynamic_chunk_count_clamping() {
+        // Clamping logic: preferred_chunk_count.unwrap_or(8).clamp(1, 16)
+        let total_size = 100 * 1024 * 1024; // 100MB
+
+        // Default when None -> 8 chunks
+        let default_chunks = calculate_chunks(total_size, None.unwrap_or(8).clamp(1, 16));
+        assert_eq!(default_chunks.len(), 8);
+
+        // Custom 4 chunks
+        let four_chunks = calculate_chunks(total_size, Some(4).unwrap_or(8).clamp(1, 16));
+        assert_eq!(four_chunks.len(), 4);
+
+        // Clamped high (32 -> 16)
+        let high_clamped = calculate_chunks(total_size, Some(32).unwrap_or(8).clamp(1, 16));
+        assert_eq!(high_clamped.len(), 16);
+
+        // Clamped low (0 -> 1)
+        let low_clamped = calculate_chunks(total_size, Some(0).unwrap_or(8).clamp(1, 16));
+        assert_eq!(low_clamped.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_sha256_verification_success_and_mismatch() {
+        use sha2::{Digest, Sha256};
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("test_verify.bin");
+        let content = b"HyperFetch SHA-256 Parity Verification Test Payload";
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        let valid_hex = format!("{:x}", hasher.finalize());
+        let valid_hex_upper = valid_hex.to_uppercase();
+        let invalid_hex = "0000000000000000000000000000000000000000000000000000000000000000";
+
+        // Lowercase match
+        let res1 = verify_file_sha256(&file_path.to_string_lossy(), &valid_hex)
+            .await
+            .unwrap();
+        assert!(res1);
+
+        // Case-insensitive match (uppercase)
+        let res2 = verify_file_sha256(&file_path.to_string_lossy(), &valid_hex_upper)
+            .await
+            .unwrap();
+        assert!(res2);
+
+        // Mismatch
+        let res3 = verify_file_sha256(&file_path.to_string_lossy(), invalid_hex)
+            .await
+            .unwrap();
+        assert!(!res3);
     }
 }

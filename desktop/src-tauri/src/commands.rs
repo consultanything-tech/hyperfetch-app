@@ -25,10 +25,20 @@ pub async fn add_download(
     destination: Option<String>,
     auto_start: bool,
     headers: Option<HashMap<String, String>>,
+    preferred_chunk_count: Option<usize>,
+    expected_checksum: Option<String>,
 ) -> Result<DownloadTask, String> {
     state
         .engine
-        .add_download(url, filename, destination, auto_start, headers)
+        .add_download(
+            url,
+            filename,
+            destination,
+            auto_start,
+            headers,
+            preferred_chunk_count,
+            expected_checksum,
+        )
         .await
         .map_err(|e| e.to_string())
 }
@@ -78,12 +88,40 @@ pub async fn resume_all(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn probe_url_info(url: String) -> Result<ProbeResult, String> {
     let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(30))
         .tcp_keepalive(std::time::Duration::from_secs(30))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
     probe_url(&client, &url, None)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_max_concurrent_downloads(state: State<'_, AppState>) -> usize {
+    state.engine.get_max_concurrent_downloads()
+}
+
+#[tauri::command]
+pub fn set_max_concurrent_downloads(state: State<'_, AppState>, limit: usize) {
+    state.engine.set_max_concurrent_downloads(limit);
+}
+
+#[tauri::command]
+pub async fn get_quiet_hours_config(
+    state: State<'_, AppState>,
+) -> Result<crate::models::QuietHoursConfig, String> {
+    Ok(state.engine.get_quiet_hours_config().await)
+}
+
+#[tauri::command]
+pub async fn set_quiet_hours_config(
+    state: State<'_, AppState>,
+    config: crate::models::QuietHoursConfig,
+) -> Result<(), String> {
+    state.engine.set_quiet_hours_config(config).await;
+    Ok(())
 }
 
 #[tauri::command]

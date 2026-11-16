@@ -59,6 +59,10 @@ pub struct DownloadPayload {
     pub auto_start: Option<bool>,
     #[serde(default)]
     pub headers: Option<HashMap<String, String>>,
+    #[serde(default, alias = "preferredChunkCount", alias = "preferred_chunk_count")]
+    pub preferred_chunk_count: Option<usize>,
+    #[serde(default, alias = "expectedChecksum", alias = "expected_checksum", alias = "checksum", alias = "sha256")]
+    pub expected_checksum: Option<String>,
 }
 
 /// Query parameters for GET /add or GET /download.
@@ -75,6 +79,10 @@ pub struct AddQueryParams {
     pub auto_start: Option<bool>,
     pub headers: Option<String>,
     pub token: Option<String>,
+    #[serde(default, alias = "preferredChunkCount", alias = "preferred_chunk_count")]
+    pub preferred_chunk_count: Option<usize>,
+    #[serde(default, alias = "expectedChecksum", alias = "expected_checksum", alias = "checksum", alias = "sha256")]
+    pub expected_checksum: Option<String>,
 }
 
 /// Payload/Query for /sheet endpoint.
@@ -516,6 +524,8 @@ async fn post_add_handler(
             None,
             auto_start,
             payload.headers,
+            payload.preferred_chunk_count,
+            payload.expected_checksum,
         )
         .await
     {
@@ -567,6 +577,8 @@ async fn get_add_handler(
             None,
             auto_start,
             parsed_headers,
+            params.preferred_chunk_count,
+            params.expected_checksum,
         )
         .await
     {

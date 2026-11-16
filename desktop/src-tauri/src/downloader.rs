@@ -8,8 +8,9 @@ use reqwest::header::{
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
@@ -220,6 +221,89 @@ fn apply_custom_headers(
         req = req.header(USER_AGENT, DEFAULT_USER_AGENT);
     }
     req.header(ACCEPT_ENCODING, "identity")
+}
+
+#[derive(Debug)]
+struct RateLimiterState {
+    last_refill: std::time::Instant,
+    available_tokens: f64,
+}
+
+/// Token bucket bandwidth rate limiter for throttling downloads.
+#[derive(Debug, Clone)]
+pub struct RateLimiter {
+    state: Arc<tokio::sync::Mutex<RateLimiterState>>,
+    limit_bytes_per_sec: Arc<AtomicU64>,
+}
+
+impl RateLimiter {
+    pub fn new(limit_bytes_per_sec: u64) -> Self {
+        Self {
+            state: Arc::new(tokio::sync::Mutex::new(RateLimiterState {
+                last_refill: std::time::Instant::now(),
+                available_tokens: 0.0,
+            })),
+            limit_bytes_per_sec: Arc::new(AtomicU64::new(limit_bytes_per_sec)),
+        }
+    }
+
+    pub fn set_limit(&self, limit: u64) {
+        self.limit_bytes_per_sec.store(limit, Ordering::Relaxed);
+    }
+
+    pub fn get_limit(&self) -> u64 {
+        self.limit_bytes_per_sec.load(Ordering::Relaxed)
+    }
+
+    pub async fn throttle(&self, bytes: u64) {
+        let limit = self.limit_bytes_per_sec.load(Ordering::Relaxed);
+        if limit == 0 || bytes == 0 {
+            return;
+        }
+
+        let mut state = self.state.lock().await;
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(state.last_refill).as_secs_f64();
+        state.last_refill = now;
+
+        let capacity = limit as f64;
+        state.available_tokens = (state.available_tokens + elapsed * capacity).min(capacity);
+
+        let needed = bytes as f64;
+        if state.available_tokens >= needed {
+            state.available_tokens -= needed;
+        } else {
+            let deficit = needed - state.available_tokens;
+            state.available_tokens = 0.0;
+            let wait_secs = deficit / capacity;
+            drop(state);
+            let wait = wait_secs.min(1.0);
+            tokio::time::sleep(Duration::from_secs_f64(wait)).await;
+        }
+    }
+}
+
+/// Helper struct for constructing standardized chunk download HTTP clients.
+pub struct ChunkDownloader;
+
+impl ChunkDownloader {
+    pub fn build_client() -> Client {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(60))
+            .tcp_keepalive(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    }
+}
+
+/// Standalone probe helper constructing a standardized HTTP client.
+pub async fn probe_download(
+    url: &str,
+    headers: Option<&HashMap<String, String>>,
+) -> Result<ProbeResult, DownloaderError> {
+    let client = ChunkDownloader::build_client();
+    probe_url(&client, url, headers).await
 }
 
 /// Probes a remote URL using HEAD and GET Range 0-0 in parallel to inspect capabilities and metadata.
@@ -470,6 +554,7 @@ pub async fn download_chunk_worker(
     mut cancel_rx: broadcast::Receiver<()>,
     progress_tx: &mpsc::Sender<u64>,
     is_multi_chunk: bool,
+    limiter: Option<Arc<RateLimiter>>,
 ) -> Result<(), DownloaderError> {
     if chunk.completed {
         return Ok(());
@@ -528,6 +613,9 @@ pub async fn download_chunk_worker(
                     current_offset += len;
                     chunk.downloaded_bytes += len;
                     let _ = progress_tx.send(len).await;
+                    if let Some(ref lim) = limiter {
+                        lim.throttle(len).await;
+                    }
                 }
             }
             Some(Err(e)) => return Err(DownloaderError::Network(e.to_string())),
@@ -555,6 +643,7 @@ pub async fn download_single_stream(
     start_offset: u64,
     mut cancel_rx: broadcast::Receiver<()>,
     progress_tx: &mpsc::Sender<u64>,
+    limiter: Option<Arc<RateLimiter>>,
 ) -> Result<u64, DownloaderError> {
     let mut req = apply_custom_headers(client.get(url), headers);
     if start_offset > 0 {
@@ -596,6 +685,9 @@ pub async fn download_single_stream(
                     write_offset += len;
                     total_downloaded += len;
                     let _ = progress_tx.send(len).await;
+                    if let Some(ref lim) = limiter {
+                        lim.throttle(len).await;
+                    }
                 }
             }
             Some(Err(e)) => return Err(DownloaderError::Network(e.to_string())),
@@ -621,6 +713,34 @@ pub async fn download_task_content(
     cancel_tx: &broadcast::Sender<()>,
     progress_tx: &mpsc::Sender<u64>,
 ) -> Result<(), DownloaderError> {
+    download_task_content_with_limiter(
+        client,
+        url,
+        chunks,
+        writer,
+        total_bytes,
+        resumable,
+        headers,
+        cancel_tx,
+        progress_tx,
+        None,
+    )
+    .await
+}
+
+/// Orchestrates multi-chunk download with optional rate limiter.
+pub async fn download_task_content_with_limiter(
+    client: &Client,
+    url: &str,
+    chunks: &mut Vec<Chunk>,
+    writer: &FileWriter,
+    total_bytes: u64,
+    resumable: &mut bool,
+    headers: Option<&HashMap<String, String>>,
+    cancel_tx: &broadcast::Sender<()>,
+    progress_tx: &mpsc::Sender<u64>,
+    limiter: Option<Arc<RateLimiter>>,
+) -> Result<(), DownloaderError> {
     let should_multi_chunk = *resumable && chunks.len() > 1;
 
     if should_multi_chunk {
@@ -640,6 +760,7 @@ pub async fn download_task_content(
             let cancel_rx = cancel_tx.subscribe();
             let progress_tx_clone = progress_tx.clone();
             let fallback_flag = Arc::clone(&fallback_needed);
+            let limiter_clone = limiter.clone();
 
             let handle = tokio::spawn(async move {
                 let res = download_chunk_worker(
@@ -651,6 +772,7 @@ pub async fn download_task_content(
                     cancel_rx,
                     &progress_tx_clone,
                     is_multi,
+                    limiter_clone,
                 )
                 .await;
 
@@ -722,6 +844,7 @@ pub async fn download_task_content(
                 0,
                 cancel_tx.subscribe(),
                 progress_tx,
+                limiter.clone(),
             )
             .await?;
 
@@ -765,6 +888,7 @@ pub async fn download_task_content(
         start_offset,
         cancel_tx.subscribe(),
         progress_tx,
+        limiter,
     )
     .await?;
 
@@ -1120,5 +1244,27 @@ mod tests {
             probe.last_modified.as_deref(),
             Some("Fri, 14 Nov 2026 12:00:00 GMT")
         );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_throttling() {
+        let limiter = RateLimiter::new(100_000); // 100 KB/s
+        assert_eq!(limiter.get_limit(), 100_000);
+
+        limiter.set_limit(50_000);
+        assert_eq!(limiter.get_limit(), 50_000);
+
+        // When limit is 0 (unlimited), throttle returns immediately
+        limiter.set_limit(0);
+        let start = std::time::Instant::now();
+        limiter.throttle(1_000_000).await;
+        assert!(start.elapsed().as_millis() < 50);
+    }
+
+    #[test]
+    fn test_chunk_downloader_client_builder() {
+        let client = ChunkDownloader::build_client();
+        // Client builds successfully with connect_timeout and timeout configured
+        drop(client);
     }
 }
