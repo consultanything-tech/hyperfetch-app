@@ -183,10 +183,11 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   // the browser download; if it fails/rejects, safeSuggest() lets the browser
   // continue natively without freezing.
   processedDownloadIds.add(downloadItem.id);
+  setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
 
   (async () => {
     try {
-      const cookieString = await getMergedCookies(targetUrl, rawUrl, downloadItem.referrer);
+      const cookieString = await getMergedCookies(targetUrl);
       const headers = {
         'User-Agent': navigator.userAgent,
         'Referer': downloadItem.referrer || '',
@@ -217,45 +218,18 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         showErrorBadge();
         // Resolve filename so the browser's original in-flight download continues cleanly
         safeSuggest({ filename: filename || fallbackName });
-        setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
       }
     } catch (err) {
       console.error('[HyperFetch] Error during async interception:', err);
       safeSuggest({ filename: filename || fallbackName });
-      setTimeout(() => processedDownloadIds.delete(downloadItem.id), 10000);
     }
   })();
 
   return true; // Keep suggest callback active for async determination
 });
 
-async function getMergedCookies(url1, url2, referrer) {
-  const cookieMap = new Map();
-  const urls = [];
-  if (url1) urls.push(url1);
-  if (url2 && !urls.includes(url2)) urls.push(url2);
-  if (referrer && !urls.includes(referrer)) urls.push(referrer);
-
-  for (const target of urls) {
-    if (!target) continue;
-    const cookieStr = await getCookiesForUrl(target);
-    if (cookieStr) {
-      const parts = cookieStr.split('; ');
-      for (const part of parts) {
-        const eqIdx = part.indexOf('=');
-        if (eqIdx !== -1) {
-          const name = part.substring(0, eqIdx).trim();
-          const val = part.substring(eqIdx + 1).trim();
-          if (name && !cookieMap.has(name)) {
-            cookieMap.set(name, val);
-          }
-        }
-      }
-    }
-  }
-
-  if (cookieMap.size === 0) return '';
-  return Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+async function getMergedCookies(targetUrl) {
+  return getCookiesForUrl(targetUrl);
 }
 
 async function getCookiesForUrl(url) {
