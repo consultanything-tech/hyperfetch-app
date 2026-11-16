@@ -389,6 +389,9 @@ public final class AppState: ObservableObject {
     @Published public var launchAtLoginStatus: LaunchAtLoginStatus
 
     @Published public var speedHistory: [Double] = Array(repeating: 0.0, count: 8)
+    @Published private(set) public var cachedActiveSocketCount: Int = 0
+    @Published private(set) public var cachedAllocatedMemoryMB: Int = 48
+    @Published private(set) public var cachedTotalDownloadedTodayBytes: Int64 = 0
     private var updatesTask: Task<Void, Never>?
     private var speedSamplerTask: Task<Void, Never>?
     private var previouslyCompletedTaskIds: Set<UUID> = []
@@ -489,13 +492,21 @@ public final class AppState: ObservableObject {
         // Start listening to the QueueManager stream
         startListeningToQueue()
 
-        speedSamplerTask = Task { [weak self] in
+        self.cachedActiveSocketCount = self.computeActiveSocketCount()
+        self.cachedAllocatedMemoryMB = self.computeAllocatedMemoryMB()
+        self.cachedTotalDownloadedTodayBytes = self.computeTotalDownloadedTodayBytes()
+
+        speedSamplerTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self else { return }
                 let current = self.totalDownloadSpeed
                 self.speedHistory.removeFirst()
                 self.speedHistory.append(current)
+
+                self.cachedActiveSocketCount = self.computeActiveSocketCount()
+                self.cachedAllocatedMemoryMB = self.computeAllocatedMemoryMB()
+                self.cachedTotalDownloadedTodayBytes = self.computeTotalDownloadedTodayBytes()
             }
         }
 
@@ -847,7 +858,9 @@ public final class AppState: ObservableObject {
     }
 
     /// Count of currently open TCP connections across active chunk streams.
-    public var activeSocketCount: Int {
+    public var activeSocketCount: Int { cachedActiveSocketCount }
+
+    private func computeActiveSocketCount() -> Int {
         let activeChunks = tasks.filter { $0.status == .downloading }.reduce(0) { sum, task in
             let active = task.chunks.filter { $0.status == .downloading }.count
             return sum + (active > 0 ? active : (task.status == .downloading ? 1 : 0))
@@ -856,7 +869,9 @@ public final class AppState: ObservableObject {
     }
 
     /// Current resident application memory usage in megabytes.
-    public var allocatedMemoryMB: Int {
+    public var allocatedMemoryMB: Int { cachedAllocatedMemoryMB }
+
+    private func computeAllocatedMemoryMB() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
@@ -886,7 +901,9 @@ public final class AppState: ObservableObject {
     }
 
     /// Total bytes downloaded today across all completed and active tasks.
-    public var totalDownloadedTodayBytes: Int64 {
+    public var totalDownloadedTodayBytes: Int64 { cachedTotalDownloadedTodayBytes }
+
+    private func computeTotalDownloadedTodayBytes() -> Int64 {
         let calendar = Calendar.current
         return tasks.reduce(0) { sum, task in
             if let completedAt = task.completedAt, calendar.isDateInToday(completedAt) {
