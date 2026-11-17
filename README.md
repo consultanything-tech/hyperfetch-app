@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.2.0"><img src="https://img.shields.io/badge/Release-v1.2.0-0071E3?style=flat-square" alt="Release v1.2.0" /></a>
+  <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.2.2"><img src="https://img.shields.io/badge/Release-v1.2.2-0071E3?style=flat-square" alt="Release v1.2.2" /></a>
   <a href="https://www.microsoft.com/windows/"><img src="https://img.shields.io/badge/Windows-10%20%7C%2011%20(64--bit)-0078D4?style=flat-square&logo=windows" alt="Windows 10 / 11 64-bit" /></a>
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-14%2B%20Sonoma%20%7C%20Sequoia-00D2FF?style=flat-square&logo=apple" alt="macOS 14+ Sonoma / Sequoia" /></a>
   <a href="https://rust-lang.org"><img src="https://img.shields.io/badge/Rust-Tauri%202.0-DEA584?style=flat-square&logo=rust" alt="Rust Tauri 2.0" /></a>
@@ -36,14 +36,14 @@ curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/
 
 ---
 
-## 📦 Direct Downloads (v1.2.0)
+## 📦 Direct Downloads (v1.2.2)
 
 | Package | Format | Compatibility | Link |
 | :--- | :--- | :--- | :--- |
-| **HyperFetch Windows Installer** | `.exe` | Windows 10/11 (64-bit) | [**Download HyperFetch-Windows-x64-Setup.exe**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.0/HyperFetch-Windows-x64-Setup.exe) |
-| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.0/HyperFetch.dmg) |
-| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.0/HyperFetch.zip) |
-| **HyperFetch Chrome Extension** | `.zip` | Chromium Browsers (Chrome, Edge, Brave, Arc) | [**Download HyperFetch_Chrome_Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.0/HyperFetch_Chrome_Extension.zip) |
+| **HyperFetch Windows Installer** | `.exe` | Windows 10/11 (64-bit) | [**Download HyperFetch-Windows-x64-Setup.exe**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.2/HyperFetch-Windows-x64-Setup.exe) |
+| **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.2/HyperFetch.dmg) |
+| **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.2/HyperFetch.zip) |
+| **HyperFetch Chrome Extension** | `.zip` | Chromium Browsers (Chrome, Edge, Brave, Arc) | [**Download HyperFetch_Chrome_Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.2/HyperFetch_Chrome_Extension.zip) |
 
 All official releases and checksums are available on the [**GitHub Releases Page**](https://github.com/consultanything-tech/hyperfetch-app/releases).
 
@@ -79,7 +79,7 @@ The companion extension intercepts browser downloads and seamlessly passes them 
 Works on **Google Chrome**, **Microsoft Edge**, **Brave**, **Arc**, and **Vivaldi**.
 
 ### Setup Instructions
-1. Download [**HyperFetch_Chrome_Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.0/HyperFetch_Chrome_Extension.zip) (or use bundled extension in HyperFetch Settings > Browser).
+1. Download [**HyperFetch_Chrome_Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.2.2/HyperFetch_Chrome_Extension.zip) (or use bundled extension in HyperFetch Settings > Browser).
 2. Unzip the downloaded archive.
 3. In your browser, open the Extensions page by visiting:
    ```text
