@@ -70,7 +70,7 @@ public struct MenuBarCompanionView: View {
                             .fill(appState.activeDownloadCount > 0 ? Theme.success : Theme.textTertiary.opacity(0.5))
                             .frame(width: 5, height: 5)
                         Text("\(appState.activeDownloadCount) Active")
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(appState.activeDownloadCount > 0 ? Theme.success : Theme.textTertiary)
                     }
                     .padding(.horizontal, 6)
@@ -137,7 +137,7 @@ public struct MenuBarCompanionView: View {
                 .foregroundStyle(Theme.textTertiary)
 
             Text("No Downloads")
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
 
             Button {
@@ -225,7 +225,7 @@ public struct MenuBarCompanionView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
                     Text(task.filename)
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -293,7 +293,7 @@ public struct MenuBarCompanionView: View {
                 appState.pause(id: task.id)
             } label: {
                 Image(systemName: "pause.fill")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 22, height: 22)
                     .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
@@ -306,7 +306,7 @@ public struct MenuBarCompanionView: View {
                 appState.resume(id: task.id)
             } label: {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 22, height: 22)
                     .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
@@ -319,7 +319,7 @@ public struct MenuBarCompanionView: View {
                 appState.resume(id: task.id)
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.warning)
                     .frame(width: 22, height: 22)
                     .background(Theme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
@@ -490,7 +490,7 @@ public struct MenuBarCompanionView: View {
             } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "plus")
-                        .font(.system(size: 9.5, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                     Text("Add Download")
                         .font(.system(size: 11, weight: .medium))
                 }

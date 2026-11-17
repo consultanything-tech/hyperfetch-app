@@ -25,7 +25,7 @@ public struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .background(Theme.sidebarBackground)
+        .background(.ultraThinMaterial)
         .safeAreaInset(edge: .bottom) {
             sidebarFooterTelemetry
         }
@@ -103,7 +103,7 @@ public struct SidebarView: View {
                         Spacer()
 
                         Text(bandwidthStatusTitle)
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -186,7 +186,7 @@ public struct SidebarView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Theme.textPrimary)
                             Text("Buy us a coffee on Ko-fi")
-                                .font(.system(size: 9.5))
+                                .font(.system(size: 10))
                                 .foregroundStyle(Theme.textTertiary)
                         }
 
@@ -220,7 +220,7 @@ public struct SidebarView: View {
                             Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
                                 .foregroundStyle(Theme.accent)
                             Text("v\(newVersion) Ready to Install")
-                                .font(.system(size: 10.5, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Theme.accent)
                         }
                     }
@@ -234,7 +234,7 @@ public struct SidebarView: View {
                         HStack(spacing: 5) {
                             Circle().fill(Color.orange).frame(width: 6, height: 6)
                             Text("v\(newVersion) Available")
-                                .font(.system(size: 10.5, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Color.orange)
                         }
                     }
@@ -266,7 +266,7 @@ public struct SidebarView: View {
                 }
             }
             .padding(12)
-            .background(Theme.statusBarBackground)
+            .background(.ultraThinMaterial)
         }
     }
 
@@ -315,22 +315,7 @@ public struct SidebarView: View {
     }
 
     private func categoryTitle(for category: DownloadCategory) -> String {
-        switch category {
-        case .all:
-            return "All"
-        case .archives:
-            return "Archives (.zip, .xip)"
-        case .documents:
-            return "Documents"
-        case .video:
-            return "Video & Media"
-        case .music:
-            return "Audio & Music"
-        case .applications:
-            return "Applications & Disk"
-        case .other:
-            return "Other"
-        }
+        category.title
     }
 
     private func statusColor(for filter: StatusFilter) -> Color {
@@ -349,41 +334,11 @@ public struct SidebarView: View {
     }
 
     private func iconName(for category: DownloadCategory) -> String {
-        switch category {
-        case .all:
-            return "tray.full"
-        case .archives:
-            return "archivebox.fill"
-        case .documents:
-            return "doc.text.fill"
-        case .video:
-            return "film.fill"
-        case .music:
-            return "music.note"
-        case .applications:
-            return "app.fill"
-        case .other:
-            return "questionmark.folder.fill"
-        }
+        category.systemImageName
     }
 
     private func color(for category: DownloadCategory) -> Color {
-        switch category {
-        case .all:
-            return Theme.accent
-        case .archives:
-            return Theme.warning
-        case .documents:
-            return Theme.accent
-        case .video:
-            return Color.purple
-        case .music:
-            return Color.pink
-        case .applications:
-            return Color.indigo
-        case .other:
-            return Theme.textTertiary
-        }
+        category.accentColor
     }
 }
 

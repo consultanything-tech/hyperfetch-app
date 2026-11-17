@@ -161,7 +161,7 @@ public struct AddDownloadSheet: View {
                 }
 
                 Text("Enter a file URL to download with multi-chunk acceleration.")
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -181,7 +181,7 @@ public struct AddDownloadSheet: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                         Text("⌘V Paste link")
                             .font(.system(size: 11, weight: .medium))
                     }
@@ -201,7 +201,7 @@ public struct AddDownloadSheet: View {
 
                 TextField("https://example.com/file.zip", text: $urlString)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12.5, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(Theme.textPrimary)
                     .focused($isURLFocused)
 
@@ -295,7 +295,7 @@ public struct AddDownloadSheet: View {
                                 Image(systemName: "bolt.fill")
                                     .font(.system(size: 9))
                                 Text("Multi-Chunk Accelerated")
-                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .font(.system(size: 10, weight: .semibold))
                             }
                             .foregroundStyle(Theme.success)
                             .padding(.horizontal, 6)
@@ -306,7 +306,7 @@ public struct AddDownloadSheet: View {
                                 Image(systemName: "exclamationmark.circle")
                                     .font(.system(size: 9))
                                 Text("Single Stream (No Range Support)")
-                                    .font(.system(size: 10.5, weight: .medium))
+                                    .font(.system(size: 10, weight: .medium))
                             }
                             .foregroundStyle(Theme.warning)
                             .padding(.horizontal, 6)
@@ -321,7 +321,7 @@ public struct AddDownloadSheet: View {
                                 customFilename = result.filename
                             } label: {
                                 Text("Use Server Name")
-                                    .font(.system(size: 10.5, weight: .medium))
+                                    .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(Theme.accent)
                             }
                             .buttonStyle(.plain)
@@ -341,7 +341,7 @@ public struct AddDownloadSheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textTertiary)
                     Text("Pre-flight inspection skipped: \(err). Will connect directly on download.")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 10))
                         .foregroundStyle(Theme.textTertiary)
                         .lineLimit(1)
                     Spacer()
@@ -436,7 +436,7 @@ public struct AddDownloadSheet: View {
 
                 if let badge = detectedExtensionBadge {
                     Text(badge)
-                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.accent)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -446,7 +446,7 @@ public struct AddDownloadSheet: View {
 
             TextField("Auto-detect from server or link", text: $customFilename)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
+                .font(.system(size: 12))
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -513,7 +513,7 @@ public struct AddDownloadSheet: View {
             )
 
             Text(chunkBenefitDescription(chunkCount))
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(2)
         }
@@ -524,7 +524,7 @@ public struct AddDownloadSheet: View {
             // Auto start checkbox
             Toggle(isOn: $autoStart) {
                 Text("Start download immediately upon adding")
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
             }
             .toggleStyle(.checkbox)
@@ -598,7 +598,7 @@ public struct AddDownloadSheet: View {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 10))
                     Text("Advanced Connection Options (Headers, Proxy, SHA-256)")
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                 }
                 .foregroundStyle(Theme.textSecondary)
             }

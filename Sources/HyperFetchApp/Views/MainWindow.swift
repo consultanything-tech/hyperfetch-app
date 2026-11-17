@@ -54,9 +54,46 @@ public struct MainWindow: View {
         .sheet(isPresented: $appState.isAddSheetPresented) {
             AddDownloadSheet()
         }
-        .background {
-            keyboardShortcutTriggers
-                .allowsHitTesting(false)
+        .onKeyPress(.downArrow) {
+            appState.selectNextTask()
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            appState.selectPreviousTask()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            appState.togglePauseSelected()
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            if !appState.selectedTaskIDs.isEmpty {
+                appState.deselectAll()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.delete) {
+            if !appState.selectedTaskIDs.isEmpty {
+                appState.promptDeleteSelected()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress { press in
+            if press.modifiers.contains(.command) {
+                if press.characters == "a" {
+                    appState.selectAll()
+                    return .handled
+                } else if press.characters == "r" && !appState.selectedTaskIDs.isEmpty {
+                    appState.revealSelectedInFinder()
+                    return .handled
+                } else if press.characters == "o" && !appState.selectedTaskIDs.isEmpty {
+                    appState.openSelectedFile()
+                    return .handled
+                }
+            }
+            return .ignored
         }
         .background {
             WindowAccessor { window in
@@ -313,56 +350,6 @@ public struct MainWindow: View {
         }
     }
 
-    // MARK: - Keyboard Shortcuts
-
-    @ViewBuilder
-    private var keyboardShortcutTriggers: some View {
-        Group {
-            Button("Select All") {
-                appState.selectAll()
-            }
-            .keyboardShortcut("a", modifiers: .command)
-
-            Button("Deselect All") {
-                appState.deselectAll()
-            }
-            .keyboardShortcut(.escape, modifiers: [])
-
-            Button("Select Next") {
-                appState.selectNextTask()
-            }
-            .keyboardShortcut(.downArrow, modifiers: [])
-
-            Button("Select Previous") {
-                appState.selectPreviousTask()
-            }
-            .keyboardShortcut(.upArrow, modifiers: [])
-
-            Button("Toggle Pause") {
-                appState.togglePauseSelected()
-            }
-            .keyboardShortcut(.space, modifiers: [])
-
-            Button("Delete Selected") {
-                appState.promptDeleteSelected()
-            }
-            .keyboardShortcut(.delete, modifiers: [])
-
-            Button("Reveal in Finder") {
-                appState.revealSelectedInFinder()
-            }
-            .keyboardShortcut("r", modifiers: .command)
-
-            Button("Open Completed") {
-                appState.openSelectedFile()
-            }
-            .keyboardShortcut("o", modifiers: .command)
-        }
-        .opacity(0)
-        .allowsHitTesting(false)
-        .frame(width: 0, height: 0)
-    }
-
     // MARK: - Detail Inspector Pane
 
     private func taskDetailView(for task: DownloadTaskModel) -> some View {
@@ -490,7 +477,7 @@ public struct MainWindow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(task.filename)
-                        .font(.system(size: 13.5, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(2)
                         .truncationMode(.middle)
@@ -581,35 +568,35 @@ public struct MainWindow: View {
                 metadataRow(label: "File Size:") {
                     let exactBytes = task.totalBytes > 0 ? " (\(task.totalBytes.formatted()) bytes)" : ""
                     Text("\(AppState.formatBytes(task.totalBytes))\(exactBytes)")
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Theme.textPrimary)
                 }
 
                 metadataRow(label: "Downloaded:") {
                     let percent = Int(task.progress * 100)
                     Text("\(AppState.formatBytes(task.downloadedBytes)) (\(percent)%)")
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Theme.textPrimary)
                 }
 
                 if task.status == .downloading {
                     metadataRow(label: "Transfer Speed:") {
                         Text(AppState.formatSpeed(task.bytesPerSecond))
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundStyle(Theme.success)
                     }
                 }
 
                 metadataRow(label: "Date Added:") {
                     Text(task.createdAt, style: .date)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Theme.textSecondary)
                 }
 
                 if let completedAt = task.completedAt {
                     metadataRow(label: "Completed At:") {
                         Text(completedAt, style: .date)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
@@ -627,14 +614,14 @@ public struct MainWindow: View {
     private func metadataRow<V: View>(label: String, @ViewBuilder value: () -> V) -> some View {
         HStack(alignment: .top) {
             Text(label)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 95, alignment: .leading)
 
             Spacer()
 
             value()
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .frame(maxWidth: 220, alignment: .trailing)
         }
     }
@@ -654,7 +641,7 @@ public struct MainWindow: View {
             }
 
             Text(reason)
-                .font(.system(size: 11.5, design: .monospaced))
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.textPrimary)
                 .textSelection(.enabled)
                 .padding(8)
@@ -742,25 +729,25 @@ public struct MainWindow: View {
                     VStack(spacing: 8) {
                         metadataRow(label: "Current Speed:") {
                             Text(appState.formattedTotalSpeed)
-                                .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .foregroundStyle(appState.totalDownloadSpeed > 0 ? Theme.success : Theme.textSecondary)
                         }
 
                         metadataRow(label: "Active Sockets:") {
                             Text("\(appState.activeSocketCount) open")
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                         }
 
                         metadataRow(label: "Engine Memory:") {
                             Text("\(appState.allocatedMemoryMB) MB")
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                         }
 
                         metadataRow(label: "Bandwidth Cap:") {
                             Text(appState.speedLimitPreset.rawValue)
-                                .font(.system(size: 11.5))
+                                .font(.system(size: 11))
                                 .foregroundStyle(appState.speedLimitPreset == .unlimited ? Theme.success : Theme.warning)
                         }
                     }
@@ -784,25 +771,25 @@ public struct MainWindow: View {
                     VStack(spacing: 8) {
                         metadataRow(label: "Total Items:") {
                             Text("\(appState.tasks.count)")
-                                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                         }
 
                         metadataRow(label: "Downloading:") {
                             Text("\(appState.activeDownloadCount)")
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.accent)
                         }
 
                         metadataRow(label: "Completed:") {
                             Text("\(appState.completedDownloadCount)")
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.success)
                         }
 
                         metadataRow(label: "Paused:") {
                             Text("\(appState.pausedDownloadCount)")
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.warning)
                         }
                     }
@@ -826,13 +813,13 @@ public struct MainWindow: View {
                     VStack(spacing: 8) {
                         metadataRow(label: "Today's Total:") {
                             Text(appState.formattedTotalDownloadedToday)
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                         }
 
                         metadataRow(label: "Disk Free:") {
                             Text(appState.availableDiskSpaceString)
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(Theme.success)
                         }
                     }

@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import DownloadKit
 
 /// Dynamic theme tokens and design system constants for HyperFetch.
 public enum Theme {
@@ -20,35 +21,33 @@ public enum Theme {
 
     // MARK: - Dynamic Canvas & Surface Colors
 
+    /// Translucent material used across sidebars and floating accessories.
+    public static let sidebarMaterial: Material = .ultraThinMaterial
+
+    /// ViewModifier applying native translucent vibrancy to sidebars.
+    public struct TranslucentSidebarStyle: ViewModifier {
+        public init() {}
+        public func body(content: Content) -> some View {
+            content
+                .scrollContentBackground(.hidden)
+                .background(.ultraThinMaterial)
+        }
+    }
+
     /// Foundation level canvas behind split views and main content area.
-    public static let canvasBackground = Color.dynamic(
-        dark: NSColor(hex: 0x0d0e12),
-        light: NSColor(hex: 0xF5F5F7)
-    )
+    public static let canvasBackground = Color(NSColor.controlBackgroundColor)
 
     /// Primary window background surface.
-    public static let windowSurface = Color.dynamic(
-        dark: NSColor(hex: 0x141518),
-        light: NSColor(hex: 0xFFFFFF)
-    )
+    public static let windowSurface = Color(NSColor.windowBackgroundColor)
 
-    /// Left sidebar container background.
-    public static let sidebarBackground = Color.dynamic(
-        dark: NSColor(hex: 0x16181d),
-        light: NSColor(hex: 0xF3F4F6)
-    )
+    /// Left sidebar container background adopting translucent system window background.
+    public static let sidebarBackground = Color(NSColor.windowBackgroundColor)
 
     /// Top window toolbar background.
-    public static let toolbarBackground = Color.dynamic(
-        dark: NSColor(hex: 0x1a1c22),
-        light: NSColor(hex: 0xFAFAFC)
-    )
+    public static let toolbarBackground = Color(NSColor.windowBackgroundColor)
 
     /// Right inspector panel background.
-    public static let inspectorBackground = Color.dynamic(
-        dark: NSColor(hex: 0x181a20),
-        light: NSColor(hex: 0xF9FAFB)
-    )
+    public static let inspectorBackground = Color(NSColor.windowBackgroundColor)
 
     /// Inactive card container surface.
     public static let cardBackground = Color.dynamic(
@@ -236,15 +235,22 @@ public enum Theme {
             )
         default:
             let defaultLabel = ext.isEmpty ? "FILE" : (ext.count <= 4 ? ext.uppercased() : String(ext.prefix(4)).uppercased())
+            let category = DownloadCategory.category(for: "file." + ext)
             return FileBadgeStyle(
                 label: defaultLabel,
-                systemIcon: "doc.fill",
+                systemIcon: category.systemImageName,
                 gradientTop: Color.dynamic(dark: NSColor(hex: 0x1f2937, alpha: 0.7), light: NSColor(hex: 0xE5E7EB)),
                 gradientBottom: Color.dynamic(dark: NSColor(hex: 0x111827, alpha: 0.85), light: NSColor(hex: 0xD1D5DB)),
-                tintColor: Color.dynamic(dark: NSColor(hex: 0x9ca3af), light: NSColor(hex: 0x4B5563)),
+                tintColor: category.accentColor,
                 borderColor: Color.dynamic(dark: NSColor(hex: 0x6b7280, alpha: 0.35), light: NSColor(hex: 0x6B7280, alpha: 0.25))
             )
         }
+    }
+}
+
+public extension View {
+    func translucentSidebarStyle() -> some View {
+        modifier(Theme.TranslucentSidebarStyle())
     }
 }
 

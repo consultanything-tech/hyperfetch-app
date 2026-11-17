@@ -54,6 +54,8 @@ public struct DownloadRowView: View {
             .contentShape(Rectangle())
             .padding(.top, 2)
             .help(isSelected ? "Deselect" : "Select")
+            .accessibilityLabel("Select \(task.filename)")
+            .accessibilityValue(isSelected ? "Selected" : "Unselected")
 
             // High Craft File Format Badge Squircle
             fileFormatBadge
@@ -197,7 +199,7 @@ public struct DownloadRowView: View {
             switch task.status {
             case .downloading:
                 Text("\(Int(task.progress * 100))%")
-                    .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -234,7 +236,7 @@ public struct DownloadRowView: View {
 
             case .completed:
                 Text("100% DONE")
-                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.success)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -293,6 +295,9 @@ public struct DownloadRowView: View {
         }
         .frame(height: 7)
         .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progress")
+        .accessibilityValue("\(Int(task.progress * 100)) percent")
     }
 
     private var progressGradient: LinearGradient {
@@ -341,7 +346,7 @@ public struct DownloadRowView: View {
             switch task.status {
             case .downloading:
                 Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
 
@@ -353,7 +358,7 @@ public struct DownloadRowView: View {
                     Image(systemName: "arrow.down.right")
                         .font(.system(size: 10, weight: .bold))
                     Text(AppState.formatSpeed(task.bytesPerSecond))
-                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .help("\(AppState.formatSpeed(task.bytesPerSecond)) (\(String(format: "%.0f", task.bytesPerSecond * 8 / 1_000_000)) Mbps)")
                 }
                 .foregroundStyle(Theme.success)
@@ -366,20 +371,20 @@ public struct DownloadRowView: View {
                         .foregroundStyle(Theme.textTertiary)
 
                     Text(remaining)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Theme.textTertiary)
                         .lineLimit(1)
                 }
 
             case .probing:
                 Text("Analyzing remote headers and range support...")
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(Color.purple)
                     .lineLimit(1)
 
             case .paused:
                 Text("Paused")
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.warning)
                     .lineLimit(1)
 
@@ -388,13 +393,13 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.textTertiary)
 
                 Text("\(AppState.formatBytes(task.downloadedBytes)) of \(AppState.formatBytes(task.totalBytes))")
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
 
             case .completed:
                 Text("Completed")
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.success)
                     .lineLimit(1)
 
@@ -403,7 +408,7 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.textTertiary)
 
                 Text(AppState.formatBytes(task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes))
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
 
@@ -413,7 +418,7 @@ public struct DownloadRowView: View {
                         .foregroundStyle(Theme.textTertiary)
 
                     Text(completedAt, style: .date)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Theme.textTertiary)
                         .lineLimit(1)
                 }
@@ -423,7 +428,7 @@ public struct DownloadRowView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10))
                     Text(reason)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -432,7 +437,7 @@ public struct DownloadRowView: View {
 
             case .idle:
                 Text("Waiting in queue...")
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(Theme.textTertiary)
                     .lineLimit(1)
             }

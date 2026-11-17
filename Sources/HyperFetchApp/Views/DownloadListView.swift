@@ -19,12 +19,6 @@ public struct DownloadListView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top Selection & Batch Actions Toolbar
-            queueSelectionToolbar
-
-            Divider()
-                .overlay(Theme.separator)
-
             // Main Content Area
             if appState.filteredTasks.isEmpty {
                 emptyStateView
@@ -40,6 +34,13 @@ public struct DownloadListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvasBackground)
+        .overlay(alignment: .top) {
+            if !appState.selectedTaskIDs.isEmpty {
+                floatingSelectionBar
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .onDrop(of: [.url, .utf8PlainText], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
@@ -125,162 +126,117 @@ public struct DownloadListView: View {
         return false
     }
 
-    // MARK: - Selection & Batch Action Toolbar
+    // MARK: - Floating Selection & Batch Action Accessory
 
-    private var queueSelectionToolbar: some View {
-        HStack(spacing: 12) {
-            // Select All Checkbox & Count
-            HStack(spacing: 8) {
-                Button {
-                    appState.toggleSelectAll()
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                            .stroke(appState.isAllSelected || appState.isPartiallySelected ? Theme.accent : Theme.cardBorder.opacity(2.0), lineWidth: 1.2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                                    .fill(appState.isAllSelected || appState.isPartiallySelected ? Theme.accent : Color.white.opacity(0.001))
-                            )
-                            .frame(width: 14, height: 14)
+    private var floatingSelectionBar: some View {
+        HStack(spacing: 10) {
+            // Checkbox and selection count
+            Button {
+                appState.toggleSelectAll()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: appState.isAllSelected ? "checkmark.circle.fill" : "circle.inset.filled")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
 
-                        if appState.isAllSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                        } else if appState.isPartiallySelected {
-                            Image(systemName: "minus")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
+                    Text("\(appState.selectedTasks.count) selected")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .help(appState.isAllSelected ? "Deselect All (Esc)" : "Select All (⌘A)")
-
-                Button {
-                    appState.toggleSelectAll()
-                } label: {
-                    if appState.selectedTaskIDs.isEmpty {
-                        Text("\(appState.filteredTasks.count) item\(appState.filteredTasks.count == 1 ? "" : "s")")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.textSecondary)
-                    } else {
-                        Text("\(appState.selectedTasks.count) of \(appState.filteredTasks.count) items selected")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
-            Spacer()
+            Divider()
+                .frame(height: 14)
+                .overlay(Theme.separator)
 
-            if appState.selectedTaskIDs.isEmpty && appState.hasCompletedTasks {
+            // Batch action buttons
+            HStack(spacing: 6) {
                 Button {
-                    appState.clearCompletedTasks()
+                    appState.pauseSelected()
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "xmark.circle")
+                        Image(systemName: "pause.fill")
                             .font(.system(size: 10))
-                        Text("Clear Finished")
+                        Text("Pause")
                     }
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.textSecondary)
                 }
-                .buttonStyle(.tactile)
-                .contentShape(Rectangle())
-                .help("Remove finished downloads from the list without deleting files (⌥⌘K)")
-                .keyboardShortcut("k", modifiers: [.command, .option])
-            }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!appState.hasActiveSelectedTasks)
+                .help("Pause selected downloads")
 
-            // Quick Batch Actions
-            if !appState.selectedTaskIDs.isEmpty {
-                HStack(spacing: 6) {
-                    Button {
-                        appState.pauseSelected()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "pause.fill")
-                                .font(.system(size: 9.5))
-                            Text("Pause")
-                        }
-                        .font(.system(size: 11, weight: .medium))
+                Button {
+                    appState.resumeSelected()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10))
+                        Text("Resume")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!appState.hasActiveSelectedTasks)
-                    .help("Pause selected downloads")
-
-                    Button {
-                        appState.resumeSelected()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 9.5))
-                            Text("Resume")
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!appState.hasResumableSelectedTasks)
-                    .help("Resume selected downloads")
-
-                    Button {
-                        appState.revealSelectedInFinder()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 9.5))
-                            Text("Finder")
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Show selected in Finder")
-
-                    Divider()
-                        .frame(height: 12)
-                        .overlay(Theme.separator)
-                        .padding(.horizontal, 2)
-
-                    Button(role: .destructive) {
-                        appState.promptDeleteSelected()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 9.5))
-                            Text("Delete")
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.critical)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Delete selected downloads from disk...")
-
-                    Button {
-                        appState.deselectAll()
-                    } label: {
-                        Text("Deselect")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .padding(.leading, 4)
-                    .help("Clear selection (Esc)")
+                    .font(.system(size: 11, weight: .medium))
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!appState.hasResumableSelectedTasks)
+                .help("Resume selected downloads")
+
+                Button {
+                    appState.revealSelectedInFinder()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 10))
+                        Text("Finder")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Show selected in Finder")
+
+                Divider()
+                    .frame(height: 12)
+                    .overlay(Theme.separator)
+                    .padding(.horizontal, 2)
+
+                Button(role: .destructive) {
+                    appState.promptDeleteSelected()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10))
+                        Text("Delete")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.critical)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Delete selected downloads from disk...")
+
+                Button {
+                    appState.deselectAll()
+                } label: {
+                    Text("Done")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+                .help("Clear selection (Esc)")
             }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 40)
-        .background(Theme.toolbarBackground)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.selectedTaskIDs.count)
     }
 
     // MARK: - Task Cards ScrollView
@@ -646,6 +602,27 @@ public struct DownloadListView: View {
 
             // Today's total downloaded & refresh button
             HStack(spacing: 10) {
+                if appState.hasCompletedTasks {
+                    Button {
+                        appState.clearCompletedTasks()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 10))
+                            Text("Clear Finished")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("Remove finished downloads from the list without deleting files (⌥⌘K)")
+                    .keyboardShortcut("k", modifiers: [.command, .option])
+
+                    Text("•")
+                        .foregroundStyle(Theme.textTertiary)
+                }
+
                 Text("Total Downloaded Today: \(appState.formattedTotalDownloadedToday)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)

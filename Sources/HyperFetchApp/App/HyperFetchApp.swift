@@ -136,6 +136,31 @@ struct HyperFetchApp: App {
 
                 Divider()
 
+                Button("Select All") {
+                    appState.selectAll()
+                }
+                .keyboardShortcut("a", modifiers: .command)
+
+                Button("Reveal in Finder") {
+                    appState.revealSelectedInFinder()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(appState.selectedTaskIDs.isEmpty)
+
+                Button("Open Downloaded File") {
+                    appState.openSelectedFile()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(appState.selectedTaskIDs.isEmpty)
+
+                Button("Delete Selected...") {
+                    appState.promptDeleteSelected()
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(appState.selectedTaskIDs.isEmpty)
+
+                Divider()
+
                 Menu("Speed Limit") {
                     ForEach(SpeedLimitPreset.allCases) { preset in
                         Button {

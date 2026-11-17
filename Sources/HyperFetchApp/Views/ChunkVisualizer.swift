@@ -11,6 +11,7 @@ import DownloadKit
 /// Displays the segmented multi-chunk download visualizer and per-thread telemetry.
 public struct ChunkVisualizer: View {
     public let task: DownloadTaskModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(task: DownloadTaskModel) {
         self.task = task
@@ -161,7 +162,7 @@ public struct ChunkVisualizer: View {
                 .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.cardBackground))
                 .frame(height: 34)
 
-            if isActive {
+            if isActive && !reduceMotion {
                 // Bottom pulsing progress highlight
                 VStack {
                     Spacer()
@@ -220,7 +221,7 @@ public struct ChunkVisualizer: View {
                     Capsule()
                         .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary.opacity(0.3)))
                         .frame(width: geo.size.width * progressRatio, height: 5)
-                        .animation(.spring(), value: chunk.progress)
+                        .animation(reduceMotion ? nil : .linear(duration: 0.2), value: chunk.progress)
                 }
             }
             .frame(height: 5)
@@ -233,7 +234,7 @@ public struct ChunkVisualizer: View {
 
             // Status Badge
             Text(chunkStatusTitle(chunk))
-                .font(.system(size: 9.5, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(isDone ? Theme.success : (isActive ? Theme.accent : Theme.textTertiary))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

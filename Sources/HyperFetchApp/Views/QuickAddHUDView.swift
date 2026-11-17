@@ -169,40 +169,10 @@ public struct QuickAddHUDView: View {
     }
 
     private var categoryIcon: String {
-        let category = DownloadCategory.category(for: filename)
-        switch category {
-        case .all:
-            return "tray.full"
-        case .archives:
-            return "archivebox.fill"
-        case .documents:
-            return "doc.text.fill"
-        case .video:
-            return "film.fill"
-        case .music:
-            return "music.note"
-        case .applications:
-            return "app.fill"
-        case .other:
-            return "arrow.down.circle.fill"
-        }
+        DownloadCategory.category(for: filename).systemImageName
     }
 
     private var categoryColor: Color {
-        let category = DownloadCategory.category(for: filename)
-        switch category {
-        case .applications:
-            return .blue
-        case .archives:
-            return .orange
-        case .documents:
-            return .red
-        case .video:
-            return .purple
-        case .music:
-            return .pink
-        case .other, .all:
-            return .cyan
-        }
+        DownloadCategory.category(for: filename).accentColor
     }
 }
