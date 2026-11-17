@@ -290,7 +290,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       HyperFetch Desktop
                     </h4>
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Version 1.0.13 (Native Rust & Tauri v2 Engine)
+                      Version 1.2.1
                     </p>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">

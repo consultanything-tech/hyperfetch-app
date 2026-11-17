@@ -734,7 +734,7 @@ private struct UpdatesSettingsTab: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("HyperFetch")
                                 .font(.headline)
-                            Text("Version \(versionManager.currentVersion) (Build \(versionManager.buildNumber))")
+                            Text("Version \(versionManager.currentVersion)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }

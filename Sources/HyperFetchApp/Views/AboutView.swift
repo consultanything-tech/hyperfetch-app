@@ -36,7 +36,7 @@ public struct AboutView: View {
             }
 
             // Version details
-            Text("Version \(versionManager.currentVersion) (\(versionManager.buildNumber))")
+            Text("Version \(versionManager.currentVersion)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
