@@ -14,7 +14,6 @@ import DownloadKit
 public struct DownloadRowView: View {
     public let task: DownloadTaskModel
     @EnvironmentObject private var appState: AppState
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewState private var isHovered: Bool = false
     @ViewState private var isMoreHovered: Bool = false
@@ -128,11 +127,7 @@ public struct DownloadRowView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .fill(
-                    reduceTransparency
-                        ? (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Color(NSColor.windowBackgroundColor)))
-                        : (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
-                )
+                .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
                 .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
                 .onTapGesture {
                     if NSEvent.modifierFlags.contains(.shift) {
@@ -151,22 +146,7 @@ public struct DownloadRowView: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .strokeBorder(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1.0)
-        }
-        .overlay(alignment: .top) {
-            if !isSelected && !reduceTransparency {
-                RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.22), Color.clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.75
-                    )
-                    .frame(height: 14)
-                    .clipped()
-            }
+                .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1)
         }
         .shadow(
             color: isSelected ? Theme.accent.opacity(0.18) : Color.black.opacity(0.04),
@@ -304,10 +284,10 @@ public struct DownloadRowView: View {
             ZStack(alignment: .leading) {
                 // Background Track
                 Capsule()
-                    .fill(Theme.canvasBackground)
+                    .fill(Color.dynamic(dark: NSColor(hex: 0x13151c), light: NSColor(hex: 0xE8ECF2)))
                     .overlay(
                         Capsule()
-                            .strokeBorder(Theme.cardBorder, lineWidth: 1)
+                            .stroke(Theme.cardBorder, lineWidth: 1)
                     )
                     .frame(height: 7)
 

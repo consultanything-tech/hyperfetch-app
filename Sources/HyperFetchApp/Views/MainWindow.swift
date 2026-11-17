@@ -43,26 +43,10 @@ public struct MainWindow: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
-            .background {
-                ZStack {
-                    VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
-                    Color.dynamic(
-                        dark: NSColor(hex: 0x0e1017, alpha: 0.45),
-                        light: NSColor(white: 1.0, alpha: 0.35)
-                    )
-                }
-            }
+            .background(Theme.inspectorBackground)
         }
         .navigationSplitViewStyle(.balanced)
-        .background {
-            ZStack {
-                VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow)
-                Color.dynamic(
-                    dark: NSColor(hex: 0x0b0d14, alpha: 0.60),
-                    light: NSColor(white: 1.0, alpha: 0.45)
-                )
-            }
-        }
+        .background(Theme.canvasBackground)
         .searchable(text: $appState.searchText, prompt: "Search downloads...")
         .preferredColorScheme(appState.preferredColorScheme)
         .toolbar {
@@ -396,15 +380,7 @@ public struct MainWindow: View {
         }
         .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background {
-            ZStack {
-                VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
-                Color.dynamic(
-                    dark: NSColor(hex: 0x0e1017, alpha: 0.45),
-                    light: NSColor(white: 1.0, alpha: 0.35)
-                )
-            }
-        }
+        .background(Theme.inspectorBackground)
     }
 
     private func inspectorSelectedHeader(for task: DownloadTaskModel) -> some View {
@@ -532,7 +508,11 @@ public struct MainWindow: View {
             }
         }
         .padding(14)
-        .liquidGlass(cornerRadius: 10)
+        .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
     }
 
     private func taskMetadataCard(for task: DownloadTaskModel) -> some View {
@@ -624,7 +604,11 @@ public struct MainWindow: View {
             }
         }
         .padding(14)
-        .liquidGlass(cornerRadius: 10)
+        .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
     }
 
     private func metadataRow<V: View>(label: String, @ViewBuilder value: () -> V) -> some View {
@@ -727,7 +711,11 @@ public struct MainWindow: View {
                     Spacer()
                 }
                 .padding(12)
-                .liquidGlass(cornerRadius: 10)
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
 
                 // Network & Concurrency
                 VStack(alignment: .leading, spacing: 10) {
@@ -764,7 +752,11 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .liquidGlass(cornerRadius: 10)
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
 
                 // Queue Status
                 VStack(alignment: .leading, spacing: 10) {
@@ -801,7 +793,11 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .liquidGlass(cornerRadius: 10)
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
 
                 // Storage
                 VStack(alignment: .leading, spacing: 10) {
@@ -826,7 +822,11 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .liquidGlass(cornerRadius: 10)
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Theme.cardBorder, lineWidth: 1)
+                )
 
                 // Helper note
                 HStack(spacing: 8) {
@@ -843,15 +843,7 @@ public struct MainWindow: View {
         }
         .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background {
-            ZStack {
-                VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
-                Color.dynamic(
-                    dark: NSColor(hex: 0x0e1017, alpha: 0.45),
-                    light: NSColor(white: 1.0, alpha: 0.35)
-                )
-            }
-        }
+        .background(Theme.inspectorBackground)
     }
 }
 

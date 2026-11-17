@@ -22,12 +22,11 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 1000, height: 600)
         window.appearance = NSApp.appearance
 
-        window.styleMask.insert(.fullSizeContentView)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.toolbarStyle = .unifiedCompact
+        window.titlebarAppearsTransparent = false
+        window.titleVisibility = .visible
+        window.isOpaque = true
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.toolbarStyle = .unified
 
         let currentFrame = window.frame
         if currentFrame.width < 1100 || currentFrame.height < 650 {
@@ -57,8 +56,8 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         if let window = mainWindow {
-            window.isOpaque = false
-            window.backgroundColor = .clear
+            window.isOpaque = true
+            window.backgroundColor = NSColor.windowBackgroundColor
             let currentFrame = window.frame
             if currentFrame.width < 1100 || currentFrame.height < 650 {
                 window.setContentSize(NSSize(width: 1200, height: 750))
@@ -72,8 +71,8 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
             configureSplitViewItems()
         } else {
             for window in NSApp.windows where window.canBecomeMain {
-                window.isOpaque = false
-                window.backgroundColor = .clear
+                window.isOpaque = true
+                window.backgroundColor = NSColor.windowBackgroundColor
                 let currentFrame = window.frame
                 if currentFrame.width < 1100 || currentFrame.height < 650 {
                     window.setContentSize(NSSize(width: 1200, height: 750))

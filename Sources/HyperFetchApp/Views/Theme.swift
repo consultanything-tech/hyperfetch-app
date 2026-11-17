@@ -35,13 +35,10 @@ public enum Theme {
     }
 
     /// Foundation level canvas behind split views and main content area.
-    public static let canvasBackground = Color.dynamic(
-        dark: NSColor(hex: 0x0e1017, alpha: 0.70),
-        light: NSColor(hex: 0xE6E9F0, alpha: 0.85)
-    )
+    public static let canvasBackground = Color(NSColor.windowBackgroundColor)
 
     /// Primary window background surface.
-    public static let windowSurface = Color.clear
+    public static let windowSurface = Color(NSColor.windowBackgroundColor)
 
     /// Left sidebar container background adopting translucent system window background.
     public static let sidebarBackground = Color(NSColor.windowBackgroundColor)
@@ -54,38 +51,38 @@ public enum Theme {
 
     /// Inactive card container surface.
     public static let cardBackground = Color.dynamic(
-        dark: NSColor(hex: 0x171923, alpha: 0.85),
-        light: NSColor(white: 1.0, alpha: 0.92)
+        dark: NSColor(hex: 0x1c1e26),
+        light: NSColor(hex: 0xFFFFFF)
     )
 
     /// Active / selected card container surface.
     public static let cardActive = Color.dynamic(
-        dark: NSColor(hex: 0x13284a, alpha: 0.92),
-        light: NSColor(hex: 0xEDF4FF, alpha: 0.98)
+        dark: NSColor(hex: 0x162c4e),
+        light: NSColor(hex: 0xEDF4FF)
     )
 
     /// Subtle card hairline border.
     public static let cardBorder = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.15),
-        light: NSColor(black: 1.0, alpha: 0.10)
+        dark: NSColor(white: 1.0, alpha: 0.10),
+        light: NSColor(white: 0.0, alpha: 0.08)
     )
 
     /// Active / selected card highlight border.
     public static let cardBorderActive = Color.dynamic(
-        dark: NSColor(hex: 0x0a84ff, alpha: 0.85),
-        light: NSColor(hex: 0x007aff, alpha: 0.80)
+        dark: NSColor(hex: 0x0a84ff),
+        light: NSColor(hex: 0x007aff)
     )
 
     /// Card hover highlight.
     public static let cardHover = Color.dynamic(
-        dark: NSColor(hex: 0x1f2330, alpha: 0.92),
-        light: NSColor(white: 1.0, alpha: 0.98)
+        dark: NSColor(hex: 0x242834),
+        light: NSColor(hex: 0xF5F6F8)
     )
 
     /// Subtle pill / tag background.
     public static let tagBackground = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.12),
-        light: NSColor(black: 1.0, alpha: 0.06)
+        dark: NSColor(white: 1.0, alpha: 0.08),
+        light: NSColor(white: 0.0, alpha: 0.05)
     )
 
     /// Input field background.
@@ -101,10 +98,7 @@ public enum Theme {
     )
 
     /// Status bar and footer background.
-    public static let statusBarBackground = Color.dynamic(
-        dark: NSColor(hex: 0x0f1118, alpha: 0.88),
-        light: NSColor(hex: 0xF2F4F7, alpha: 0.92)
-    )
+    public static let statusBarBackground = Color(NSColor.windowBackgroundColor)
 
     /// General separator line.
     public static let separator = Color.dynamic(
@@ -285,7 +279,6 @@ public struct VisualEffectBlur: NSViewRepresentable {
 
 public struct LiquidGlassStyle: ViewModifier {
     public var cornerRadius: CGFloat
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(cornerRadius: CGFloat = Theme.cornerRadiusMedium) {
         self.cornerRadius = cornerRadius
@@ -294,35 +287,13 @@ public struct LiquidGlassStyle: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .background(
-                Group {
-                    if reduceTransparency {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(Color(NSColor.windowBackgroundColor))
-                    } else {
-                        ZStack {
-                            VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
-                            Color.white.opacity(0.04)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    }
-                }
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Theme.cardBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.22), location: 0.0),
-                                .init(color: .white.opacity(0.08), location: 0.3),
-                                .init(color: .white.opacity(0.02), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.5
-                    )
+                    .stroke(Theme.cardBorder, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
     }
 }
 

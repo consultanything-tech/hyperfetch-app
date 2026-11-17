@@ -19,6 +19,15 @@ public struct DownloadListView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            if !appState.selectedTaskIDs.isEmpty {
+                floatingSelectionBar
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Theme.cardBackground)
+                    .overlay(Divider().overlay(Theme.separator), alignment: .bottom)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Main Content Area
             if appState.filteredTasks.isEmpty {
                 emptyStateView
@@ -34,13 +43,6 @@ public struct DownloadListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
-        .overlay(alignment: .top) {
-            if !appState.selectedTaskIDs.isEmpty {
-                floatingSelectionBar
-                    .padding(.top, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
         .onDrop(of: [.url, .utf8PlainText], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
@@ -227,15 +229,9 @@ public struct DownloadListView: View {
                 .padding(.leading, 4)
                 .help("Clear selection (Esc)")
             }
+
+            Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Theme.cardBorder, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.selectedTaskIDs.count)
     }
 
@@ -645,6 +641,6 @@ public struct DownloadListView: View {
         .padding(.horizontal, 16)
         .frame(height: 26)
         .frame(maxWidth: .infinity)
-        .background(VisualEffectBlur(material: .headerView, blendingMode: .withinWindow))
+        .background(Theme.statusBarBackground)
     }
 }
