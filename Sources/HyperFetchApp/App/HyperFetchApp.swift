@@ -48,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        NSMenu.cancelTracking()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainWindowDelegate.shared.isTerminating = true
         AppState.shared?.flushSync()

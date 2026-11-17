@@ -546,14 +546,20 @@ public struct DownloadRowView: View {
                 queuePositionMenu
                 Divider()
                 Button("Copy Download Link") {
-                    appState.copyDownloadLink(task: task)
+                    DispatchQueue.main.async {
+                        appState.copyDownloadLink(task: task)
+                    }
                 }
                 Divider()
                 Button("Remove from List") {
-                    appState.remove(id: task.id, deleteFile: false)
+                    DispatchQueue.main.async {
+                        appState.remove(id: task.id, deleteFile: false)
+                    }
                 }
                 Button("Delete File from Disk...", role: .destructive) {
-                    appState.promptDelete(task: task)
+                    DispatchQueue.main.async {
+                        appState.promptDelete(task: task)
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -565,11 +571,12 @@ public struct DownloadRowView: View {
                             .fill(isMoreHovered ? Theme.tagBackground : Color.white.opacity(0.001))
                     )
                     .contentShape(Rectangle())
+                    .onHover { isMoreHovered = $0 }
             }
+            .id("row-more-menu-\(task.id)")
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .contentShape(Rectangle())
-            .onHover { isMoreHovered = $0 }
             .help("More Options")
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -583,28 +590,36 @@ public struct DownloadRowView: View {
 
         Menu {
             Button {
-                appState.moveTaskToTop(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskToTop(id: task.id)
+                }
             } label: {
                 Label("Move to Top", systemImage: "arrow.up.to.line")
             }
             .disabled(isFirst)
 
             Button {
-                appState.moveTaskUp(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskUp(id: task.id)
+                }
             } label: {
                 Label("Move Up", systemImage: "arrow.up")
             }
             .disabled(isFirst)
 
             Button {
-                appState.moveTaskDown(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskDown(id: task.id)
+                }
             } label: {
                 Label("Move Down", systemImage: "arrow.down")
             }
             .disabled(isLast)
 
             Button {
-                appState.moveTaskToBottom(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskToBottom(id: task.id)
+                }
             } label: {
                 Label("Move to Bottom", systemImage: "arrow.down.to.line")
             }
@@ -612,6 +627,7 @@ public struct DownloadRowView: View {
         } label: {
             Label("Queue Position", systemImage: "arrow.up.arrow.down")
         }
+        .id("row-queue-menu-\(task.id)")
     }
 }
 

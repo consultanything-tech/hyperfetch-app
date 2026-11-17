@@ -243,6 +243,7 @@ public struct DownloadListView: View {
                 LazyVStack(spacing: 2) {
                     ForEach(appState.filteredTasks) { task in
                         CompactDownloadRowView(task: task)
+                            .id(task.id)
                             .contextMenu {
                                 rowContextMenu(for: task)
                             }
@@ -254,6 +255,7 @@ public struct DownloadListView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(appState.filteredTasks) { task in
                         DownloadRowView(task: task)
+                            .id(task.id)
                             .contextMenu {
                                 rowContextMenu(for: task)
                             }
@@ -281,27 +283,37 @@ public struct DownloadListView: View {
     private var multiRowContextMenu: some View {
         let count = appState.selectedTasks.count
         Button("Pause Selected (\(count))") {
-            appState.pauseSelected()
+            DispatchQueue.main.async {
+                appState.pauseSelected()
+            }
         }
         .disabled(!appState.hasActiveSelectedTasks)
 
         Button("Resume Selected (\(count))") {
-            appState.resumeSelected()
+            DispatchQueue.main.async {
+                appState.resumeSelected()
+            }
         }
         .disabled(!appState.hasResumableSelectedTasks)
 
         Divider()
 
         Button("Show in Finder") {
-            appState.revealSelectedInFinder()
+            DispatchQueue.main.async {
+                appState.revealSelectedInFinder()
+            }
         }
 
         Button("Remove Selected from List", role: .destructive) {
-            appState.removeSelected(deleteFile: false)
+            DispatchQueue.main.async {
+                appState.removeSelected(deleteFile: false)
+            }
         }
 
         Button("Delete Selected Files from Disk...", role: .destructive) {
-            appState.promptDeleteSelected()
+            DispatchQueue.main.async {
+                appState.promptDeleteSelected()
+            }
         }
     }
 
@@ -310,38 +322,54 @@ public struct DownloadListView: View {
         switch task.status {
         case .downloading, .probing:
             Button("Pause Download") {
-                appState.pause(id: task.id)
+                DispatchQueue.main.async {
+                    appState.pause(id: task.id)
+                }
             }
         case .paused, .idle, .failed:
             Button("Resume Download") {
-                appState.resume(id: task.id)
+                DispatchQueue.main.async {
+                    appState.resume(id: task.id)
+                }
             }
         case .completed:
             Button("Open File") {
-                appState.openFile(task: task)
+                DispatchQueue.main.async {
+                    appState.openFile(task: task)
+                }
             }
         }
 
         Button("Show in Finder") {
-            appState.openInFinder(task: task)
+            DispatchQueue.main.async {
+                appState.openInFinder(task: task)
+            }
         }
 
         if task.status == .completed {
             Button("Quick Look File") {
-                appState.quickLookFile(task: task)
+                DispatchQueue.main.async {
+                    appState.quickLookFile(task: task)
+                }
             }
         }
 
         Button("Copy Download Link") {
-            appState.copyDownloadLink(task: task)
+            DispatchQueue.main.async {
+                appState.copyDownloadLink(task: task)
+            }
         }
 
         Button("Copy File Path") {
-            appState.copyFilePath(task: task)
+            DispatchQueue.main.async {
+                appState.copyFilePath(task: task)
+            }
         }
 
         Button("Restart Download") {
-            appState.restartTask(id: task.id)
+            DispatchQueue.main.async {
+                appState.restartTask(id: task.id)
+            }
         }
 
         Divider()
@@ -352,28 +380,36 @@ public struct DownloadListView: View {
             let isLast = taskIndex == (appState.tasks.count - 1)
 
             Button {
-                appState.moveTaskToTop(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskToTop(id: task.id)
+                }
             } label: {
                 Label("Move to Top", systemImage: "arrow.up.to.line")
             }
             .disabled(isFirst)
 
             Button {
-                appState.moveTaskUp(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskUp(id: task.id)
+                }
             } label: {
                 Label("Move Up", systemImage: "arrow.up")
             }
             .disabled(isFirst)
 
             Button {
-                appState.moveTaskDown(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskDown(id: task.id)
+                }
             } label: {
                 Label("Move Down", systemImage: "arrow.down")
             }
             .disabled(isLast)
 
             Button {
-                appState.moveTaskToBottom(id: task.id)
+                DispatchQueue.main.async {
+                    appState.moveTaskToBottom(id: task.id)
+                }
             } label: {
                 Label("Move to Bottom", systemImage: "arrow.down.to.line")
             }
@@ -385,11 +421,15 @@ public struct DownloadListView: View {
         Divider()
 
         Button("Remove from List", role: .destructive) {
-            appState.remove(id: task.id, deleteFile: false)
+            DispatchQueue.main.async {
+                appState.remove(id: task.id, deleteFile: false)
+            }
         }
 
         Button("Delete File from Disk...", role: .destructive) {
-            appState.promptDelete(task: task)
+            DispatchQueue.main.async {
+                appState.promptDelete(task: task)
+            }
         }
     }
 

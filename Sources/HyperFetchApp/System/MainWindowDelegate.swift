@@ -10,6 +10,7 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
     public static let shared = MainWindowDelegate()
     public weak var mainWindow: NSWindow?
     public var isTerminating: Bool = false
+    private var hasConfiguredObservers: Bool = false
 
     private override init() {
         super.init()
@@ -21,6 +22,24 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 1000, height: 600)
         window.appearance = NSApp.appearance
+
+        if !hasConfiguredObservers {
+            hasConfiguredObservers = true
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                NSMenu.cancelTracking()
+            }
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                NSMenu.cancelTracking()
+            }
+        }
 
         window.titlebarAppearsTransparent = false
         window.titleVisibility = .visible
@@ -50,6 +69,14 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
         // Hide window instead of destroying it
         sender.orderOut(nil)
         return false
+    }
+
+    public func windowDidResignKey(_ notification: Notification) {
+        NSMenu.cancelTracking()
+    }
+
+    public func windowDidResignMain(_ notification: Notification) {
+        NSMenu.cancelTracking()
     }
 
     public func reopenMainWindow() {
@@ -179,6 +206,32 @@ public final class MainWindowDelegate: NSObject, NSWindowDelegate {
             context.duration = 0.25
             context.allowsImplicitAnimation = true
             detailItem.animator().isCollapsed.toggle()
+        }
+    }
+}
+
+extension NSMenu {
+    /// Cancels any active menu tracking sessions (main menu bar, context menus, popup menus).
+    public static func cancelTracking() {
+        let dismiss: @MainActor () -> Void = {
+            NSApp.mainMenu?.cancelTrackingWithoutAnimation()
+            let cancelSel = NSSelectorFromString("cancel:")
+            for window in NSApp.windows {
+                let className = NSStringFromClass(type(of: window))
+                if className.contains("Menu") && window.responds(to: cancelSel) {
+                    window.perform(cancelSel, with: nil)
+                }
+            }
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                dismiss()
+            }
+        } else {
+            DispatchQueue.main.async {
+                dismiss()
+            }
         }
     }
 }
