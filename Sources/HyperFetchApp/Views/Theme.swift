@@ -35,10 +35,10 @@ public enum Theme {
     }
 
     /// Foundation level canvas behind split views and main content area.
-    public static let canvasBackground = Color(NSColor.controlBackgroundColor)
+    public static let canvasBackground = Color.clear
 
     /// Primary window background surface.
-    public static let windowSurface = Color(NSColor.windowBackgroundColor)
+    public static let windowSurface = Color.clear
 
     /// Left sidebar container background adopting translucent system window background.
     public static let sidebarBackground = Color(NSColor.windowBackgroundColor)
@@ -51,19 +51,19 @@ public enum Theme {
 
     /// Inactive card container surface.
     public static let cardBackground = Color.dynamic(
-        dark: NSColor(hex: 0x1c1e24),
-        light: NSColor(hex: 0xFFFFFF)
+        dark: NSColor(white: 1.0, alpha: 0.05),
+        light: NSColor(white: 1.0, alpha: 0.70)
     )
 
     /// Active / selected card container surface.
     public static let cardActive = Color.dynamic(
-        dark: NSColor(hex: 0x20242f),
-        light: NSColor(hex: 0xF0F4FF)
+        dark: NSColor(hex: 0x0a84ff, alpha: 0.16),
+        light: NSColor(hex: 0x007aff, alpha: 0.12)
     )
 
     /// Subtle card hairline border.
     public static let cardBorder = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.08),
+        dark: NSColor(white: 1.0, alpha: 0.10),
         light: NSColor(white: 0.0, alpha: 0.08)
     )
 
@@ -75,8 +75,8 @@ public enum Theme {
 
     /// Card hover highlight.
     public static let cardHover = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.04),
-        light: NSColor(white: 0.0, alpha: 0.03)
+        dark: NSColor(white: 1.0, alpha: 0.08),
+        light: NSColor(white: 1.0, alpha: 0.85)
     )
 
     /// Subtle pill / tag background.
@@ -248,9 +248,88 @@ public enum Theme {
     }
 }
 
+// MARK: - Liquid Glass & Visual Effect Blur
+
+public struct VisualEffectBlur: NSViewRepresentable {
+    public var material: NSVisualEffectView.Material
+    public var blendingMode: NSVisualEffectView.BlendingMode
+    public var state: NSVisualEffectView.State
+
+    public init(
+        material: NSVisualEffectView.Material = .sidebar,
+        blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
+        state: NSVisualEffectView.State = .followsWindowActiveState
+    ) {
+        self.material = material
+        self.blendingMode = blendingMode
+        self.state = state
+    }
+
+    public func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        return view
+    }
+
+    public func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+    }
+}
+
+public struct LiquidGlassStyle: ViewModifier {
+    public var cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    public init(cornerRadius: CGFloat = Theme.cornerRadiusMedium) {
+        self.cornerRadius = cornerRadius
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .background(
+                Group {
+                    if reduceTransparency {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color(NSColor.windowBackgroundColor))
+                    } else {
+                        ZStack {
+                            VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
+                            Color.white.opacity(0.04)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.22), location: 0.0),
+                                .init(color: .white.opacity(0.08), location: 0.3),
+                                .init(color: .white.opacity(0.02), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
+            .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
+    }
+}
+
 public extension View {
     func translucentSidebarStyle() -> some View {
         modifier(Theme.TranslucentSidebarStyle())
+    }
+
+    func liquidGlass(cornerRadius: CGFloat = Theme.cornerRadiusMedium) -> some View {
+        modifier(LiquidGlassStyle(cornerRadius: cornerRadius))
     }
 }
 
