@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
   LayoutList,
   Rows3,
+  PanelRight,
 } from "lucide-react";
 import type { ViewMode } from "../types/download";
 
@@ -21,6 +22,8 @@ interface ToolbarProps {
   onPauseAll: () => void;
   onResumeAll: () => void;
   activeDownloadCount: number;
+  showInspector: boolean;
+  onToggleInspector: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -33,6 +36,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPauseAll,
   onResumeAll,
   activeDownloadCount,
+  showInspector,
+  onToggleInspector,
 }) => {
   return (
     <header className="h-14 px-4 bg-white/70 dark:bg-zinc-950/70 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-4 select-none shrink-0 z-10">
@@ -40,8 +45,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center gap-2">
         <button
           onClick={onOpenAddModal}
-          className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-blue-500/25 transition-all cursor-pointer"
-          title="New Download (Cmd+N)"
+          className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-blue-500/25 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500"
+          title="New Download (Ctrl+N / Cmd+N)"
+          aria-label="New Download"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>New</span>
@@ -51,8 +57,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         <button
           onClick={onResumeAll}
-          className="h-8 px-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60"
+          className="h-8 px-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60 focus-visible:ring-2 focus-visible:ring-blue-500"
           title="Resume All Downloads"
+          aria-label="Resume All Downloads"
         >
           <Play className="w-3.5 h-3.5 fill-current" />
           <span className="hidden sm:inline">Resume All</span>
@@ -60,8 +67,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         <button
           onClick={onPauseAll}
-          className="h-8 px-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60"
+          className="h-8 px-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60 focus-visible:ring-2 focus-visible:ring-blue-500"
           title="Pause All Downloads"
+          aria-label="Pause All Downloads"
         >
           <Pause className="w-3.5 h-3.5 fill-current" />
           <span className="hidden sm:inline">Pause All</span>
@@ -89,13 +97,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <button
             onClick={() => onSearchChange("")}
             className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+            aria-label="Clear search query"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
-      {/* Right Controls: View Mode & Settings */}
+      {/* Right Controls: View Mode, Inspector Toggle & Settings */}
       <div className="flex items-center gap-2">
         {/* Segmented View Mode Switcher */}
         <div className="h-8 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center">
@@ -107,6 +116,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             }`}
             title="Comfortable Detailed View"
+            aria-label="Comfortable Detailed View"
           >
             <LayoutList className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Comfortable</span>
@@ -120,17 +130,33 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             }`}
             title="Compact High-Density 36px View"
+            aria-label="Compact High-Density 36px View"
           >
             <Rows3 className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Compact</span>
           </button>
         </div>
 
+        {/* Inspector Toggle Button (mirrors macOS Cmd+I button) */}
+        <button
+          onClick={onToggleInspector}
+          className={`h-8 w-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            showInspector
+              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+              : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700/60"
+          }`}
+          title="Toggle Inspector (Ctrl+I / Cmd+I)"
+          aria-label="Toggle Details Inspector"
+        >
+          <PanelRight className="w-4 h-4" />
+        </button>
+
         {/* Settings button */}
         <button
           onClick={onOpenSettingsModal}
-          className="h-8 w-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60"
-          title="Preferences & Settings"
+          className="h-8 w-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700/60 focus-visible:ring-2 focus-visible:ring-blue-500"
+          title="Preferences & Settings (Cmd+, / Ctrl+,)"
+          aria-label="Preferences & Settings"
         >
           <SlidersHorizontal className="w-4 h-4" />
         </button>

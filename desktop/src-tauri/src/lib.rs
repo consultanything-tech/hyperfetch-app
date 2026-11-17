@@ -221,6 +221,7 @@ pub fn run() {
             commands::delete_download,
             commands::pause_all,
             commands::resume_all,
+            commands::reorder_task,
             commands::probe_url_info,
             commands::open_file,
             commands::open_containing_folder,

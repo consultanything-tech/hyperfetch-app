@@ -45,7 +45,14 @@ export interface DownloadTask {
   created_at: number;
   completed_at?: number | null;
   headers?: Record<string, string>;
+  etag?: string | null;
+  last_modified?: string | null;
+  preferred_chunk_count?: number | null;
+  expected_checksum?: string | null;
+  checksum_verified?: boolean | null;
 }
+
+export type QueueAction = "top" | "up" | "down" | "bottom";
 
 export interface ProbeResult {
   content_length?: number | null;

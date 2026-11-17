@@ -852,6 +852,48 @@ impl DownloadEngine {
         Ok(())
     }
 
+    /// Reorders a task in the download queue.
+    /// Actions: "top", "up", "down", "bottom"
+    pub async fn reorder_task(&self, id: &str, action: &str) -> Result<Vec<DownloadTask>, EngineError> {
+        let mut tasks = self.tasks.write().await;
+        let pos = tasks
+            .iter()
+            .position(|t| t.id == id)
+            .ok_or_else(|| EngineError::TaskNotFound(id.to_string()))?;
+
+        match action {
+            "top" => {
+                if pos > 0 {
+                    let task = tasks.remove(pos);
+                    tasks.insert(0, task);
+                }
+            }
+            "up" => {
+                if pos > 0 {
+                    tasks.swap(pos, pos - 1);
+                }
+            }
+            "down" => {
+                if pos + 1 < tasks.len() {
+                    tasks.swap(pos, pos + 1);
+                }
+            }
+            "bottom" => {
+                if pos + 1 < tasks.len() {
+                    let task = tasks.remove(pos);
+                    tasks.push(task);
+                }
+            }
+            _ => return Err(EngineError::Other(format!("Invalid reorder action: {}", action))),
+        }
+
+        let updated_list = tasks.clone();
+        drop(tasks);
+
+        self.save_state().await?;
+        Ok(updated_list)
+    }
+
     /// Returns a list of all managed download tasks.
     pub async fn get_tasks(&self) -> Vec<DownloadTask> {
         self.tasks.read().await.clone()
@@ -1565,5 +1607,54 @@ mod tests {
             .await
             .unwrap();
         assert!(!res3);
+    }
+
+    #[tokio::test]
+    async fn test_reorder_task_queue() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("tasks_reorder.json");
+        let engine = DownloadEngine::with_state_path(&state_path);
+
+        let t1 = engine
+            .add_download("http://example.com/file1.zip".into(), None, None, false, None, None, None)
+            .await
+            .unwrap();
+        let t2 = engine
+            .add_download("http://example.com/file2.zip".into(), None, None, false, None, None, None)
+            .await
+            .unwrap();
+        let t3 = engine
+            .add_download("http://example.com/file3.zip".into(), None, None, false, None, None, None)
+            .await
+            .unwrap();
+
+        // Initial order: [t1, t2, t3]
+        let list = engine.get_tasks().await;
+        assert_eq!(list[0].id, t1.id);
+        assert_eq!(list[1].id, t2.id);
+        assert_eq!(list[2].id, t3.id);
+
+        // Move t3 to top -> [t3, t1, t2]
+        let list = engine.reorder_task(&t3.id, "top").await.unwrap();
+        assert_eq!(list[0].id, t3.id);
+        assert_eq!(list[1].id, t1.id);
+        assert_eq!(list[2].id, t2.id);
+
+        // Move t3 down -> [t1, t3, t2]
+        let list = engine.reorder_task(&t3.id, "down").await.unwrap();
+        assert_eq!(list[0].id, t1.id);
+        assert_eq!(list[1].id, t3.id);
+        assert_eq!(list[2].id, t2.id);
+
+        // Move t3 up -> [t3, t1, t2]
+        let list = engine.reorder_task(&t3.id, "up").await.unwrap();
+        assert_eq!(list[0].id, t3.id);
+        assert_eq!(list[1].id, t1.id);
+
+        // Move t3 to bottom -> [t1, t2, t3]
+        let list = engine.reorder_task(&t3.id, "bottom").await.unwrap();
+        assert_eq!(list[0].id, t1.id);
+        assert_eq!(list[1].id, t2.id);
+        assert_eq!(list[2].id, t3.id);
     }
 }

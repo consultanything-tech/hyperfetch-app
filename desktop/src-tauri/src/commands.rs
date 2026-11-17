@@ -81,6 +81,19 @@ pub async fn pause_all(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn reorder_task(
+    state: State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<Vec<DownloadTask>, String> {
+    state
+        .engine
+        .reorder_task(&id, &action)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn resume_all(state: State<'_, AppState>) -> Result<(), String> {
     state.engine.resume_all().await.map_err(|e| e.to_string())
 }

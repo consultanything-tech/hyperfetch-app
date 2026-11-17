@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Layers,
   Download,
@@ -30,6 +30,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectFilter,
   tasks,
 }) => {
+  // Rolling speed samples for live sparkline (8-10 samples)
+  const [speedHistory, setSpeedHistory] = useState<number[]>([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+
   // Counts calculation
   const totalCount = tasks.length;
   const downloadingCount = tasks.filter(
@@ -49,6 +54,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const totalSpeed = tasks
     .filter((t) => t.status === "downloading" || t.status === "connecting")
     .reduce((acc, t) => acc + (t.speed || 0), 0);
+
+  // Maintain rolling speed history buffer sampled every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSpeedHistory((prev) => {
+        const next = [...prev.slice(1), totalSpeed];
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [totalSpeed]);
 
   const transferItems = [
     {
@@ -81,27 +97,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  // Category labels aligned with macOS HyperFetch
   const categoryItems = [
     {
       id: "videos" as SidebarFilter,
-      label: "Videos",
+      label: "Video & Media",
       icon: Film,
       count: videosCount,
       color: "text-purple-500",
     },
     {
       id: "music" as SidebarFilter,
-      label: "Music",
+      label: "Audio & Music",
       icon: Music,
       count: musicCount,
       color: "text-pink-500",
-    },
-    {
-      id: "documents" as SidebarFilter,
-      label: "Documents",
-      icon: FileText,
-      count: documentsCount,
-      color: "text-blue-400",
     },
     {
       id: "archives" as SidebarFilter,
@@ -111,15 +121,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: "text-amber-500",
     },
     {
+      id: "documents" as SidebarFilter,
+      label: "Documents",
+      icon: FileText,
+      count: documentsCount,
+      color: "text-blue-400",
+    },
+    {
       id: "programs" as SidebarFilter,
-      label: "Programs",
+      label: "Applications & Disk",
       icon: Cpu,
       count: programsCount,
       color: "text-emerald-400",
     },
     {
       id: "others" as SidebarFilter,
-      label: "Others",
+      label: "Other",
       icon: File,
       count: othersCount,
       color: "text-zinc-400",
@@ -134,10 +151,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // Compute maximum speed in current rolling window for normalization
+  const maxRecordedSpeed = Math.max(...speedHistory, 1);
+
   return (
-    <aside className="w-64 h-full flex flex-col bg-zinc-50/80 dark:bg-zinc-900/40 border-r border-zinc-200 dark:border-zinc-800/80 select-none">
+    <aside className="w-64 h-full flex flex-col bg-zinc-50/80 dark:bg-zinc-900/40 border-r border-zinc-200 dark:border-zinc-800/80 select-none shrink-0">
       {/* App brand header */}
-      <div className="h-14 px-5 flex items-center gap-3 border-b border-zinc-200 dark:border-zinc-800/60">
+      <div className="h-14 px-5 flex items-center gap-3 border-b border-zinc-200 dark:border-zinc-800/60 shrink-0">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20 text-white font-bold text-sm">
           <Download className="w-4 h-4 stroke-[2.5]" />
         </div>
@@ -169,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onSelectFilter(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     isSelected
                       ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
                       : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/50"
@@ -211,7 +231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onSelectFilter(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     isSelected
                       ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
                       : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/50"
@@ -242,7 +262,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer Area: Bandwidth Telemetry & Ko-fi */}
-      <div className="p-3 space-y-2 border-t border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/50 dark:bg-zinc-950/40">
+      <div className="p-3 space-y-2 border-t border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/50 dark:bg-zinc-950/40 shrink-0">
         {/* Real-time Bandwidth Telemetry Card */}
         <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
@@ -277,23 +297,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
 
-          {/* Sparkline simulation */}
-          <div className="h-4 flex items-end gap-[3px] pt-1">
-            {[40, 65, 30, 85, 95, 55, 75, downloadingCount > 0 ? 100 : 15].map(
-              (val, idx) => (
+          {/* Dynamic Rolling Speed Sparkline */}
+          <div
+            className="h-5 flex items-end gap-[3px] pt-1"
+            role="img"
+            aria-label="Network throughput sparkline"
+          >
+            {speedHistory.map((sampleSpeed, idx) => {
+              const heightPct =
+                downloadingCount > 0 && maxRecordedSpeed > 0
+                  ? Math.max(
+                      15,
+                      Math.min(
+                        100,
+                        Math.round((sampleSpeed / maxRecordedSpeed) * 100)
+                      )
+                    )
+                  : 18;
+
+              return (
                 <div
                   key={idx}
                   className={`flex-1 rounded-xs transition-all duration-300 ${
-                    downloadingCount > 0
+                    downloadingCount > 0 && sampleSpeed > 0
                       ? "bg-blue-500/80 dark:bg-blue-500"
                       : "bg-zinc-300 dark:bg-zinc-700/50"
                   }`}
                   style={{
-                    height: downloadingCount > 0 ? `${val}%` : "20%",
+                    height: `${heightPct}%`,
                   }}
+                  title={`Sample #${idx + 1}: ${formatSpeed(sampleSpeed)}`}
                 />
-              )
-            )}
+              );
+            })}
           </div>
 
           {/* Disk storage status */}
@@ -311,7 +347,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Support HyperFetch Ko-fi card */}
         <button
           onClick={handleOpenKofi}
-          className="w-full p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/15 border border-orange-500/20 text-left transition-colors flex items-center gap-2.5 group cursor-pointer"
+          className="w-full p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/15 border border-orange-500/20 text-left transition-colors flex items-center gap-2.5 group cursor-pointer focus-visible:ring-2 focus-visible:ring-orange-500"
         >
           <div className="w-7 h-7 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
             <Coffee className="w-4 h-4 group-hover:scale-110 transition-transform" />

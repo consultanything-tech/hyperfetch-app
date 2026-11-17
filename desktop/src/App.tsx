@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -14,20 +14,27 @@ import type {
   SidebarFilter,
   ViewMode,
   ThemeMode,
+  QueueAction,
 } from "./types/download";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
 import { DownloadRow } from "./components/DownloadRow";
 import { CompactDownloadRowView } from "./components/CompactDownloadRowView";
+import { TaskDetailInspector } from "./components/TaskDetailInspector";
+import { ContextMenu } from "./components/ContextMenu";
 import { AddDownloadModal } from "./components/AddDownloadModal";
 import { SettingsModal } from "./components/SettingsModal";
 import "./App.css";
 
 export function App() {
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
     new Set()
   );
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+  const [showInspector, setShowInspector] = useState<boolean>(true);
+
   const [activeFilter, setActiveFilter] = useState<SidebarFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("comfortable");
@@ -37,6 +44,11 @@ export function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [sheetUrl, setSheetUrl] = useState("");
   const [sheetFilename, setSheetFilename] = useState("");
+
+  const [contextMenu, setContextMenu] = useState<{
+    task: DownloadTask;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // Refresh tasks from backend
   const refreshTasks = useCallback(async () => {
@@ -59,7 +71,6 @@ export function App() {
     let unlistenSheet: (() => void) | undefined;
     let unlistenTheme: (() => void) | undefined;
 
-    // Listen to real-time download progress events emitted by Rust engine
     listen<DownloadTask[]>("download-progress", (event) => {
       if (Array.isArray(event.payload)) {
         setTasks(event.payload);
@@ -68,7 +79,6 @@ export function App() {
       unlistenProgress = unlisten;
     });
 
-    // Listen to /sheet event triggered from browser extension or CLI
     listen<{ url?: string; filename?: string }>("open-add-sheet", (event) => {
       setSheetUrl(event.payload?.url || "");
       setSheetFilename(event.payload?.filename || "");
@@ -77,7 +87,6 @@ export function App() {
       unlistenSheet = unlisten;
     });
 
-    // Listen to /theme event
     listen<string>("set-theme", (event) => {
       const mode = event.payload?.toLowerCase();
       if (mode === "dark" || mode === "light" || mode === "system") {
@@ -102,7 +111,6 @@ export function App() {
     } else if (theme === "light") {
       root.classList.remove("dark");
     } else {
-      // System
       const prefersDark = window.matchMedia(
         "(prefers-color-scheme: dark)"
       ).matches;
@@ -114,26 +122,9 @@ export function App() {
     }
   }, [theme]);
 
-  // Global keyboard shortcuts (Cmd+N, Cmd+,)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setIsAddModalOpen(true);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-        e.preventDefault();
-        setIsSettingsModalOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   // Filtered tasks calculation
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      // Filter by category or lifecycle status
       let matchesCategory = true;
       if (activeFilter === "all") {
         matchesCategory = true;
@@ -150,7 +141,6 @@ export function App() {
 
       if (!matchesCategory) return false;
 
-      // Filter by search query
       if (searchQuery.trim()) {
         const query = searchQuery.trim().toLowerCase();
         const matchesName = task.filename.toLowerCase().includes(query);
@@ -162,6 +152,31 @@ export function App() {
     });
   }, [tasks, activeFilter, searchQuery]);
 
+  // Derive the active task for the inspector
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskId) {
+      if (selectedTaskIds.size === 1) {
+        const id = Array.from(selectedTaskIds)[0];
+        return tasks.find((t) => t.id === id) || null;
+      }
+      return null;
+    }
+    return tasks.find((t) => t.id === selectedTaskId) || null;
+  }, [tasks, selectedTaskId, selectedTaskIds]);
+
+  // Keep selectedTaskId synced if task list changes
+  useEffect(() => {
+    if (selectedTaskId && !tasks.some((t) => t.id === selectedTaskId)) {
+      if (tasks.length > 0) {
+        setSelectedTaskId(tasks[0].id);
+        setSelectedTaskIds(new Set([tasks[0].id]));
+      } else {
+        setSelectedTaskId(null);
+        setSelectedTaskIds(new Set());
+      }
+    }
+  }, [tasks, selectedTaskId]);
+
   // Active downloading count
   const activeCount = useMemo(() => {
     return tasks.filter(
@@ -169,14 +184,55 @@ export function App() {
     ).length;
   }, [tasks]);
 
-  // Action handlers
-  const handleToggleSelect = (id: string) => {
+  // Desktop Multi-Selection Semantics
+  const handleSelectRow = (id: string, e: React.MouseEvent) => {
+    const currentIndex = filteredTasks.findIndex((t) => t.id === id);
+
+    if (e.shiftKey && lastClickedIndex !== null && currentIndex !== -1) {
+      // Shift+Click: contiguous range selection
+      const start = Math.min(lastClickedIndex, currentIndex);
+      const end = Math.max(lastClickedIndex, currentIndex);
+      const next = new Set(selectedTaskIds);
+      for (let i = start; i <= end; i++) {
+        next.add(filteredTasks[i].id);
+      }
+      setSelectedTaskIds(next);
+      setSelectedTaskId(id);
+    } else if (e.metaKey || e.ctrlKey) {
+      // Ctrl+Click / Cmd+Click: toggle without clearing others
+      const next = new Set(selectedTaskIds);
+      if (next.has(id)) {
+        next.delete(id);
+        if (selectedTaskId === id) {
+          setSelectedTaskId(next.size > 0 ? Array.from(next)[0] : null);
+        }
+      } else {
+        next.add(id);
+        setSelectedTaskId(id);
+      }
+      setSelectedTaskIds(next);
+      setLastClickedIndex(currentIndex);
+    } else {
+      // Regular click: single select
+      setSelectedTaskIds(new Set([id]));
+      setSelectedTaskId(id);
+      setLastClickedIndex(currentIndex);
+    }
+  };
+
+  const handleToggleCheckbox = (id: string) => {
     setSelectedTaskIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
+        if (selectedTaskId === id) {
+          setSelectedTaskId(next.size > 0 ? Array.from(next)[0] : null);
+        }
       } else {
         next.add(id);
+        if (!selectedTaskId) {
+          setSelectedTaskId(id);
+        }
       }
       return next;
     });
@@ -187,9 +243,63 @@ export function App() {
       setSelectedTaskIds(new Set());
     } else {
       setSelectedTaskIds(new Set(filteredTasks.map((t) => t.id)));
+      if (filteredTasks.length > 0 && !selectedTaskId) {
+        setSelectedTaskId(filteredTasks[0].id);
+      }
     }
   };
 
+  // Context Menu
+  const handleContextMenu = (task: DownloadTask, e: React.MouseEvent) => {
+    if (!selectedTaskIds.has(task.id)) {
+      setSelectedTaskIds(new Set([task.id]));
+      setSelectedTaskId(task.id);
+    }
+    setContextMenu({
+      task,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
+
+  // Queue reordering
+  const handleQueueMove = async (id: string, action: QueueAction) => {
+    try {
+      const updated = await invoke<DownloadTask[]>("reorder_task", {
+        id,
+        action,
+      });
+      if (Array.isArray(updated)) {
+        setTasks(updated);
+        return;
+      }
+    } catch {
+      // Fallback local reorder
+    }
+
+    setTasks((prev) => {
+      const pos = prev.findIndex((t) => t.id === id);
+      if (pos === -1) return prev;
+      const copy = [...prev];
+      if (action === "top" && pos > 0) {
+        const [item] = copy.splice(pos, 1);
+        copy.unshift(item);
+      } else if (action === "up" && pos > 0) {
+        const temp = copy[pos];
+        copy[pos] = copy[pos - 1];
+        copy[pos - 1] = temp;
+      } else if (action === "down" && pos + 1 < copy.length) {
+        const temp = copy[pos];
+        copy[pos] = copy[pos + 1];
+        copy[pos + 1] = temp;
+      } else if (action === "bottom" && pos + 1 < copy.length) {
+        const [item] = copy.splice(pos, 1);
+        copy.push(item);
+      }
+      return copy;
+    });
+  };
+
+  // Action handlers
   const handlePause = async (id: string) => {
     try {
       await invoke("pause_download", { id });
@@ -219,6 +329,9 @@ export function App() {
         next.delete(id);
         return next;
       });
+      if (selectedTaskId === id) {
+        setSelectedTaskId(null);
+      }
       await refreshTasks();
     } catch (err) {
       console.error("Failed to delete download:", err);
@@ -261,6 +374,23 @@ export function App() {
     }
   };
 
+  const handleCopyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (err) {
+      console.error("Failed to copy URL:", err);
+    }
+  };
+
+  const handleCopyChecksum = async (checksum?: string | null) => {
+    if (!checksum) return;
+    try {
+      await navigator.clipboard.writeText(checksum);
+    } catch (err) {
+      console.error("Failed to copy checksum:", err);
+    }
+  };
+
   // Bulk actions on selected tasks
   const handleBulkPause = async () => {
     for (const id of selectedTaskIds) {
@@ -288,11 +418,90 @@ export function App() {
       await invoke("delete_download", { id, deleteFile: false }).catch(() => {});
     }
     setSelectedTaskIds(new Set());
+    setSelectedTaskId(null);
     await refreshTasks();
   };
 
+  // Global keyboard shortcuts (Cmd+N, Cmd+I, Cmd+,, Space, Esc, Arrows)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle New Download: Cmd+N or Ctrl+N
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setIsAddModalOpen(true);
+        return;
+      }
+      // Toggle Inspector: Cmd+I or Ctrl+I
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        setShowInspector((prev) => !prev);
+        return;
+      }
+      // Settings: Cmd+, or Ctrl+,
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setIsSettingsModalOpen(true);
+        return;
+      }
+      // Select All: Cmd+A or Ctrl+A
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+        if (activeTag !== "input" && activeTag !== "textarea") {
+          e.preventDefault();
+          handleSelectAll();
+          return;
+        }
+      }
+      // Escape: deselect all
+      if (e.key === "Escape") {
+        if (selectedTaskIds.size > 0) {
+          setSelectedTaskIds(new Set());
+        }
+        return;
+      }
+      // Space: Toggle pause/resume on selected task
+      if (e.key === " " && selectedTaskId) {
+        const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+        if (activeTag !== "input" && activeTag !== "textarea") {
+          e.preventDefault();
+          const target = tasks.find((t) => t.id === selectedTaskId);
+          if (target) {
+            if (target.status === "downloading" || target.status === "connecting") {
+              handlePause(target.id);
+            } else if (target.status !== "completed") {
+              handleResume(target.id);
+            }
+          }
+        }
+      }
+      // Arrow Up / Down: Navigate list selection
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+        if (activeTag !== "input" && activeTag !== "textarea") {
+          e.preventDefault();
+          if (filteredTasks.length === 0) return;
+          const currIdx = selectedTaskId
+            ? filteredTasks.findIndex((t) => t.id === selectedTaskId)
+            : -1;
+          let nextIdx = 0;
+          if (e.key === "ArrowDown") {
+            nextIdx = currIdx + 1 < filteredTasks.length ? currIdx + 1 : 0;
+          } else {
+            nextIdx = currIdx - 1 >= 0 ? currIdx - 1 : filteredTasks.length - 1;
+          }
+          const nextTask = filteredTasks[nextIdx];
+          setSelectedTaskId(nextTask.id);
+          setSelectedTaskIds(new Set([nextTask.id]));
+          setLastClickedIndex(nextIdx);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tasks, filteredTasks, selectedTaskId, selectedTaskIds]);
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
       {/* Left Sidebar */}
       <Sidebar
         currentFilter={activeFilter}
@@ -317,6 +526,8 @@ export function App() {
           onPauseAll={handlePauseAll}
           onResumeAll={handleResumeAll}
           activeDownloadCount={activeCount}
+          showInspector={showInspector}
+          onToggleInspector={() => setShowInspector((prev) => !prev)}
         />
 
         {/* Bulk Action Bar (visible when items selected) */}
@@ -406,12 +617,14 @@ export function App() {
                   key={task.id}
                   task={task}
                   isSelected={selectedTaskIds.has(task.id)}
-                  onToggleSelect={handleToggleSelect}
+                  onSelectRow={handleSelectRow}
+                  onToggleCheckbox={handleToggleCheckbox}
                   onPause={handlePause}
                   onResume={handleResume}
                   onDelete={handleDelete}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
+                  onContextMenu={handleContextMenu}
                 />
               ))}
             </div>
@@ -423,18 +636,58 @@ export function App() {
                   key={task.id}
                   task={task}
                   isSelected={selectedTaskIds.has(task.id)}
-                  onToggleSelect={handleToggleSelect}
+                  onSelectRow={handleSelectRow}
+                  onToggleCheckbox={handleToggleCheckbox}
                   onPause={handlePause}
                   onResume={handleResume}
                   onDelete={handleDelete}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
+                  onContextMenu={handleContextMenu}
                 />
               ))}
             </div>
           )}
         </div>
       </main>
+
+      {/* Right-Hand Task Details Inspector */}
+      {showInspector && (
+        <TaskDetailInspector
+          task={selectedTask}
+          onClose={() => setShowInspector(false)}
+          onPause={handlePause}
+          onResume={handleResume}
+          onDelete={handleDelete}
+          onOpenFile={handleOpenFile}
+          onOpenFolder={handleOpenFolder}
+        />
+      )}
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          task={contextMenu.task}
+          position={contextMenu.position}
+          isFirst={
+            filteredTasks.length > 0 &&
+            filteredTasks[0].id === contextMenu.task.id
+          }
+          isLast={
+            filteredTasks.length > 0 &&
+            filteredTasks[filteredTasks.length - 1].id === contextMenu.task.id
+          }
+          onClose={() => setContextMenu(null)}
+          onPause={handlePause}
+          onResume={handleResume}
+          onDelete={handleDelete}
+          onOpenFile={handleOpenFile}
+          onOpenFolder={handleOpenFolder}
+          onCopyUrl={handleCopyUrl}
+          onCopyChecksum={handleCopyChecksum}
+          onQueueMove={handleQueueMove}
+        />
+      )}
 
       {/* Add Download Sheet Modal */}
       <AddDownloadModal

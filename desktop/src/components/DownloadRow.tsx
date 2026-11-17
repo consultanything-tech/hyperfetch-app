@@ -1,12 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Play,
   Pause,
   Trash2,
   FolderOpen,
   FileCheck,
-  ChevronDown,
-  ChevronUp,
   Zap,
 } from "lucide-react";
 import type { DownloadTask } from "../types/download";
@@ -18,31 +16,32 @@ import {
   getCategoryBadgeColor,
   getStatusDetails,
 } from "../utils/format";
-import { ChunkVisualizer } from "./ChunkVisualizer";
 
 interface DownloadRowProps {
   task: DownloadTask;
   isSelected: boolean;
-  onToggleSelect: (id: string) => void;
+  onSelectRow: (id: string, e: React.MouseEvent) => void;
+  onToggleCheckbox: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
   onOpenFile: (path: string) => void;
   onOpenFolder: (path: string) => void;
+  onContextMenu: (task: DownloadTask, e: React.MouseEvent) => void;
 }
 
 export const DownloadRow: React.FC<DownloadRowProps> = ({
   task,
   isSelected,
-  onToggleSelect,
+  onSelectRow,
+  onToggleCheckbox,
   onPause,
   onResume,
   onDelete,
   onOpenFile,
   onOpenFolder,
+  onContextMenu,
 }) => {
-  const [showChunks, setShowChunks] = useState(false);
-
   const CategoryIcon = getCategoryIcon(task.category);
   const categoryColors = getCategoryBadgeColor(task.category);
   const statusDetails = getStatusDetails(task.status);
@@ -63,9 +62,14 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
 
   return (
     <div
-      className={`group relative rounded-xl border transition-all duration-150 p-3.5 select-none ${
+      onClick={(e) => onSelectRow(task.id, e)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(task, e);
+      }}
+      className={`group relative rounded-xl border transition-all duration-150 p-3.5 select-none cursor-pointer ${
         isSelected
-          ? "bg-blue-50/80 dark:bg-blue-950/20 border-blue-500/50 shadow-sm"
+          ? "ring-1 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20 border-blue-500/50 shadow-sm"
           : "bg-white dark:bg-zinc-900/60 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 border-zinc-200 dark:border-zinc-800/80 shadow-xs"
       }`}
     >
@@ -75,8 +79,10 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={() => onToggleSelect(task.id)}
-            className="w-4 h-4 rounded text-blue-600 border-zinc-300 dark:border-zinc-700 focus:ring-blue-500 cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onToggleCheckbox(task.id)}
+            className="w-4 h-4 rounded text-blue-600 border-zinc-300 dark:border-zinc-700 focus:ring-blue-500 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500"
+            aria-label={`Select ${task.filename}`}
           />
         </div>
 
@@ -93,10 +99,11 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate cursor-pointer hover:underline"
+                className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate hover:underline"
                 title={task.filename}
-                onClick={() => {
+                onClick={(e) => {
                   if (task.status === "completed") {
+                    e.stopPropagation();
                     onOpenFile(task.destination_path);
                   }
                 }}
@@ -134,7 +141,14 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
           </div>
 
           {/* Row 2: Progress Bar */}
-          <div className="w-full h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-2">
+          <div
+            className="w-full h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-2"
+            role="progressbar"
+            aria-valuenow={task.status === "completed" ? 100 : progressPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Progress for ${task.filename}`}
+          >
             <div
               className={`h-full rounded-full transition-all duration-300 ${
                 task.status === "completed"
@@ -185,48 +199,40 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
 
             {/* Right Action Buttons */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Chunk visualizer toggle */}
-              {task.chunks && task.chunks.length > 0 && (
-                <button
-                  onClick={() => setShowChunks(!showChunks)}
-                  className={`h-7 px-2 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer border ${
-                    showChunks
-                      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
-                      : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700"
-                  }`}
-                  title="Toggle active chunks visualizer"
-                >
-                  <span>Chunks ({task.chunks.length})</span>
-                  {showChunks ? (
-                    <ChevronUp className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
-                </button>
-              )}
-
               {/* Pause / Resume button */}
               {isDownloading ? (
                 <button
-                  onClick={() => onPause(task.id)}
-                  className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-amber-500/10 hover:text-amber-600 dark:bg-zinc-800 dark:hover:bg-amber-500/20 dark:hover:text-amber-400 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPause(task.id);
+                  }}
+                  className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-amber-500/10 hover:text-amber-600 dark:bg-zinc-800 dark:hover:bg-amber-500/20 dark:hover:text-amber-400 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700 focus-visible:ring-2 focus-visible:ring-blue-500"
                   title="Pause Download"
+                  aria-label="Pause Download"
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />
                 </button>
               ) : task.status !== "completed" ? (
                 <button
-                  onClick={() => onResume(task.id)}
-                  className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-blue-500/10 hover:text-blue-600 dark:bg-zinc-800 dark:hover:bg-blue-500/20 dark:hover:text-blue-400 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onResume(task.id);
+                  }}
+                  className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-blue-500/10 hover:text-blue-600 dark:bg-zinc-800 dark:hover:bg-blue-500/20 dark:hover:text-blue-400 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700 focus-visible:ring-2 focus-visible:ring-blue-500"
                   title="Resume Download"
+                  aria-label="Resume Download"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                 </button>
               ) : (
                 <button
-                  onClick={() => onOpenFile(task.destination_path)}
-                  className="h-7 px-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer border border-emerald-500/30"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenFile(task.destination_path);
+                  }}
+                  className="h-7 px-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer border border-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-500"
                   title="Open Downloaded File"
+                  aria-label="Open Downloaded File"
                 >
                   <FileCheck className="w-3.5 h-3.5" />
                   <span>Open</span>
@@ -235,32 +241,31 @@ export const DownloadRow: React.FC<DownloadRowProps> = ({
 
               {/* Open in Folder (Finder/Explorer) button */}
               <button
-                onClick={() => onOpenFolder(task.destination_path)}
-                className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700"
-                title="Show in Folder"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenFolder(task.destination_path);
+                }}
+                className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700 focus-visible:ring-2 focus-visible:ring-blue-500"
+                title="Show in Explorer"
+                aria-label="Show in Explorer"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
               </button>
 
               {/* Delete button */}
               <button
-                onClick={() => onDelete(task.id)}
-                className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-rose-500/10 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-500/20 dark:hover:text-rose-400 text-zinc-400 hover:text-rose-500 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(task.id);
+                }}
+                className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-rose-500/10 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-500/20 dark:hover:text-rose-400 text-zinc-400 hover:text-rose-500 flex items-center justify-center transition-colors cursor-pointer border border-zinc-200 dark:border-zinc-700 focus-visible:ring-2 focus-visible:ring-rose-500"
                 title="Delete Download Task"
+                aria-label="Delete Download Task"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
-
-          {/* Collapsible Chunk Visualizer */}
-          {showChunks && (
-            <ChunkVisualizer
-              chunks={task.chunks}
-              totalBytes={task.total_bytes}
-              isDownloading={isDownloading}
-            />
-          )}
         </div>
       </div>
     </div>
