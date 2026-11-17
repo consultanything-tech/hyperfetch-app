@@ -72,7 +72,7 @@
         <div class="advanced-body">
           <div class="form-field">
             <label for="minSizeSelect" class="field-label">Minimum File Size</label>
-            <select id="minSizeSelect" class="form-select">
+            <select id="minSizeSelect" class="form-select" aria-label="Minimum file size to intercept">
               <option value="0">Any Size</option>
               <option value="1048576">1 MB</option>
               <option value="5242880">5 MB</option>
@@ -85,13 +85,13 @@
 
           <div class="form-field">
             <label for="excludedDomainsInput" class="field-label">Excluded Domains</label>
-            <textarea id="excludedDomainsInput" class="form-textarea" rows="2" placeholder="e.g. docs.google.com, github.com"></textarea>
+            <textarea id="excludedDomainsInput" class="form-textarea" rows="2" placeholder="e.g. docs.google.com, github.com" aria-label="Excluded hostnames and domains"></textarea>
             <span class="field-hint">Comma or newline separated list of domains to bypass.</span>
           </div>
 
           <div class="form-field">
             <label for="bridgeTokenInput" class="field-label">Bridge API Token</label>
-            <input type="password" id="bridgeTokenInput" class="form-input" placeholder="Optional API token">
+            <input type="password" id="bridgeTokenInput" class="form-input" placeholder="Optional API token" aria-label="Bridge authorization token">
             <span class="field-hint">Shared secret for bridge authentication (CWE-346).</span>
           </div>
         </div>
@@ -113,7 +113,7 @@
 
       <!-- Actions -->
       <div class="actions">
-        <button id="openAppBtn" class="btn btn-secondary">
+        <button id="openAppBtn" class="btn btn-secondary" aria-label="Open HyperFetch desktop app">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
             <polyline points="15 3 21 3 21 9"></polyline>
@@ -121,7 +121,7 @@
           </svg>
           Open HyperFetch
         </button>
-        <button id="retryBtn" class="btn btn-ghost" title="Re-check connection">
+        <button id="retryBtn" class="btn btn-ghost" title="Re-check connection" aria-label="Re-check bridge connection">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
@@ -133,7 +133,7 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <span>HyperFetch Local Bridge 127.0.0.1:31415</span>
+      <span id="footerStatusText">HyperFetch Local Bridge 127.0.0.1:31415</span>
     </footer>
   </div>
 

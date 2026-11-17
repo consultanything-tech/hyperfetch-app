@@ -18,7 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const footerStatusText = document.getElementById('footerStatusText');
 
   let connectedPort = null;
-  let pollIntervalId = null;
+  let pollTimeoutId = null;
+  let consecutiveErrors = 0;
   let currentBridgeToken = '';
 
   // Load saved preferences
@@ -178,15 +179,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function startTransfersPolling() {
     stopTransfersPolling();
+    consecutiveErrors = 0;
     pollTransfers();
-    pollIntervalId = setInterval(pollTransfers, 2000);
   }
 
   function stopTransfersPolling() {
-    if (pollIntervalId) {
-      clearInterval(pollIntervalId);
-      pollIntervalId = null;
+    if (pollTimeoutId) {
+      clearTimeout(pollTimeoutId);
+      pollTimeoutId = null;
     }
+  }
+
+  function scheduleNextPoll(delayMs) {
+    stopTransfersPolling();
+    if (!connectedPort) return;
+    pollTimeoutId = setTimeout(pollTransfers, delayMs);
   }
 
   async function pollTransfers() {
@@ -196,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'X-HyperFetch-Client': 'extension',
         'X-HyperFetch-Token': currentBridgeToken || ''
       };
+      let transfers = null;
       const resp = await fetch(`http://127.0.0.1:${connectedPort}/transfers`, {
         method: 'GET',
         cache: 'no-store',
@@ -203,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (resp.ok) {
         const data = await resp.json();
-        renderTransfers(data.transfers || []);
+        transfers = data.transfers || [];
       } else if (resp.status === 403 || resp.status === 404) {
         // Fallback to /queue if /transfers failed
         const qResp = await fetch(`http://127.0.0.1:${connectedPort}/queue`, {
@@ -213,11 +221,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (qResp.ok) {
           const qData = await qResp.json();
-          renderTransfers(qData.transfers || []);
+          transfers = qData.transfers || [];
+        } else {
+          throw new Error(`Queue fetch returned status ${qResp.status}`);
         }
+      } else {
+        throw new Error(`Transfers fetch returned status ${resp.status}`);
+      }
+
+      if (transfers !== null) {
+        consecutiveErrors = 0;
+        renderTransfers(transfers);
+
+        // Adaptive polling schedule:
+        // - Active downloads (downloading, connecting, probing): 1,500ms
+        // - Completed/paused or idle items in queue: 3,500ms
+        // - Empty queue: 5,000ms
+        const hasActive = transfers.some(t => {
+          const s = (t.status || '').toLowerCase();
+          return s === 'downloading' || s === 'connecting' || s === 'probing';
+        });
+
+        let nextInterval = 5000;
+        if (hasActive) {
+          nextInterval = 1500;
+        } else if (transfers.length > 0) {
+          nextInterval = 3500;
+        } else {
+          nextInterval = 5000;
+        }
+
+        scheduleNextPoll(nextInterval);
       }
     } catch (e) {
-      // Connection might have dropped
+      consecutiveErrors++;
+      if (consecutiveErrors >= 3) {
+        // Back off to 10,000ms after 3 consecutive failures
+        scheduleNextPoll(10000);
+      } else {
+        scheduleNextPoll(5000);
+      }
     }
   }
 
