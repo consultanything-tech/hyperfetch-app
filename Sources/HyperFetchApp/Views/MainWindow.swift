@@ -43,9 +43,10 @@ public struct MainWindow: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
+            .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
         }
         .navigationSplitViewStyle(.balanced)
-        .background(Theme.canvasBackground)
+        .background(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow))
         .searchable(text: $appState.searchText, prompt: "Search downloads...")
         .preferredColorScheme(appState.preferredColorScheme)
         .toolbar {
@@ -377,8 +378,9 @@ public struct MainWindow: View {
             }
             .padding(18)
         }
+        .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background(Theme.inspectorBackground)
+        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
     }
 
     private func inspectorSelectedHeader(for task: DownloadTaskModel) -> some View {
@@ -506,12 +508,7 @@ public struct MainWindow: View {
             }
         }
         .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .stroke(Theme.cardBorder, lineWidth: 1)
-        )
+        .liquidGlass(cornerRadius: 10)
     }
 
     private func taskMetadataCard(for task: DownloadTaskModel) -> some View {
@@ -603,12 +600,7 @@ public struct MainWindow: View {
             }
         }
         .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .stroke(Theme.cardBorder, lineWidth: 1)
-        )
+        .liquidGlass(cornerRadius: 10)
     }
 
     private func metadataRow<V: View>(label: String, @ViewBuilder value: () -> V) -> some View {
@@ -711,12 +703,7 @@ public struct MainWindow: View {
                     Spacer()
                 }
                 .padding(12)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                        .stroke(Theme.cardBorder, lineWidth: 1)
-                )
+                .liquidGlass(cornerRadius: 10)
 
                 // Network & Concurrency
                 VStack(alignment: .leading, spacing: 10) {
@@ -753,12 +740,7 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                        .stroke(Theme.cardBorder, lineWidth: 1)
-                )
+                .liquidGlass(cornerRadius: 10)
 
                 // Queue Status
                 VStack(alignment: .leading, spacing: 10) {
@@ -795,12 +777,7 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                        .stroke(Theme.cardBorder, lineWidth: 1)
-                )
+                .liquidGlass(cornerRadius: 10)
 
                 // Storage
                 VStack(alignment: .leading, spacing: 10) {
@@ -825,12 +802,7 @@ public struct MainWindow: View {
                     }
                 }
                 .padding(14)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                        .stroke(Theme.cardBorder, lineWidth: 1)
-                )
+                .liquidGlass(cornerRadius: 10)
 
                 // Helper note
                 HStack(spacing: 8) {
@@ -845,8 +817,9 @@ public struct MainWindow: View {
             }
             .padding(16)
         }
+        .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background(Theme.inspectorBackground)
+        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
     }
 }
 

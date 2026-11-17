@@ -14,6 +14,7 @@ import DownloadKit
 public struct DownloadRowView: View {
     public let task: DownloadTaskModel
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewState private var isHovered: Bool = false
     @ViewState private var isMoreHovered: Bool = false
@@ -127,7 +128,11 @@ public struct DownloadRowView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                .fill(
+                    reduceTransparency
+                        ? (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Color(NSColor.windowBackgroundColor)))
+                        : (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                )
                 .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous))
                 .onTapGesture {
                     if NSEvent.modifierFlags.contains(.shift) {
@@ -145,14 +150,37 @@ public struct DownloadRowView: View {
                 }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1)
+            Group {
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                        .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1)
+                } else {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                            .stroke(Theme.cardBorderActive, lineWidth: 1.5)
+                    } else {
+                        RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .white.opacity(0.18), location: 0.0),
+                                        .init(color: .white.opacity(0.06), location: 0.3),
+                                        .init(color: .white.opacity(0.02), location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.75
+                            )
+                    }
+                }
+            }
         )
         .shadow(
-            color: isSelected ? Theme.accent.opacity(0.18) : Color.black.opacity(0.06),
+            color: isSelected ? Theme.accent.opacity(0.18) : Color.black.opacity(0.04),
             radius: isSelected ? 10 : 3,
             x: 0,
-            y: isSelected ? 2 : 1
+            y: isSelected ? 2 : 1.5
         )
         .onHover { isHovered = $0 }
         .modifier(DragCompletedModifier(task: task))

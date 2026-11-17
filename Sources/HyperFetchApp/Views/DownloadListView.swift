@@ -33,7 +33,7 @@ public struct DownloadListView: View {
             queueBottomStatusBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvasBackground)
+        .background(Color.clear)
         .overlay(alignment: .top) {
             if !appState.selectedTaskIDs.isEmpty {
                 floatingSelectionBar
@@ -266,6 +266,7 @@ public struct DownloadListView: View {
                 .padding(16)
             }
         }
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Context Menus
@@ -644,6 +645,6 @@ public struct DownloadListView: View {
         .padding(.horizontal, 16)
         .frame(height: 26)
         .frame(maxWidth: .infinity)
-        .background(Theme.statusBarBackground)
+        .background(VisualEffectBlur(material: .headerView, blendingMode: .withinWindow))
     }
 }

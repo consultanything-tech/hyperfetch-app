@@ -14,6 +14,7 @@ import DownloadKit
 public struct CompactDownloadRowView: View {
     public let task: DownloadTaskModel
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewState private var isHovered: Bool = false
     @ViewState private var isActionHovered: Bool = false
@@ -55,7 +56,11 @@ public struct CompactDownloadRowView: View {
         .frame(height: 36)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                .fill(
+                    reduceTransparency
+                        ? (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Color(NSColor.windowBackgroundColor)))
+                        : (isSelected ? Theme.cardActive : (isHovered ? Theme.cardHover : Theme.cardBackground))
+                )
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .onTapGesture {
                     if NSEvent.modifierFlags.contains(.shift) {
@@ -73,8 +78,37 @@ public struct CompactDownloadRowView: View {
                 }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.2 : 0.8)
+            Group {
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.2 : 0.8)
+                } else {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Theme.cardBorderActive, lineWidth: 1.2)
+                    } else {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .white.opacity(0.18), location: 0.0),
+                                        .init(color: .white.opacity(0.06), location: 0.3),
+                                        .init(color: .white.opacity(0.02), location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.75
+                            )
+                    }
+                }
+            }
+        )
+        .shadow(
+            color: isSelected ? Theme.accent.opacity(0.16) : Color.black.opacity(0.04),
+            radius: isSelected ? 6 : 3,
+            x: 0,
+            y: 1.5
         )
         .onHover { isHovered = $0 }
         .modifier(DragCompletedModifier(task: task))
