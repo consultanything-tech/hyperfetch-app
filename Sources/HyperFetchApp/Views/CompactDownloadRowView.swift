@@ -77,33 +77,25 @@ public struct CompactDownloadRowView: View {
                     }
                 }
         )
-        .overlay(
-            Group {
-                if reduceTransparency {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.2 : 0.8)
-                } else {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Theme.cardBorderActive, lineWidth: 1.2)
-                    } else {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: .white.opacity(0.18), location: 0.0),
-                                        .init(color: .white.opacity(0.06), location: 0.3),
-                                        .init(color: .white.opacity(0.02), location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.75
-                            )
-                    }
-                }
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1.0)
+        }
+        .overlay(alignment: .top) {
+            if !isSelected && !reduceTransparency {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.22), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
+                    .frame(height: 10)
+                    .clipped()
             }
-        )
+        }
         .shadow(
             color: isSelected ? Theme.accent.opacity(0.16) : Color.black.opacity(0.04),
             radius: isSelected ? 6 : 3,
@@ -204,7 +196,7 @@ public struct CompactDownloadRowView: View {
                 .fill(Theme.canvasBackground)
                 .overlay(
                     Capsule()
-                        .stroke(Theme.cardBorder, lineWidth: 0.8)
+                        .strokeBorder(Theme.cardBorder, lineWidth: 1)
                 )
                 .frame(width: 70, height: 4)
 

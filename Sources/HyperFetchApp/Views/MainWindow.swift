@@ -43,10 +43,26 @@ public struct MainWindow: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
-            .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
+            .background {
+                ZStack {
+                    VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
+                    Color.dynamic(
+                        dark: NSColor(hex: 0x0e1017, alpha: 0.45),
+                        light: NSColor(white: 1.0, alpha: 0.35)
+                    )
+                }
+            }
         }
         .navigationSplitViewStyle(.balanced)
-        .background(VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow))
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .underWindowBackground, blendingMode: .behindWindow)
+                Color.dynamic(
+                    dark: NSColor(hex: 0x0b0d14, alpha: 0.60),
+                    light: NSColor(white: 1.0, alpha: 0.45)
+                )
+            }
+        }
         .searchable(text: $appState.searchText, prompt: "Search downloads...")
         .preferredColorScheme(appState.preferredColorScheme)
         .toolbar {
@@ -380,7 +396,15 @@ public struct MainWindow: View {
         }
         .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
+                Color.dynamic(
+                    dark: NSColor(hex: 0x0e1017, alpha: 0.45),
+                    light: NSColor(white: 1.0, alpha: 0.35)
+                )
+            }
+        }
     }
 
     private func inspectorSelectedHeader(for task: DownloadTaskModel) -> some View {
@@ -819,7 +843,15 @@ public struct MainWindow: View {
         }
         .scrollContentBackground(.hidden)
         .frame(minWidth: 320)
-        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow))
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
+                Color.dynamic(
+                    dark: NSColor(hex: 0x0e1017, alpha: 0.45),
+                    light: NSColor(white: 1.0, alpha: 0.35)
+                )
+            }
+        }
     }
 }
 

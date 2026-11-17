@@ -35,7 +35,10 @@ public enum Theme {
     }
 
     /// Foundation level canvas behind split views and main content area.
-    public static let canvasBackground = Color.clear
+    public static let canvasBackground = Color.dynamic(
+        dark: NSColor(hex: 0x0e1017, alpha: 0.70),
+        light: NSColor(hex: 0xE6E9F0, alpha: 0.85)
+    )
 
     /// Primary window background surface.
     public static let windowSurface = Color.clear
@@ -51,38 +54,38 @@ public enum Theme {
 
     /// Inactive card container surface.
     public static let cardBackground = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.05),
-        light: NSColor(white: 1.0, alpha: 0.70)
+        dark: NSColor(hex: 0x171923, alpha: 0.85),
+        light: NSColor(white: 1.0, alpha: 0.92)
     )
 
     /// Active / selected card container surface.
     public static let cardActive = Color.dynamic(
-        dark: NSColor(hex: 0x0a84ff, alpha: 0.16),
-        light: NSColor(hex: 0x007aff, alpha: 0.12)
+        dark: NSColor(hex: 0x13284a, alpha: 0.92),
+        light: NSColor(hex: 0xEDF4FF, alpha: 0.98)
     )
 
     /// Subtle card hairline border.
     public static let cardBorder = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.10),
-        light: NSColor(white: 0.0, alpha: 0.08)
+        dark: NSColor(white: 1.0, alpha: 0.15),
+        light: NSColor(black: 1.0, alpha: 0.10)
     )
 
     /// Active / selected card highlight border.
     public static let cardBorderActive = Color.dynamic(
-        dark: NSColor(hex: 0x0a84ff, alpha: 0.40),
-        light: NSColor(hex: 0x007aff, alpha: 0.30)
+        dark: NSColor(hex: 0x0a84ff, alpha: 0.85),
+        light: NSColor(hex: 0x007aff, alpha: 0.80)
     )
 
     /// Card hover highlight.
     public static let cardHover = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.08),
-        light: NSColor(white: 1.0, alpha: 0.85)
+        dark: NSColor(hex: 0x1f2330, alpha: 0.92),
+        light: NSColor(white: 1.0, alpha: 0.98)
     )
 
     /// Subtle pill / tag background.
     public static let tagBackground = Color.dynamic(
-        dark: NSColor(white: 1.0, alpha: 0.06),
-        light: NSColor(white: 0.0, alpha: 0.05)
+        dark: NSColor(white: 1.0, alpha: 0.12),
+        light: NSColor(black: 1.0, alpha: 0.06)
     )
 
     /// Input field background.
@@ -99,8 +102,8 @@ public enum Theme {
 
     /// Status bar and footer background.
     public static let statusBarBackground = Color.dynamic(
-        dark: NSColor(hex: 0x14161c),
-        light: NSColor(hex: 0xF0F1F3)
+        dark: NSColor(hex: 0x0f1118, alpha: 0.88),
+        light: NSColor(hex: 0xF2F4F7, alpha: 0.92)
     )
 
     /// General separator line.
@@ -113,20 +116,20 @@ public enum Theme {
 
     /// Primary high-contrast text.
     public static let textPrimary = Color.dynamic(
-        dark: NSColor(hex: 0xf3f4f8),
-        light: NSColor(hex: 0x1D1D1F)
+        dark: NSColor(white: 1.0, alpha: 1.0),
+        light: NSColor(hex: 0x111111)
     )
 
     /// Secondary supporting text and readout labels.
     public static let textSecondary = Color.dynamic(
-        dark: NSColor(hex: 0x9da3b0),
-        light: NSColor(hex: 0x6E6E73)
+        dark: NSColor(hex: 0xb0b8ca),
+        light: NSColor(hex: 0x3c3c43)
     )
 
     /// Tertiary captions, shortcuts, and inactive elements.
     public static let textTertiary = Color.dynamic(
-        dark: NSColor(hex: 0x686f7e),
-        light: NSColor(hex: 0x86868B)
+        dark: NSColor(hex: 0x7e8698),
+        light: NSColor(hex: 0x6e6e73)
     )
 
     // MARK: - Accent & Semantic Colors
@@ -366,6 +369,10 @@ extension NSColor {
         let green = CGFloat((hex >> 8) & 0xFF) / 255.0
         let blue = CGFloat(hex & 0xFF) / 255.0
         self.init(srgbRed: red, green: green, blue: blue, alpha: alpha)
+    }
+
+    public convenience init(black: CGFloat, alpha: CGFloat = 1.0) {
+        self.init(white: 1.0 - black, alpha: alpha)
     }
 }
 

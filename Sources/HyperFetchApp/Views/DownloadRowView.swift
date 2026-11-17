@@ -149,33 +149,25 @@ public struct DownloadRowView: View {
                     }
                 }
         )
-        .overlay(
-            Group {
-                if reduceTransparency {
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                        .stroke(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1)
-                } else {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                            .stroke(Theme.cardBorderActive, lineWidth: 1.5)
-                    } else {
-                        RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: .white.opacity(0.18), location: 0.0),
-                                        .init(color: .white.opacity(0.06), location: 0.3),
-                                        .init(color: .white.opacity(0.02), location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.75
-                            )
-                    }
-                }
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                .strokeBorder(isSelected ? Theme.cardBorderActive : Theme.cardBorder, lineWidth: isSelected ? 1.5 : 1.0)
+        }
+        .overlay(alignment: .top) {
+            if !isSelected && !reduceTransparency {
+                RoundedRectangle(cornerRadius: Theme.cornerRadiusLarge, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.22), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
+                    .frame(height: 14)
+                    .clipped()
             }
-        )
+        }
         .shadow(
             color: isSelected ? Theme.accent.opacity(0.18) : Color.black.opacity(0.04),
             radius: isSelected ? 10 : 3,
@@ -231,10 +223,10 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Theme.accent.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Theme.accent.opacity(0.35), lineWidth: 1)
+                            .stroke(Theme.accent.opacity(0.45), lineWidth: 1)
                     )
 
             case .probing:
@@ -243,7 +235,11 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Color.purple)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color.purple.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.purple.opacity(0.45), lineWidth: 1)
+                    )
 
             case .paused:
                 HStack(spacing: 5) {
@@ -256,10 +252,10 @@ public struct DownloadRowView: View {
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
-                .background(Theme.warning.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.warning.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Theme.warning.opacity(0.35), lineWidth: 1)
+                        .stroke(Theme.warning.opacity(0.45), lineWidth: 1)
                 )
 
             case .completed:
@@ -268,10 +264,10 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.success)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Theme.success.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Theme.success.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Theme.success.opacity(0.35), lineWidth: 1)
+                            .stroke(Theme.success.opacity(0.45), lineWidth: 1)
                     )
 
             case .failed:
@@ -280,10 +276,10 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.critical)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Theme.critical.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Theme.critical.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Theme.critical.opacity(0.35), lineWidth: 1)
+                            .stroke(Theme.critical.opacity(0.45), lineWidth: 1)
                     )
 
             case .idle:
@@ -292,7 +288,11 @@ public struct DownloadRowView: View {
                     .foregroundStyle(Theme.textTertiary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 6))
+                    .background(Theme.textTertiary.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.textTertiary.opacity(0.45), lineWidth: 1)
+                    )
             }
         }
         .lineLimit(1)
@@ -307,7 +307,7 @@ public struct DownloadRowView: View {
                     .fill(Theme.canvasBackground)
                     .overlay(
                         Capsule()
-                            .stroke(Theme.cardBorder, lineWidth: 1)
+                            .strokeBorder(Theme.cardBorder, lineWidth: 1)
                     )
                     .frame(height: 7)
 
