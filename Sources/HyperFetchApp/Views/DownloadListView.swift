@@ -467,6 +467,10 @@ public struct DownloadListView: View {
             )
             .shadow(color: Theme.accent.opacity(0.25), radius: 20)
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isDropTargeted = false
+        }
         .transition(.opacity)
         .animation(.easeOut(duration: 0.2), value: isDropTargeted)
     }

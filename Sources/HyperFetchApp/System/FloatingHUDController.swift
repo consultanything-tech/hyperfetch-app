@@ -17,6 +17,8 @@ public final class FloatingHUDController: NSObject {
     private var panel: NSPanel?
     private var autoDismissTask: Task<Void, Never>?
     private let autoDismissTimeout: TimeInterval = 10.0
+    private var clickEventMonitor: Any?
+    private var deactivationObserver: NSObjectProtocol?
 
     public func pauseDismissTimer() {
         autoDismissTask?.cancel()
@@ -34,6 +36,15 @@ public final class FloatingHUDController: NSObject {
 
     private override init() {
         super.init()
+    }
+
+    isolated deinit {
+        if let monitor = clickEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let observer = deactivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     /// Displays the Floating HUD window anchored at the top-right of the user's primary screen.
@@ -120,12 +131,47 @@ public final class FloatingHUDController: NSObject {
             guard !Task.isCancelled else { return }
             self?.dismiss()
         }
+
+        // Register global click monitor to dismiss when clicking outside HUD
+        if clickEventMonitor == nil {
+            clickEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let panel = self.panel else { return }
+                    let mouseLoc = NSEvent.mouseLocation
+                    if !panel.frame.contains(mouseLoc) {
+                        self.dismiss()
+                    }
+                }
+            }
+        }
+
+        // Register deactivation observer to dismiss HUD when app loses focus
+        if deactivationObserver == nil {
+            deactivationObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.dismiss()
+                }
+            }
+        }
     }
 
     /// Dismisses and hides the floating HUD window.
     public func dismiss() {
         autoDismissTask?.cancel()
         autoDismissTask = nil
+
+        if let monitor = clickEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickEventMonitor = nil
+        }
+        if let observer = deactivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            deactivationObserver = nil
+        }
 
         guard let hudPanel = self.panel, hudPanel.isVisible else { return }
 

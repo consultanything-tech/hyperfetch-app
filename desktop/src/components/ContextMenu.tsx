@@ -53,7 +53,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click or Escape
+  // Close on outside click, blur, scroll, or Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -67,11 +67,25 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       }
     };
 
+    const handleBlur = () => {
+      onClose();
+    };
+
+    const handleScroll = (e: Event) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
     window.addEventListener("mousedown", handleClickOutside);
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("scroll", handleScroll, true);
     return () => {
       window.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("scroll", handleScroll, true);
     };
   }, [onClose]);
 

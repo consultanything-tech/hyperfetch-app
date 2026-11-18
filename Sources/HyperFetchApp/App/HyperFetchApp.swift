@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = HyperFetchServiceProvider.shared
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
+            NSMenu.cancelTracking()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainWindowDelegate.shared.reopenMainWindow()
             self.logMenuBarItems()

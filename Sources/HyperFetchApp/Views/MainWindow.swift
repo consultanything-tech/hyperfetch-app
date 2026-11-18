@@ -287,33 +287,45 @@ public struct MainWindow: View {
             if !appState.selectedTaskIDs.isEmpty {
                 Menu {
                     Button("Pause Selected (\(appState.selectedTasks.count))") {
-                        appState.pauseSelected()
+                        DispatchQueue.main.async {
+                            appState.pauseSelected()
+                        }
                     }
                     .disabled(!appState.hasActiveSelectedTasks)
 
                     Button("Resume Selected (\(appState.selectedTasks.count))") {
-                        appState.resumeSelected()
+                        DispatchQueue.main.async {
+                            appState.resumeSelected()
+                        }
                     }
                     .disabled(!appState.hasResumableSelectedTasks)
 
                     Divider()
 
                     Button("Show in Finder") {
-                        appState.revealSelectedInFinder()
+                        DispatchQueue.main.async {
+                            appState.revealSelectedInFinder()
+                        }
                     }
 
                     Button("Remove Selected from List", role: .destructive) {
-                        appState.removeSelected(deleteFile: false)
+                        DispatchQueue.main.async {
+                            appState.removeSelected(deleteFile: false)
+                        }
                     }
 
                     Button("Delete Selected Files from Disk...", role: .destructive) {
-                        appState.promptDeleteSelected()
+                        DispatchQueue.main.async {
+                            appState.promptDeleteSelected()
+                        }
                     }
 
                     Divider()
 
                     Button("Deselect All") {
-                        appState.deselectAll()
+                        DispatchQueue.main.async {
+                            appState.deselectAll()
+                        }
                     }
                 } label: {
                     Label("Selected (\(appState.selectedTasks.count))", systemImage: "checklist")
