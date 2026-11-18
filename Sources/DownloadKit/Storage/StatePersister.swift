@@ -244,6 +244,18 @@ public actor JSONStatePersister: StatePersisting {
         return encoder
     }
 
+    nonisolated(unsafe) private static let isoWithFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    nonisolated(unsafe) private static let isoStandard: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
     private func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -252,14 +264,10 @@ public actor JSONStatePersister: StatePersisting {
                 return Date(timeIntervalSinceReferenceDate: timeInterval)
             }
             let string = try container.decode(String.self)
-            let isoWithFraction = ISO8601DateFormatter()
-            isoWithFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = isoWithFraction.date(from: string) {
+            if let date = Self.isoWithFraction.date(from: string) {
                 return date
             }
-            let isoStandard = ISO8601DateFormatter()
-            isoStandard.formatOptions = [.withInternetDateTime]
-            if let date = isoStandard.date(from: string) {
+            if let date = Self.isoStandard.date(from: string) {
                 return date
             }
             throw DecodingError.dataCorruptedError(

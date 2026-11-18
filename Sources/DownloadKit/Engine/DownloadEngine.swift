@@ -1,8 +1,10 @@
 import Foundation
 import CryptoKit
+import OSLog
 
 /// High-performance multi-chunk concurrent download engine with speed calculation and progress tracking.
 public actor DownloadEngine {
+    private let logger = Logger(subsystem: "com.hyperfetch.downloadkit", category: "DownloadEngine")
     private let session: URLSession
     private let probe: any HTTPProbing
     private let downloader: any ChunkDownloading
@@ -149,7 +151,7 @@ public actor DownloadEngine {
                 }
                 // Store or check ETag / Last-Modified
                 if let oldEtag = currentTask.etag, let newEtag = probeResult.etag, oldEtag != newEtag {
-                    print("[DownloadEngine] Remote ETag changed from \(oldEtag) to \(newEtag). Resetting chunk progress to avoid corruption.")
+                    logger.info("Remote ETag changed from \(oldEtag, privacy: .public) to \(newEtag, privacy: .public). Resetting chunk progress to avoid corruption.")
                     currentTask.downloadedBytes = 0
                     currentTask.chunks = []
                 }
@@ -160,7 +162,7 @@ public actor DownloadEngine {
             } catch ProbeError.cancelled {
                 try await cancelAndPause(task: &currentTask, writer: nil, progressHandler: progressHandler)
             } catch {
-                print("[DownloadEngine] Warning: probe failed for \(currentTask.url): \(error). Falling back to direct single-stream download.")
+                logger.warning("Warning: probe failed for \(currentTask.url, privacy: .public): \(error, privacy: .public). Falling back to direct single-stream download.")
                 currentTask.supportsRange = false
                 currentTask.totalBytes = -1
             }
@@ -240,7 +242,7 @@ public actor DownloadEngine {
             }
 
             if (isRangeNotSupportedError(error) || isRateLimitError(error)) && (currentTask.supportsRange || currentTask.chunks.count > 1) {
-                print("[DownloadEngine] Server does not support range requests or rate-limited concurrent connections for task \(currentTask.id) (\(error)). Seamlessly falling back to direct single-stream download.")
+                logger.warning("Server does not support range requests or rate-limited concurrent connections for task \(currentTask.id, privacy: .public) (\(error, privacy: .public)). Seamlessly falling back to direct single-stream download.")
                 if isRateLimitError(error) {
                     try? await Task.sleep(for: rateLimitBackoffDuration)
                 }
@@ -580,8 +582,8 @@ public struct SpeedTracker: Sendable {
 
     private mutating func prune(now: ContinuousClock.Instant) {
         let maxAge = windowDuration
-        window.removeAll { entry in
-            now - entry.time > maxAge
+        while let first = window.first, now - first.time > maxAge {
+            window.removeFirst()
         }
     }
 }

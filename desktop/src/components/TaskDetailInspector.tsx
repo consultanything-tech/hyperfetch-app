@@ -1,30 +1,31 @@
-import React, { useState } from "react";
 import {
-  X,
-  Play,
-  Pause,
-  Trash2,
-  FolderOpen,
-  FileCheck,
-  Copy,
-  Check,
-  RotateCcw,
-  ShieldCheck,
-  ShieldAlert,
-  Shield,
-  Layers,
-  Cpu,
-  Radio,
   AlertCircle,
+  Check,
+  Copy,
+  Cpu,
+  FileCheck,
   FileCode,
+  FolderOpen,
+  Layers,
+  Pause,
+  Play,
+  Radio,
+  RotateCcw,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  X,
 } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
 import type { DownloadTask } from "../types/download";
 import {
   formatBytes,
-  formatSpeed,
   formatEta,
-  getCategoryIcon,
+  formatSpeed,
   getCategoryBadgeColor,
+  getCategoryIcon,
   getStatusDetails,
 } from "../utils/format";
 
@@ -47,10 +48,13 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
   onOpenFile,
   onOpenFolder,
 }) => {
-  const [copiedUrl, setCopiedUrl] = useState(false);
-  const [copiedChecksum, setCopiedChecksum] = useState(false);
-  const [copiedPath, setCopiedPath] = useState(false);
-  const [copiedError, setCopiedError] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = (field: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   if (!task) {
     return (
@@ -75,7 +79,8 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
             No Task Selected
           </div>
           <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed max-w-[200px]">
-            Click any download item in the list to inspect telemetry and connection chunks.
+            Click any download item in the list to inspect telemetry and
+            connection chunks.
           </p>
         </div>
       </aside>
@@ -93,11 +98,11 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
     task.total_bytes > 0
       ? Math.min(
           100,
-          Math.round((task.downloaded_bytes / task.total_bytes) * 1000) / 10
+          Math.round((task.downloaded_bytes / task.total_bytes) * 1000) / 10,
         )
       : task.status === "completed"
-      ? 100
-      : 0;
+        ? 100
+        : 0;
 
   const chunkCount =
     task.chunks && task.chunks.length > 0
@@ -106,48 +111,6 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
   const completedChunks = task.chunks
     ? task.chunks.filter((c) => c.completed).length
     : 0;
-
-  const handleCopyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(task.url);
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 1500);
-    } catch (err) {
-      console.error("Failed to copy URL:", err);
-    }
-  };
-
-  const handleCopyPath = async () => {
-    try {
-      await navigator.clipboard.writeText(task.destination_path);
-      setCopiedPath(true);
-      setTimeout(() => setCopiedPath(false), 1500);
-    } catch (err) {
-      console.error("Failed to copy path:", err);
-    }
-  };
-
-  const handleCopyChecksum = async () => {
-    if (!task.expected_checksum) return;
-    try {
-      await navigator.clipboard.writeText(task.expected_checksum);
-      setCopiedChecksum(true);
-      setTimeout(() => setCopiedChecksum(false), 1500);
-    } catch (err) {
-      console.error("Failed to copy checksum:", err);
-    }
-  };
-
-  const handleCopyError = async () => {
-    if (!task.error) return;
-    try {
-      await navigator.clipboard.writeText(task.error);
-      setCopiedError(true);
-      setTimeout(() => setCopiedError(false), 1500);
-    } catch (err) {
-      console.error("Failed to copy error:", err);
-    }
-  };
 
   return (
     <aside
@@ -247,14 +210,16 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                 {task.total_bytes > 0
                   ? `${progressPercent.toFixed(1)}%`
                   : task.status === "completed"
-                  ? "100%"
-                  : "--"}
+                    ? "100%"
+                    : "--"}
               </span>
             </div>
             <div
               className="w-full h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden"
               role="progressbar"
-              aria-valuenow={task.status === "completed" ? 100 : progressPercent}
+              aria-valuenow={
+                task.status === "completed" ? 100 : progressPercent
+              }
               aria-valuemin={0}
               aria-valuemax={100}
               aria-label={`Download progress for ${task.filename}`}
@@ -264,10 +229,10 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                   task.status === "completed"
                     ? "bg-emerald-500"
                     : task.status === "failed"
-                    ? "bg-rose-500"
-                    : task.status === "paused"
-                    ? "bg-amber-500"
-                    : "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-sm"
+                      ? "bg-rose-500"
+                      : task.status === "paused"
+                        ? "bg-amber-500"
+                        : "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-sm"
                 }`}
                 style={{
                   width: `${task.status === "completed" ? 100 : progressPercent}%`,
@@ -294,7 +259,9 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
           {!task.chunks || task.chunks.length === 0 ? (
             <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
               <Radio className="w-4 h-4 text-zinc-400 shrink-0" />
-              <span>Segments will be allocated once server handshake finishes.</span>
+              <span>
+                Segments will be allocated once server handshake finishes.
+              </span>
             </div>
           ) : !task.resumable ? (
             <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
@@ -302,7 +269,8 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
               <div>
                 <div className="font-semibold">Single Stream Direct Mode</div>
                 <div className="text-[10.5px] opacity-90">
-                  Server does not support range headers; downloading as 1 stream.
+                  Server does not support range headers; downloading as 1
+                  stream.
                 </div>
               </div>
             </div>
@@ -335,14 +303,18 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                     chunk.total_bytes > 0
                       ? Math.min(
                           100,
-                          Math.round((chunk.downloaded_bytes / chunk.total_bytes) * 100)
+                          Math.round(
+                            (chunk.downloaded_bytes / chunk.total_bytes) * 100,
+                          ),
                         )
                       : chunk.completed
-                      ? 100
-                      : 0;
+                        ? 100
+                        : 0;
 
                   const isChunkActive =
-                    isDownloading && !chunk.completed && chunk.downloaded_bytes > 0;
+                    isDownloading &&
+                    !chunk.completed &&
+                    chunk.downloaded_bytes > 0;
 
                   let bgClass = "bg-zinc-200 dark:bg-zinc-800";
                   if (chunk.completed) {
@@ -358,7 +330,7 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                       key={chunk.index}
                       className={`h-full flex-1 rounded-xs relative overflow-hidden transition-all duration-300 ${bgClass}`}
                       title={`Chunk #${chunk.index + 1}: ${chunkProgress}% (${formatBytes(
-                        chunk.downloaded_bytes
+                        chunk.downloaded_bytes,
                       )} / ${formatBytes(chunk.total_bytes)})`}
                     >
                       {!chunk.completed && chunkProgress > 0 && (
@@ -380,12 +352,12 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                       ? Math.min(
                           100,
                           Math.round(
-                            (chunk.downloaded_bytes / chunk.total_bytes) * 100
-                          )
+                            (chunk.downloaded_bytes / chunk.total_bytes) * 100,
+                          ),
                         )
                       : chunk.completed
-                      ? 100
-                      : 0;
+                        ? 100
+                        : 0;
                   const isActive =
                     isDownloading &&
                     !chunk.completed &&
@@ -398,8 +370,8 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                         chunk.completed
                           ? "bg-emerald-500/5 dark:bg-emerald-950/20 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
                           : isActive
-                          ? "bg-blue-500/10 dark:bg-blue-950/30 border-blue-500/40 text-blue-700 dark:text-blue-300"
-                          : "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
+                            ? "bg-blue-500/10 dark:bg-blue-950/30 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                            : "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
                       }`}
                     >
                       <div className="flex items-center justify-between font-semibold">
@@ -407,10 +379,12 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                         <span>{chunkPct}%</span>
                       </div>
                       <div className="text-[9px] opacity-80 mt-1 truncate">
-                        {formatBytes(chunk.downloaded_bytes)} / {formatBytes(chunk.total_bytes)}
+                        {formatBytes(chunk.downloaded_bytes)} /{" "}
+                        {formatBytes(chunk.total_bytes)}
                       </div>
                       <div className="text-[8.5px] opacity-60 mt-0.5 truncate">
-                        Bytes: {chunk.start_offset.toLocaleString()} - {chunk.end_offset.toLocaleString()}
+                        Bytes: {chunk.start_offset.toLocaleString()} -{" "}
+                        {chunk.end_offset.toLocaleString()}
                       </div>
                       {/* Micro progress line */}
                       <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mt-1.5">
@@ -419,8 +393,8 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                             chunk.completed
                               ? "bg-emerald-500"
                               : isActive
-                              ? "bg-blue-500"
-                              : "bg-zinc-400"
+                                ? "bg-blue-500"
+                                : "bg-zinc-400"
                           }`}
                           style={{ width: `${chunkPct}%` }}
                         />
@@ -441,7 +415,9 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
 
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 dark:text-zinc-400">Transferred:</span>
+              <span className="text-zinc-500 dark:text-zinc-400">
+                Transferred:
+              </span>
               <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">
                 {formatBytes(task.downloaded_bytes)}
                 {task.total_bytes > 0 && ` / ${formatBytes(task.total_bytes)}`}
@@ -451,13 +427,17 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
             {isDownloading && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Current Speed:</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    Current Speed:
+                  </span>
                   <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
                     {formatSpeed(task.speed)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Estimated Time:</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    Estimated Time:
+                  </span>
                   <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">
                     {formatEta(task.eta)}
                   </span>
@@ -466,7 +446,9 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 dark:text-zinc-400">Connection Mode:</span>
+              <span className="text-zinc-500 dark:text-zinc-400">
+                Connection Mode:
+              </span>
               <span className="font-mono text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
                 {task.resumable ? "Multi-Chunk Range" : "Single-Stream Direct"}
               </span>
@@ -474,7 +456,9 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
 
             {/* ETag Integrity Badge */}
             <div className="flex items-center justify-between pt-1 border-t border-zinc-100 dark:border-zinc-800/60">
-              <span className="text-zinc-500 dark:text-zinc-400">ETag Status:</span>
+              <span className="text-zinc-500 dark:text-zinc-400">
+                ETag Status:
+              </span>
               {task.etag ? (
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 max-w-[170px] truncate"
@@ -484,13 +468,17 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                   <span className="truncate">{task.etag}</span>
                 </span>
               ) : (
-                <span className="text-[11px] font-mono text-zinc-400">None</span>
+                <span className="text-[11px] font-mono text-zinc-400">
+                  None
+                </span>
               )}
             </div>
 
             {/* SHA-256 Checksum Verification Badge */}
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 dark:text-zinc-400">SHA-256 Integrity:</span>
+              <span className="text-zinc-500 dark:text-zinc-400">
+                SHA-256 Integrity:
+              </span>
               {task.checksum_verified === true ? (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   <ShieldCheck className="w-3 h-3" />
@@ -507,13 +495,17 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                   <span>Pending</span>
                 </span>
               ) : (
-                <span className="text-[11px] font-mono text-zinc-400">None</span>
+                <span className="text-[11px] font-mono text-zinc-400">
+                  None
+                </span>
               )}
             </div>
 
             {/* Date added / completed */}
             <div className="flex items-center justify-between pt-1 border-t border-zinc-100 dark:border-zinc-800/60">
-              <span className="text-zinc-500 dark:text-zinc-400">Date Added:</span>
+              <span className="text-zinc-500 dark:text-zinc-400">
+                Date Added:
+              </span>
               <span className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400">
                 {new Date(task.created_at * 1000).toLocaleString(undefined, {
                   month: "short",
@@ -526,14 +518,19 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
 
             {task.completed_at && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-500 dark:text-zinc-400">Completed At:</span>
+                <span className="text-zinc-500 dark:text-zinc-400">
+                  Completed At:
+                </span>
                 <span className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400">
-                  {new Date(task.completed_at * 1000).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {new Date(task.completed_at * 1000).toLocaleString(
+                    undefined,
+                    {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    },
+                  )}
                 </span>
               </div>
             )}
@@ -551,13 +548,15 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
             <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
               <span>Source URL:</span>
               <button
-                onClick={handleCopyUrl}
+                onClick={() => handleCopy("url", task.url)}
                 className="flex items-center gap-1 text-[10.5px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
               >
-                {copiedUrl ? (
+                {copiedField === "url" ? (
                   <>
                     <Check className="w-3 h-3 text-emerald-500" />
-                    <span className="text-emerald-500 font-semibold">Copied!</span>
+                    <span className="text-emerald-500 font-semibold">
+                      Copied!
+                    </span>
                   </>
                 ) : (
                   <>
@@ -581,11 +580,11 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
               <span>Destination Path:</span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleCopyPath}
+                  onClick={() => handleCopy("path", task.destination_path)}
                   className="flex items-center gap-1 text-[10.5px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 cursor-pointer"
                   title="Copy full path"
                 >
-                  {copiedPath ? (
+                  {copiedField === "path" ? (
                     <Check className="w-3 h-3 text-emerald-500" />
                   ) : (
                     <Copy className="w-3 h-3" />
@@ -614,10 +613,12 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
               <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
                 <span>Expected SHA-256:</span>
                 <button
-                  onClick={handleCopyChecksum}
+                  onClick={() =>
+                    handleCopy("checksum", task.expected_checksum!)
+                  }
                   className="flex items-center gap-1 text-[10.5px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 >
-                  {copiedChecksum ? (
+                  {copiedField === "checksum" ? (
                     <>
                       <Check className="w-3 h-3 text-emerald-500" />
                       <span className="text-emerald-500">Copied!</span>
@@ -656,10 +657,14 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
                 <span>Retry Download</span>
               </button>
               <button
-                onClick={handleCopyError}
+                onClick={() => handleCopy("error", task.error!)}
                 className="px-2 py-1 rounded-md bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-1 cursor-pointer"
               >
-                {copiedError ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copiedField === "error" ? (
+                  <Check className="w-3 h-3" />
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
                 <span>Copy Error</span>
               </button>
             </div>
@@ -707,19 +712,23 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleCopyUrl}
+            onClick={() => handleCopy("url", task.url)}
             className="flex-1 h-7 rounded-md bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-[11px] font-medium flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer"
           >
-            {copiedUrl ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+            {copiedField === "url" ? (
+              <Check className="w-3 h-3 text-emerald-500" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
             <span>Copy URL</span>
           </button>
 
           {task.expected_checksum && (
             <button
-              onClick={handleCopyChecksum}
+              onClick={() => handleCopy("checksum", task.expected_checksum!)}
               className="flex-1 h-7 rounded-md bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-[11px] font-medium flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer"
             >
-              {copiedChecksum ? (
+              {copiedField === "checksum" ? (
                 <Check className="w-3 h-3 text-emerald-500" />
               ) : (
                 <FileCode className="w-3 h-3" />

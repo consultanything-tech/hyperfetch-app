@@ -5,12 +5,14 @@
 
 import AppKit
 import Foundation
+import OSLog
 import UserNotifications
 import DownloadKit
 
 /// Manages system notifications for download completion and events.
 public final class NotificationManager: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     public static let shared = NotificationManager()
+    private let logger = Logger(subsystem: "com.hyperfetch.app", category: "NotificationManager")
 
     public static let actionShowInFinder = "SHOW_IN_FINDER"
     public static let categoryDownloadCompleted = "DOWNLOAD_COMPLETED"
@@ -85,9 +87,9 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
     public func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
-        ) { granted, error in
+        ) { [weak self] granted, error in
             if let error {
-                print("Notification permission error: \(error.localizedDescription)")
+                self?.logger.error("Notification permission error: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -117,9 +119,9 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
             trigger: nil // deliver immediately
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error {
-                print("Failed to schedule completion notification: \(error.localizedDescription)")
+                self?.logger.error("Failed to schedule completion notification: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -148,9 +150,9 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error {
-                print("Failed to schedule update available notification: \(error.localizedDescription)")
+                self?.logger.error("Failed to schedule update available notification: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -174,9 +176,9 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error {
-                print("Failed to schedule update ready notification: \(error.localizedDescription)")
+                self?.logger.error("Failed to schedule update ready notification: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -201,9 +203,9 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error {
-                print("Failed to schedule update failed notification: \(error.localizedDescription)")
+                self?.logger.error("Failed to schedule update failed notification: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

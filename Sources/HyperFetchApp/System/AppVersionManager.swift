@@ -26,11 +26,11 @@ public final class AppVersionManager: ObservableObject {
     public static let notifyOnUpdateAvailableKey = "HyperFetch_NotifyOnUpdateAvailable"
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.2.3"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.2.4"
     }
 
     public var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "25"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "26"
     }
 
     public var fullVersionString: String {
@@ -72,12 +72,16 @@ public final class AppVersionManager: ObservableObject {
     @Published public var isAboutSheetPresented: Bool = false
     @Published public var state: UpdateState = .idle
 
-    public var formattedLastCheckedDate: String {
-        guard let lastCheckedDate else { return "Never" }
+    private static let lastCheckedDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: lastCheckedDate)
+        return formatter
+    }()
+
+    public var formattedLastCheckedDate: String {
+        guard let lastCheckedDate else { return "Never" }
+        return Self.lastCheckedDateFormatter.string(from: lastCheckedDate)
     }
 
     private var activeCheckTask: Task<Void, Never>?
@@ -144,6 +148,10 @@ public final class AppVersionManager: ObservableObject {
                 self?.checkOnLaunchIfNeeded()
             }
         }
+    }
+
+    isolated deinit {
+        periodicCheckTimer?.invalidate()
     }
 
     /// Checks if automatic update check is required on launch (> 15 minutes since last check).

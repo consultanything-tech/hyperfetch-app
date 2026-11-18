@@ -165,9 +165,12 @@ public final class LocalhostBridge: @unchecked Sendable {
         return queue.sync { currentPort }
     }
 
+    public static let defaultPreferredPort: UInt16 = 31415
+    public static let defaultFallbackPort: UInt16 = 31416
+
     public init(
-        preferredPort: UInt16 = 31415,
-        fallbackPort: UInt16 = 31416,
+        preferredPort: UInt16 = defaultPreferredPort,
+        fallbackPort: UInt16 = defaultFallbackPort,
         bridgeToken: String? = nil,
         version: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0",
         onDownloadRequested: DownloadHandler? = nil

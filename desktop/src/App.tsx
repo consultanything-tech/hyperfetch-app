@@ -1,126 +1,61 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   DownloadCloud,
+  Pause,
+  Play,
   Plus,
   SearchX,
   Trash2,
-  Pause,
-  Play,
 } from "lucide-react";
-import type {
-  DownloadTask,
-  SidebarFilter,
-  ViewMode,
-  ThemeMode,
-  QueueAction,
-} from "./types/download";
-import { Sidebar } from "./components/Sidebar";
-import { Toolbar } from "./components/Toolbar";
-import { DownloadRow } from "./components/DownloadRow";
-import { CompactDownloadRowView } from "./components/CompactDownloadRowView";
-import { TaskDetailInspector } from "./components/TaskDetailInspector";
-import { ContextMenu } from "./components/ContextMenu";
+import type React from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AddDownloadModal } from "./components/AddDownloadModal";
+import { CompactDownloadRowView } from "./components/CompactDownloadRowView";
+import { ContextMenu } from "./components/ContextMenu";
+import { DownloadRow } from "./components/DownloadRow";
 import { SettingsModal } from "./components/SettingsModal";
+import { Sidebar } from "./components/Sidebar";
+import { TaskDetailInspector } from "./components/TaskDetailInspector";
+import { Toolbar } from "./components/Toolbar";
+import { useDownloadState } from "./hooks/useDownloadState";
+import { useSelectionState } from "./hooks/useSelectionState";
+import { useUIState } from "./hooks/useUIState";
+import type { DownloadTask, QueueAction } from "./types/download";
 import "./App.css";
 
 export function App() {
-  const [tasks, setTasks] = useState<DownloadTask[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
-    new Set()
-  );
-  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
-  const [showInspector, setShowInspector] = useState<boolean>(true);
+  const {
+    tasks,
+    setTasks,
+    refreshTasks,
+    isAddModalOpen,
+    setIsAddModalOpen,
+    sheetUrl,
+    setSheetUrl,
+    sheetFilename,
+    setSheetFilename,
+    openAddModal,
+  } = useDownloadState();
 
-  const [activeFilter, setActiveFilter] = useState<SidebarFilter>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("comfortable");
-  const [theme, setTheme] = useState<ThemeMode>("dark");
-
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [sheetUrl, setSheetUrl] = useState("");
-  const [sheetFilename, setSheetFilename] = useState("");
+  const {
+    activeFilter,
+    setActiveFilter,
+    searchQuery,
+    setSearchQuery,
+    viewMode,
+    setViewMode,
+    theme,
+    setTheme,
+    showInspector,
+    setShowInspector,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+  } = useUIState();
 
   const [contextMenu, setContextMenu] = useState<{
     task: DownloadTask;
     position: { x: number; y: number };
   } | null>(null);
-
-  // Refresh tasks from backend
-  const refreshTasks = useCallback(async () => {
-    try {
-      const data = await invoke<DownloadTask[]>("get_downloads");
-      setTasks(data || []);
-    } catch (err) {
-      console.error("Failed to load downloads:", err);
-    }
-  }, []);
-
-  // Initial load
-  useEffect(() => {
-    refreshTasks();
-  }, [refreshTasks]);
-
-  // Listen for Tauri events
-  useEffect(() => {
-    let unlistenProgress: (() => void) | undefined;
-    let unlistenSheet: (() => void) | undefined;
-    let unlistenTheme: (() => void) | undefined;
-
-    listen<DownloadTask[]>("download-progress", (event) => {
-      if (Array.isArray(event.payload)) {
-        setTasks(event.payload);
-      }
-    }).then((unlisten) => {
-      unlistenProgress = unlisten;
-    });
-
-    listen<{ url?: string; filename?: string }>("open-add-sheet", (event) => {
-      setSheetUrl(event.payload?.url || "");
-      setSheetFilename(event.payload?.filename || "");
-      setIsAddModalOpen(true);
-    }).then((unlisten) => {
-      unlistenSheet = unlisten;
-    });
-
-    listen<string>("set-theme", (event) => {
-      const mode = event.payload?.toLowerCase();
-      if (mode === "dark" || mode === "light" || mode === "system") {
-        setTheme(mode as ThemeMode);
-      }
-    }).then((unlisten) => {
-      unlistenTheme = unlisten;
-    });
-
-    return () => {
-      if (unlistenProgress) unlistenProgress();
-      if (unlistenSheet) unlistenSheet();
-      if (unlistenTheme) unlistenTheme();
-    };
-  }, []);
-
-  // Theme application
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else if (theme === "light") {
-      root.classList.remove("dark");
-    } else {
-      const prefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches;
-      if (prefersDark) {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
-    }
-  }, [theme]);
 
   // Filtered tasks calculation
   const filteredTasks = useMemo(() => {
@@ -152,102 +87,24 @@ export function App() {
     });
   }, [tasks, activeFilter, searchQuery]);
 
-  // Derive the active task for the inspector
-  const selectedTask = useMemo(() => {
-    if (!selectedTaskId) {
-      if (selectedTaskIds.size === 1) {
-        const id = Array.from(selectedTaskIds)[0];
-        return tasks.find((t) => t.id === id) || null;
-      }
-      return null;
-    }
-    return tasks.find((t) => t.id === selectedTaskId) || null;
-  }, [tasks, selectedTaskId, selectedTaskIds]);
-
-  // Keep selectedTaskId synced if task list changes
-  useEffect(() => {
-    if (selectedTaskId && !tasks.some((t) => t.id === selectedTaskId)) {
-      if (tasks.length > 0) {
-        setSelectedTaskId(tasks[0].id);
-        setSelectedTaskIds(new Set([tasks[0].id]));
-      } else {
-        setSelectedTaskId(null);
-        setSelectedTaskIds(new Set());
-      }
-    }
-  }, [tasks, selectedTaskId]);
+  const {
+    selectedTaskId,
+    setSelectedTaskId,
+    selectedTaskIds,
+    setSelectedTaskIds,
+    setLastClickedIndex,
+    selectedTask,
+    handleSelectRow,
+    handleToggleCheckbox,
+    handleSelectAll,
+  } = useSelectionState(tasks, filteredTasks);
 
   // Active downloading count
   const activeCount = useMemo(() => {
     return tasks.filter(
-      (t) => t.status === "downloading" || t.status === "connecting"
+      (t) => t.status === "downloading" || t.status === "connecting",
     ).length;
   }, [tasks]);
-
-  // Desktop Multi-Selection Semantics
-  const handleSelectRow = (id: string, e: React.MouseEvent) => {
-    const currentIndex = filteredTasks.findIndex((t) => t.id === id);
-
-    if (e.shiftKey && lastClickedIndex !== null && currentIndex !== -1) {
-      // Shift+Click: contiguous range selection
-      const start = Math.min(lastClickedIndex, currentIndex);
-      const end = Math.max(lastClickedIndex, currentIndex);
-      const next = new Set(selectedTaskIds);
-      for (let i = start; i <= end; i++) {
-        next.add(filteredTasks[i].id);
-      }
-      setSelectedTaskIds(next);
-      setSelectedTaskId(id);
-    } else if (e.metaKey || e.ctrlKey) {
-      // Ctrl+Click / Cmd+Click: toggle without clearing others
-      const next = new Set(selectedTaskIds);
-      if (next.has(id)) {
-        next.delete(id);
-        if (selectedTaskId === id) {
-          setSelectedTaskId(next.size > 0 ? Array.from(next)[0] : null);
-        }
-      } else {
-        next.add(id);
-        setSelectedTaskId(id);
-      }
-      setSelectedTaskIds(next);
-      setLastClickedIndex(currentIndex);
-    } else {
-      // Regular click: single select
-      setSelectedTaskIds(new Set([id]));
-      setSelectedTaskId(id);
-      setLastClickedIndex(currentIndex);
-    }
-  };
-
-  const handleToggleCheckbox = (id: string) => {
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        if (selectedTaskId === id) {
-          setSelectedTaskId(next.size > 0 ? Array.from(next)[0] : null);
-        }
-      } else {
-        next.add(id);
-        if (!selectedTaskId) {
-          setSelectedTaskId(id);
-        }
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (selectedTaskIds.size === filteredTasks.length) {
-      setSelectedTaskIds(new Set());
-    } else {
-      setSelectedTaskIds(new Set(filteredTasks.map((t) => t.id)));
-      if (filteredTasks.length > 0 && !selectedTaskId) {
-        setSelectedTaskId(filteredTasks[0].id);
-      }
-    }
-  };
 
   // Context Menu
   const handleContextMenu = (task: DownloadTask, e: React.MouseEvent) => {
@@ -409,13 +266,15 @@ export function App() {
   const handleBulkDelete = async () => {
     if (
       !confirm(
-        `Are you sure you want to remove ${selectedTaskIds.size} selected tasks?`
+        `Are you sure you want to remove ${selectedTaskIds.size} selected tasks?`,
       )
     ) {
       return;
     }
     for (const id of selectedTaskIds) {
-      await invoke("delete_download", { id, deleteFile: false }).catch(() => {});
+      await invoke("delete_download", { id, deleteFile: false }).catch(
+        () => {},
+      );
     }
     setSelectedTaskIds(new Set());
     setSelectedTaskId(null);
@@ -428,7 +287,7 @@ export function App() {
       // Toggle New Download: Cmd+N or Ctrl+N
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        setIsAddModalOpen(true);
+        openAddModal();
         return;
       }
       // Toggle Inspector: Cmd+I or Ctrl+I
@@ -466,7 +325,10 @@ export function App() {
           e.preventDefault();
           const target = tasks.find((t) => t.id === selectedTaskId);
           if (target) {
-            if (target.status === "downloading" || target.status === "connecting") {
+            if (
+              target.status === "downloading" ||
+              target.status === "connecting"
+            ) {
               handlePause(target.id);
             } else if (target.status !== "completed") {
               handleResume(target.id);
@@ -498,7 +360,19 @@ export function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [tasks, filteredTasks, selectedTaskId, selectedTaskIds]);
+  }, [
+    tasks,
+    filteredTasks,
+    selectedTaskId,
+    selectedTaskIds,
+    openAddModal,
+    setShowInspector,
+    setIsSettingsModalOpen,
+    handleSelectAll,
+    setSelectedTaskId,
+    setSelectedTaskIds,
+    setLastClickedIndex,
+  ]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
@@ -587,8 +461,8 @@ export function App() {
                 {searchQuery
                   ? "No matching downloads found"
                   : activeFilter !== "all"
-                  ? `No downloads in "${activeFilter}"`
-                  : "No downloads yet"}
+                    ? `No downloads in "${activeFilter}"`
+                    : "No downloads yet"}
               </h3>
               <p className="text-xs text-zinc-400 dark:text-zinc-500 max-w-sm mb-5">
                 {searchQuery
@@ -597,11 +471,7 @@ export function App() {
               </p>
               {!searchQuery && (
                 <button
-                  onClick={() => {
-                    setSheetUrl("");
-                    setSheetFilename("");
-                    setIsAddModalOpen(true);
-                  }}
+                  onClick={() => openAddModal()}
                   className="h-8 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-blue-500/25 transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4 stroke-[2.5]" />

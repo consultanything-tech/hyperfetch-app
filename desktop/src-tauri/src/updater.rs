@@ -2,7 +2,7 @@ use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CURRENT_APP_VERSION: &str = "1.2.2.3";
+pub const CURRENT_APP_VERSION: &str = "1.2.2.4";
 pub const GITHUB_REPO: &str = "consultanything-tech/hyperfetch";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

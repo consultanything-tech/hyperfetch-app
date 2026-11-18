@@ -57,28 +57,10 @@ public struct DownloadListView: View {
             titleVisibility: .visible
         ) {
             Button("Remove from List", role: .destructive) {
-                if !appState.tasksPendingDeletion.isEmpty {
-                    for task in appState.tasksPendingDeletion {
-                        appState.remove(id: task.id, deleteFile: false)
-                    }
-                    appState.tasksPendingDeletion = []
-                    appState.taskPendingDeletion = nil
-                } else if let task = appState.taskPendingDeletion {
-                    appState.remove(id: task.id, deleteFile: false)
-                    appState.taskPendingDeletion = nil
-                }
+                appState.confirmDelete(deleteFile: false)
             }
             Button("Delete File from Disk", role: .destructive) {
-                if !appState.tasksPendingDeletion.isEmpty {
-                    for task in appState.tasksPendingDeletion {
-                        appState.remove(id: task.id, deleteFile: true)
-                    }
-                    appState.tasksPendingDeletion = []
-                    appState.taskPendingDeletion = nil
-                } else if let task = appState.taskPendingDeletion {
-                    appState.remove(id: task.id, deleteFile: true)
-                    appState.taskPendingDeletion = nil
-                }
+                appState.confirmDelete(deleteFile: true)
             }
             Button("Cancel", role: .cancel) {
                 appState.tasksPendingDeletion = []

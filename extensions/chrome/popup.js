@@ -32,13 +32,13 @@ document.addEventListener('DOMContentLoaded', () => {
   ], (res) => {
     if (chrome.runtime.lastError) return;
     if (res) {
-      if (res.enabled !== undefined) {
+      if (res.enabled !== undefined && interceptToggle) {
         interceptToggle.checked = res.enabled;
       }
       if (res.interceptAll) {
-        scopeAll.checked = true;
+        if (scopeAll) scopeAll.checked = true;
       } else {
-        scopeFiltered.checked = true;
+        if (scopeFiltered) scopeFiltered.checked = true;
       }
 
       if (res.minFileSize !== undefined && minSizeSelect) {
@@ -58,19 +58,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Handle toggle change
-  interceptToggle.addEventListener('change', () => {
+  interceptToggle?.addEventListener('change', () => {
     const isEnabled = interceptToggle.checked;
     chrome.storage.local.set({ enabled: isEnabled });
   });
 
   // Handle scope change
-  scopeFiltered.addEventListener('change', () => {
+  scopeFiltered?.addEventListener('change', () => {
     if (scopeFiltered.checked) {
       chrome.storage.local.set({ interceptAll: false });
     }
   });
 
-  scopeAll.addEventListener('change', () => {
+  scopeAll?.addEventListener('change', () => {
     if (scopeAll.checked) {
       chrome.storage.local.set({ interceptAll: true });
     }
@@ -110,12 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Open App Button
-  openAppBtn.addEventListener('click', () => {
+  openAppBtn?.addEventListener('click', () => {
     window.location.href = 'hyperfetch://open';
   });
 
   // Retry Connection Button
-  retryBtn.addEventListener('click', () => {
+  retryBtn?.addEventListener('click', () => {
     checkConnection();
   });
 
@@ -123,8 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
   checkConnection();
 
   async function checkConnection() {
-    statusBadge.className = 'status-badge';
-    statusText.textContent = 'Connecting...';
+    if (statusBadge) statusBadge.className = 'status-badge';
+    if (statusText) statusText.textContent = 'Connecting...';
 
     chrome.runtime.sendMessage({ action: 'checkStatus' }, (response) => {
       if (chrome.runtime.lastError || !response || !response.connected) {
@@ -160,8 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setConnected(port) {
     connectedPort = port;
-    statusBadge.className = 'status-badge status-online';
-    statusText.textContent = `Connected (${port})`;
+    if (statusBadge) statusBadge.className = 'status-badge status-online';
+    if (statusText) statusText.textContent = `Connected (${port})`;
     if (footerStatusText) {
       footerStatusText.textContent = `HyperFetch Local Bridge 127.0.0.1:${port}`;
     }
@@ -171,8 +171,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setOffline() {
     connectedPort = null;
-    statusBadge.className = 'status-badge status-offline';
-    statusText.textContent = 'HyperFetch Offline';
+    if (statusBadge) statusBadge.className = 'status-badge status-offline';
+    if (statusText) statusText.textContent = 'HyperFetch Offline';
     stopTransfersPolling();
     renderTransfers([]);
   }

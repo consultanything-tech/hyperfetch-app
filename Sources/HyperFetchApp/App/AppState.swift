@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import OSLog
 import SwiftUI
 import DownloadKit
 
@@ -138,7 +139,6 @@ public final class AppState: ObservableObject {
     @Published public var sidebarSelection: SidebarItem? = .status(.all) {
         didSet {
             _cachedFilteredTasks = nil
-            NSLog("🎯 [HyperFetch] sidebarSelection changed to: %@", String(describing: sidebarSelection))
         }
     }
     @Published public var searchText: String = "" {
@@ -148,7 +148,7 @@ public final class AppState: ObservableObject {
     @Published public var selectedSettingsTab: SettingsTab = .general
     public var openSettingsHandler: (@MainActor () -> Void)?
     @Published public var isBridgeRunning: Bool = false
-    @Published public var bridgeListeningPort: UInt16 = 31415
+    @Published public var bridgeListeningPort: UInt16 = LocalhostBridge.defaultPreferredPort
     @Published public var isAddSheetPresented: Bool = false
     public var isAddDownloadSheetPresented: Bool {
         get { isAddSheetPresented }
@@ -176,9 +176,9 @@ public final class AppState: ObservableObject {
         }
     }
 
-    private var _cachedFilteredTasks: [DownloadTaskModel]?
-    private var lastPauseTimestamps: [UUID: ContinuousClock.Instant] = [:]
-    private let pauseClock = ContinuousClock()
+    var _cachedFilteredTasks: [DownloadTaskModel]?
+    var lastPauseTimestamps: [UUID: ContinuousClock.Instant] = [:]
+    let pauseClock = ContinuousClock()
 
     /// Backward compatibility accessor for single-task selection.
     public var selectedTaskId: UUID? {
@@ -247,8 +247,8 @@ public final class AppState: ObservableObject {
     private static let playCompletionSoundKey = "com.hyperfetch.playCompletionSound"
     private static let completionSoundNameKey = "com.hyperfetch.completionSoundName"
     private static let showCompletionNotificationKey = "com.hyperfetch.showCompletionNotification"
-    private static let allTimeDownloadedBytesKey = "allTimeDownloadedBytes"
-    private static let allTimeCompletedCountKey = "allTimeCompletedCount"
+    static let allTimeDownloadedBytesKey = "allTimeDownloadedBytes"
+    static let allTimeCompletedCountKey = "allTimeCompletedCount"
     private static let autoRevealOnCompletionKey = "autoRevealOnCompletion"
     private static let isBandwidthScheduleEnabledKey = "isBandwidthScheduleEnabled"
     private static let scheduleStartHourKey = "scheduleStartHour"
@@ -269,7 +269,7 @@ public final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(scheduleEndHour, forKey: Self.scheduleEndHourKey) }
     }
     @AppStorage("autoOpenOnCompletion") public var autoOpenOnCompletion: Bool = false
-    private var preScheduleSpeedLimit: SpeedLimitPreset? = nil
+    var preScheduleSpeedLimit: SpeedLimitPreset? = nil
 
     public static let availableCompletionSounds = ["Glass", "Hero", "Ping", "Pop", "Purr", "Tink", "Mute"]
 
@@ -418,10 +418,11 @@ public final class AppState: ObservableObject {
     @Published private(set) public var cachedActiveSocketCount: Int = 0
     @Published private(set) public var cachedAllocatedMemoryMB: Int = 48
     @Published private(set) public var cachedTotalDownloadedTodayBytes: Int64 = 0
-    private var updatesTask: Task<Void, Never>?
-    private var speedSamplerTask: Task<Void, Never>?
-    private var previouslyCompletedTaskIds: Set<UUID> = []
-    nonisolated(unsafe) private var themeObserver: (any NSObjectProtocol)?
+    var updatesTask: Task<Void, Never>?
+    var speedSamplerTask: Task<Void, Never>?
+    var previouslyCompletedTaskIds: Set<UUID> = []
+    nonisolated(unsafe) var themeObserver: (any NSObjectProtocol)?
+    let logger = Logger(subsystem: "com.hyperfetch.app", category: "AppState")
 
     public init(
         queueManager: QueueManager? = nil,
@@ -666,124 +667,7 @@ public final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Computed Properties
-
-    /// Retrieves the currently selected task, if any.
-    public var selectedTask: DownloadTaskModel? {
-        guard let selectedTaskId else { return nil }
-        return tasks.first(where: { $0.id == selectedTaskId })
-    }
-
-    /// Retrieves all currently selected tasks.
-    public var selectedTasks: [DownloadTaskModel] {
-        tasks.filter { selectedTaskIDs.contains($0.id) }
-    }
-
-    // MARK: - Selection Management
-
-    /// Whether any of the selected tasks are currently active (downloading or probing).
-    public var hasActiveSelectedTasks: Bool {
-        selectedTasks.contains { $0.status == .downloading || $0.status == .probing }
-    }
-
-    /// Whether any of the selected tasks can be resumed (paused, idle, or failed).
-    public var hasResumableSelectedTasks: Bool {
-        selectedTasks.contains { task in
-            switch task.status {
-            case .paused, .idle, .failed:
-                return true
-            case .downloading, .probing, .completed:
-                return false
-            }
-        }
-    }
-
-    /// Indicates whether all currently filtered tasks are selected.
-    public var isAllSelected: Bool {
-        !filteredTasks.isEmpty && filteredTasks.allSatisfy { selectedTaskIDs.contains($0.id) }
-    }
-
-    /// Indicates whether some, but not all, currently filtered tasks are selected.
-    public var isPartiallySelected: Bool {
-        !isAllSelected && filteredTasks.contains { selectedTaskIDs.contains($0.id) }
-    }
-
-    /// Selects all tasks currently visible under active filters.
-    public func selectAll() {
-        selectedTaskIDs = Set(filteredTasks.map(\.id))
-    }
-
-    /// Deselects all tasks.
-    public func deselectAll() {
-        selectedTaskIDs = []
-    }
-
-    /// Toggles the selection state for a specific task ID.
-    public func toggleSelection(id: UUID) {
-        if selectedTaskIDs.contains(id) {
-            selectedTaskIDs.remove(id)
-        } else {
-            selectedTaskIDs.insert(id)
-        }
-    }
-
-    /// Toggles selection between all filtered tasks and none.
-    public func toggleSelectAll() {
-        if isAllSelected {
-            deselectAll()
-        } else {
-            selectAll()
-        }
-    }
-
-    /// Selects the next task in the filtered tasks list (arrow navigation).
-    public func selectNextTask() {
-        guard !filteredTasks.isEmpty else { return }
-        guard let currentId = selectedTaskId,
-              let currentIndex = filteredTasks.firstIndex(where: { $0.id == currentId }) else {
-            selectedTaskIDs = [filteredTasks[0].id]
-            return
-        }
-        let nextIndex = min(currentIndex + 1, filteredTasks.count - 1)
-        selectedTaskIDs = [filteredTasks[nextIndex].id]
-    }
-
-    /// Selects the previous task in the filtered tasks list (arrow navigation).
-    public func selectPreviousTask() {
-        guard !filteredTasks.isEmpty else { return }
-        guard let currentId = selectedTaskId,
-              let currentIndex = filteredTasks.firstIndex(where: { $0.id == currentId }) else {
-            selectedTaskIDs = [filteredTasks[0].id]
-            return
-        }
-        let prevIndex = max(0, currentIndex - 1)
-        selectedTaskIDs = [filteredTasks[prevIndex].id]
-    }
-
-    /// Selects a contiguous range of tasks from the anchor/selected task to the target task.
-    public func selectRange(to targetId: UUID) {
-        guard let anchorId = selectedTaskId,
-              let anchorIndex = filteredTasks.firstIndex(where: { $0.id == anchorId }),
-              let targetIndex = filteredTasks.firstIndex(where: { $0.id == targetId }) else {
-            selectedTaskIDs = [targetId]
-            return
-        }
-        let start = min(anchorIndex, targetIndex)
-        let end = max(anchorIndex, targetIndex)
-        let rangeTasks = filteredTasks[start...end]
-        selectedTaskIDs.formUnion(rangeTasks.map(\.id))
-    }
-
-    /// Copies the local destination file path of a task to the macOS pasteboard.
-    public func copyFilePath(task: DownloadTaskModel) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(task.destinationURL.path, forType: .string)
-    }
-
-    /// Reveals or previews a completed task file in Finder.
-    public func quickLookFile(task: DownloadTaskModel) {
-        NSWorkspace.shared.activateFileViewerSelecting([task.destinationURL])
-    }
+    // MARK: - Computed Properties & Filtering
 
     /// Restarts a download task cleanly from byte 0.
     public func restartTask(id: UUID) {
@@ -1058,7 +942,7 @@ public final class AppState: ObservableObject {
                     self.sidebarSelection = .status(.active)
                 }
             } catch {
-                print("Failed to add task: \(error.localizedDescription)")
+                logger.error("Failed to add task: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -1092,43 +976,6 @@ public final class AppState: ObservableObject {
     public func cancel(id: UUID) {
         Task {
             await queueManager.cancelTask(id: id)
-        }
-    }
-
-    /// Removes a task from the list and optionally deletes its file from disk.
-    public func remove(id: UUID, deleteFile: Bool = false) {
-        selectedTaskIDs.remove(id)
-        if selectedTaskIDs.isEmpty, let next = tasks.first(where: { $0.id != id })?.id {
-            selectedTaskIDs = [next]
-        }
-        self.tasks.removeAll(where: { $0.id == id })
-        Task {
-            try? await queueManager.removeTask(id: id, deleteFile: deleteFile)
-        }
-    }
-
-    /// Removes all selected tasks from the queue and resets selection.
-    public func removeSelected(deleteFile: Bool = false) {
-        let targets = selectedTasks
-        let targetIDs = Set(targets.map(\.id))
-        selectedTaskIDs.removeAll()
-        self.tasks.removeAll(where: { targetIDs.contains($0.id) })
-        if let first = self.tasks.first?.id {
-            self.selectedTaskIDs = [first]
-        }
-        Task {
-            for task in targets {
-                try? await queueManager.removeTask(id: task.id, deleteFile: deleteFile)
-            }
-        }
-    }
-
-    /// Removes all completed downloads from the queue without deleting files from disk.
-    public func clearCompletedTasks() {
-        let completedIDs = tasks.filter { $0.status == .completed }.map(\.id)
-        guard !completedIDs.isEmpty else { return }
-        for id in completedIDs {
-            remove(id: id, deleteFile: false)
         }
     }
 
@@ -1188,27 +1035,6 @@ public final class AppState: ObservableObject {
                 break
             }
         }
-    }
-
-
-    /// Prompts the delete confirmation sheet/dialog for the given task, or the selected tasks if none specified.
-    public func promptDelete(task: DownloadTaskModel? = nil) {
-        if let task {
-            self.taskPendingDeletion = task
-            self.tasksPendingDeletion = [task]
-            self.showDeleteConfirmation = true
-        } else {
-            promptDeleteSelected()
-        }
-    }
-
-    /// Sets up delete confirmation for the selected task(s).
-    public func promptDeleteSelected() {
-        let targets = selectedTasks
-        guard !targets.isEmpty else { return }
-        self.tasksPendingDeletion = targets
-        self.taskPendingDeletion = targets.first
-        self.showDeleteConfirmation = true
     }
 
     /// Toggles pause / resume for a task with the given ID.
@@ -1305,7 +1131,7 @@ public final class AppState: ObservableObject {
         launchAtLoginController.openSystemSettings()
     }
 
-    // MARK: - System & Finder Helpers
+    // MARK: - System Helpers
 
     /// Activates HyperFetch and brings all active application windows to the foreground.
     @MainActor
@@ -1343,394 +1169,5 @@ public final class AppState: ObservableObject {
         // Fallback 2: Standard selector dispatch
         NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
-    /// Reveals the downloaded file in macOS Finder.
-    public func openInFinder(task: DownloadTaskModel) {
-        let url = task.destinationURL
-        if FileManager.default.fileExists(atPath: url.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } else {
-            // Open containing directory if file doesn't exist yet
-            NSWorkspace.shared.open(url.deletingLastPathComponent())
-        }
-    }
-
-    /// Opens the downloaded file with its default application.
-    public func openFile(task: DownloadTaskModel) {
-        let url = task.destinationURL
-        if FileManager.default.fileExists(atPath: url.path) {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    /// Convenience overload to open a downloaded file.
-    public func openFile(_ task: DownloadTaskModel) {
-        openFile(task: task)
-    }
-
-    /// Copies the task's source URL to the system clipboard.
-    public func copyDownloadLink(task: DownloadTaskModel) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(task.url.absoluteString, forType: .string)
-    }
-
-    /// Inspects the macOS system pasteboard for a valid HTTP/HTTPS URL.
-    public func getValidURLFromClipboard() -> URL? {
-        guard let text = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty,
-              let url = URL(string: text),
-              let scheme = url.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
-              let host = url.host,
-              !host.isEmpty else {
-            return nil
-        }
-        return url
-    }
-
-    // MARK: - Download Catching & Integration
-
-    /// Presents the Add Download sheet pre-filled with the specified URL and optional filename.
-    public func presentAddSheet(url: String = "", filename: String = "") {
-        self.prefilledURL = url
-        self.prefilledFilename = filename
-        self.isAddSheetPresented = true
-    }
-
-    public func setupLocalhostBridge() {
-        // Register native messaging host manifests for Chromium browsers
-        NativeHostManager.registerManifests()
-
-        localhostBridge.onDownloadRequested = { [weak self] url, filename, autoStart, headers in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.handleIncomingDownload(
-                    url: url,
-                    filename: filename,
-                    headers: headers ?? [:],
-                    autoStart: autoStart || self.autoStartCapturedDownloads
-                )
-            }
-        }
-
-        localhostBridge.onSheetRequested = { [weak self] url, filename in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.bringToFront()
-                self.presentAddSheet(url: url ?? "", filename: filename ?? "")
-            }
-        }
-
-        localhostBridge.onAppearanceChangeRequested = { [weak self] mode in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if mode.lowercased() == "dark" {
-                    self.appearanceMode = .dark
-                } else if mode.lowercased() == "light" {
-                    self.appearanceMode = .light
-                } else {
-                    self.appearanceMode = .system
-                }
-            }
-        }
-
-        localhostBridge.onTransfersRequested = { [weak self] in
-            guard let self else { return [] }
-            struct TransfersBox: @unchecked Sendable {
-                let items: [[String: Any]]
-            }
-            let extract: @MainActor () -> TransfersBox = {
-                TransfersBox(items: self.tasks.map { task in
-                    [
-                        "id": task.id.uuidString,
-                        "filename": task.filename,
-                        "total_bytes": task.totalBytes,
-                        "downloaded_bytes": task.downloadedBytes,
-                        "speed": Int64(task.bytesPerSecond),
-                        "eta": Int64(task.eta),
-                        "status": task.status.displayName.lowercased(),
-                        "progress": task.progress
-                    ]
-                })
-            }
-            if Thread.isMainThread {
-                return MainActor.assumeIsolated {
-                    extract()
-                }.items
-            } else {
-                return DispatchQueue.main.sync {
-                    extract()
-                }.items
-            }
-        }
-
-        Task {
-            do {
-                let port = try await localhostBridge.start()
-                await MainActor.run {
-                    self.isBridgeRunning = true
-                    self.bridgeListeningPort = port
-                }
-            } catch {
-                print("LocalhostBridge failed to start: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.isBridgeRunning = self.localhostBridge.isRunning
-                    self.bridgeListeningPort = self.localhostBridge.listeningPort ?? self.localhostBridge.preferredPort
-                }
-            }
-        }
-    }
-
-    /// Restarts the localhost bridge if stopped or offline.
-    public func restartLocalhostBridge() {
-        localhostBridge.stop()
-        self.isBridgeRunning = false
-        setupLocalhostBridge()
-    }
-
-    /// Refreshes bridge status indicators from the active listener.
-    public func refreshBridgeStatus() {
-        self.isBridgeRunning = localhostBridge.isRunning
-        if let port = localhostBridge.listeningPort {
-            self.bridgeListeningPort = port
-        }
-    }
-
-    private func setupClipboardMonitor() {
-        clipboardMonitor.onDetected = { [weak self] url, filename in
-            guard let self, self.autoCaptureClipboard else { return }
-            self.handleClipboardDetected(url: url, filename: filename)
-        }
-
-        if autoCaptureClipboard {
-            clipboardMonitor.start()
-        }
-    }
-
-    private func handleClipboardDetected(url: URL, filename: String) {
-        if autoStartCapturedDownloads {
-            if bringToFrontOnCapture {
-                bringToFront()
-                NSSound(named: "Pop")?.play()
-            }
-            addTask(url: url, filename: filename, autoStart: true)
-        } else {
-            FloatingHUDController.shared.show(url: url, filename: filename, appState: self)
-        }
-    }
-
-    /// Handles an incoming download from localhost bridge, clipboard, or custom URL scheme.
-    public func handleIncomingDownload(url: URL, filename: String?, headers: [String: String] = [:], autoStart: Bool) {
-        if bringToFrontOnCapture {
-            bringToFront()
-            NSSound(named: "Pop")?.play()
-        }
-
-        let safeFilename = filename.map { FilenameResolver.sanitize($0) }
-
-        if autoStart || autoStartCapturedDownloads {
-            if sidebarSelection != .status(.all) && sidebarSelection != .status(.active) {
-                sidebarSelection = .status(.active)
-            }
-            addTask(url: url, filename: safeFilename, headers: headers, autoStart: true)
-        } else {
-            let name = safeFilename ?? (url.path as NSString).lastPathComponent
-            FloatingHUDController.shared.show(url: url, filename: name.isEmpty ? "download" : name, appState: self)
-        }
-    }
-
-    /// Handles external URLs opened via the custom hyperfetch:// scheme.
-    public func handleIncomingURLScheme(_ url: URL) {
-        bringToFront()
-
-        guard url.scheme?.lowercased() == "hyperfetch" else { return }
-
-        // Format 1: hyperfetch://open (brings app forward)
-        let host = url.host?.lowercased()
-        if host == "open" || url.path == "/open" {
-            return
-        }
-
-        // Format: hyperfetch://settings?tab=general
-        if host == "settings" || url.path == "/settings" {
-            let tabString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name.lowercased() == "tab" })?.value
-            let tab = tabString.flatMap { SettingsTab(rawValue: $0.capitalized) } ?? .general
-            openSettingsWindow(tab: tab)
-            return
-        }
-
-        // Format: hyperfetch://appearance?mode=dark|light|system
-        if host == "appearance" || url.path == "/appearance" {
-            if let modeString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name.lowercased() == "mode" })?.value {
-                if modeString.lowercased() == "dark" {
-                    appearanceMode = .dark
-                } else if modeString.lowercased() == "light" {
-                    appearanceMode = .light
-                } else {
-                    appearanceMode = .system
-                }
-            }
-            return
-        }
-
-        // Format 2: hyperfetch://add?url=... or hyperfetch://download?url=...
-        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-            if let targetURLString = components.queryItems?.first(where: { $0.name.lowercased() == "url" })?.value,
-               let targetURL = URL(string: targetURLString),
-               let targetScheme = targetURL.scheme?.lowercased(),
-               (targetScheme == "http" || targetScheme == "https") {
-                let filename = components.queryItems?.first(where: { $0.name.lowercased() == "filename" })?.value
-                let safeFilename = filename.map { FilenameResolver.sanitize($0) } ?? ""
-                presentAddSheet(url: targetURL.absoluteString, filename: safeFilename)
-                return
-            } else if components.queryItems?.contains(where: { $0.name.lowercased() == "url" }) == true || host == "add" || host == "download" {
-                return
-            }
-        }
-
-        // Format 3: hyperfetch://https://example.com/file.dmg
-        let raw = url.absoluteString
-        let prefix = "hyperfetch://"
-        if raw.lowercased().hasPrefix(prefix) {
-            let remainder = String(raw.dropFirst(prefix.count))
-            let normalized = (remainder.hasPrefix("http://") || remainder.hasPrefix("https://")) ? remainder : "https://\(remainder)"
-            if let targetURL = URL(string: normalized),
-               let targetScheme = targetURL.scheme?.lowercased(),
-               (targetScheme == "http" || targetScheme == "https") {
-                let rawName = (targetURL.path as NSString).lastPathComponent
-                let safeFilename = FilenameResolver.sanitize(rawName)
-                presentAddSheet(url: targetURL.absoluteString, filename: safeFilename)
-            }
-        }
-    }
-
-    /// Convenience alias for handleIncomingURLScheme.
-    public func handleURLScheme(_ url: URL) {
-        handleIncomingURLScheme(url)
-    }
-
-    // MARK: - Formatters
-
-    /// Formats transfer speed into readable strings.
-    public static func formatSpeed(_ bytesPerSecond: Double) -> String {
-        guard bytesPerSecond > 0 else { return "0 B/s" }
-        if bytesPerSecond >= 1024 * 1024 * 1024 {
-            return String(format: "%.1f GB/s", bytesPerSecond / (1024 * 1024 * 1024))
-        } else if bytesPerSecond >= 1024 * 1024 {
-            return String(format: "%.1f MB/s", bytesPerSecond / (1024 * 1024))
-        } else if bytesPerSecond >= 1024 {
-            return String(format: "%.1f KB/s", bytesPerSecond / 1024)
-        } else {
-            return String(format: "%.0f B/s", bytesPerSecond)
-        }
-    }
-
-    /// Formats byte counts into localized file size strings.
-    public static func formatBytes(_ bytes: Int64) -> String {
-        guard bytes >= 0 else { return "Unknown size" }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
-    /// Calculates remaining time formatted as human-readable string.
-    public static func formatETA(remainingBytes: Int64, bytesPerSecond: Double) -> String {
-        guard remainingBytes > 0, bytesPerSecond > 100 else { return "--" }
-        let seconds = Double(remainingBytes) / bytesPerSecond
-        if seconds >= 3600 {
-            let hours = Int(seconds) / 3600
-            let minutes = (Int(seconds) % 3600) / 60
-            return "\(hours)h \(minutes)m remaining"
-        } else if seconds >= 60 {
-            let minutes = Int(seconds) / 60
-            let secs = Int(seconds) % 60
-            return "\(minutes)m \(secs)s remaining"
-        } else {
-            return "\(Int(seconds))s remaining"
-        }
-    }
-
-    // MARK: - Private Queue Observation
-
-    private func startListeningToQueue() {
-        updatesTask = Task { [weak self] in
-            guard let self else { return }
-
-            // Restore existing persisted tasks
-            if let restored = try? await self.queueManager.restoreTasks() {
-                self.handleQueueUpdate(restored, isInitialLoad: true)
-            }
-
-            for await updatedList in await self.queueManager.queueUpdates {
-                self.handleQueueUpdate(updatedList, isInitialLoad: false)
-            }
-        }
-    }
-
-    private func handleQueueUpdate(_ updatedTasks: [DownloadTaskModel], isInitialLoad: Bool) {
-        var tasksToProcess = updatedTasks
-        for i in 0..<tasksToProcess.count {
-            let taskId = tasksToProcess[i].id
-            if let timestamp = lastPauseTimestamps[taskId], pauseClock.now - timestamp < .milliseconds(600) {
-                if tasksToProcess[i].status != .paused {
-                    tasksToProcess[i].status = .paused
-                    tasksToProcess[i].bytesPerSecond = 0.0
-                }
-            }
-        }
-
-        // Detect newly completed tasks to trigger notifications and audio alerts
-        if !isInitialLoad {
-            for task in tasksToProcess {
-                if task.status == .completed && !previouslyCompletedTaskIds.contains(task.id) {
-                    let bytes = task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes
-                    self.allTimeDownloadedBytes += bytes
-                    self.allTimeCompletedCount += 1
-                    UserDefaults.standard.set(self.allTimeDownloadedBytes, forKey: Self.allTimeDownloadedBytesKey)
-                    UserDefaults.standard.set(self.allTimeCompletedCount, forKey: Self.allTimeCompletedCountKey)
-
-                    if autoRevealOnCompletion {
-                        NSWorkspace.shared.activateFileViewerSelecting([task.destinationURL])
-                    }
-
-                    if autoOpenOnCompletion {
-                        openFile(task)
-                    }
-
-                    if showCompletionNotification {
-                        notificationManager.sendDownloadCompletedNotification(task: task, playSound: false)
-                    }
-                    if playCompletionSound && completionSoundName != "Mute" {
-                        NSSound(named: completionSoundName)?.play()
-                    }
-                }
-            }
-        }
-
-        // Track completed IDs
-        self.previouslyCompletedTaskIds = Set(
-            tasksToProcess.filter { $0.status == .completed }.map(\.id)
-        )
-
-        if tasksToProcess.isEmpty {
-            self.tasks = []
-            self.selectedTaskIDs = []
-            DockTileController.update(activeCount: 0, progress: 0.0)
-            return
-        }
-
-        self.tasks = tasksToProcess
-
-        // Maintain selection validity
-        let validIds = Set(tasksToProcess.map(\.id))
-        let previouslyHadSelection = !selectedTaskIDs.isEmpty
-        selectedTaskIDs.formIntersection(validIds)
-        if (isInitialLoad || previouslyHadSelection), selectedTaskIDs.isEmpty, let firstId = tasksToProcess.first?.id {
-            selectedTaskIDs = [firstId]
-        }
-
-        // Update Dock icon badge and progress overlay
-        DockTileController.update(activeCount: self.activeDownloadCount, progress: aggregateProgress)
     }
 }
