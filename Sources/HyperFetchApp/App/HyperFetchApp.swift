@@ -64,6 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         AppState.shared?.flushSync()
     }
+
+    @objc func selectAll(_ sender: Any?) {
+        AppState.shared?.selectAll()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(selectAll(_:)) {
+            return AppState.shared?.filteredTasks.isEmpty == false
+        }
+        return true
+    }
 }
 
 @main
@@ -147,6 +158,7 @@ struct HyperFetchApp: App {
                     appState.selectAll()
                 }
                 .keyboardShortcut("a", modifiers: .command)
+                .disabled(appState.filteredTasks.isEmpty)
 
                 Button("Reveal in Finder") {
                     appState.revealSelectedInFinder()

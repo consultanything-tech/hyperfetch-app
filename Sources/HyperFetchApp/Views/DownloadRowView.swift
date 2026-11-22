@@ -54,7 +54,7 @@ public struct DownloadRowView: View {
             .contentShape(Rectangle())
             .padding(.top, 2)
             .help(isSelected ? "Deselect" : "Select")
-            .accessibilityLabel("Select \(task.filename)")
+            .accessibilityLabel(isSelected ? "Deselect \(task.filename)" : "Select \(task.filename)")
             .accessibilityValue(isSelected ? "Selected" : "Unselected")
 
             // High Craft File Format Badge Squircle
@@ -192,6 +192,7 @@ public struct DownloadRowView: View {
                     .padding(.bottom, 2)
             }
         }
+        .accessibilityHidden(true)
     }
 
     private var statusTrailingPill: some View {
@@ -239,7 +240,7 @@ public struct DownloadRowView: View {
                 )
 
             case .completed:
-                Text("100% DONE")
+                Text("DONE • \(AppState.formatBytes(task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes))")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.success)
                     .padding(.horizontal, 8)
@@ -304,7 +305,7 @@ public struct DownloadRowView: View {
         .frame(height: 7)
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Progress")
+        .accessibilityLabel("Progress for \(task.filename)")
         .accessibilityValue("\(Int(task.progress * 100)) percent")
     }
 

@@ -118,17 +118,29 @@ public struct DownloadListView: View {
             Button {
                 appState.toggleSelectAll()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: appState.isAllSelected ? "checkmark.circle.fill" : "circle.inset.filled")
+                HStack(spacing: 5) {
+                    Image(systemName: appState.isAllSelected ? "checkmark.square.fill" : "minus.square.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.accent)
 
-                    Text("\(appState.selectedTasks.count) selected")
+                    Text(appState.isAllSelected ? "Deselect All" : "Select All")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
+                        .foregroundStyle(Theme.accent)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
+            .help(appState.isAllSelected ? "Deselect All Items (Esc)" : "Select All Items (⌘A)")
+
+            Text("\(appState.selectedTasks.count) of \(appState.filteredTasks.count) selected")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
 
             Divider()
                 .frame(height: 14)
@@ -286,6 +298,12 @@ public struct DownloadListView: View {
             }
         }
 
+        Button(appState.isAllSelected ? "Deselect All" : "Select All") {
+            DispatchQueue.main.async {
+                appState.toggleSelectAll()
+            }
+        }
+
         Button("Remove Selected from List", role: .destructive) {
             DispatchQueue.main.async {
                 appState.removeSelected(deleteFile: false)
@@ -342,9 +360,11 @@ public struct DownloadListView: View {
             }
         }
 
-        Button("Copy File Path") {
-            DispatchQueue.main.async {
-                appState.copyFilePath(task: task)
+        if task.status == .completed {
+            Button("Copy File Path") {
+                DispatchQueue.main.async {
+                    appState.copyFilePath(task: task)
+                }
             }
         }
 
@@ -353,6 +373,13 @@ public struct DownloadListView: View {
                 appState.restartTask(id: task.id)
             }
         }
+
+        Button("Select All") {
+            DispatchQueue.main.async {
+                appState.selectAll()
+            }
+        }
+        .keyboardShortcut("a", modifiers: .command)
 
         Divider()
 

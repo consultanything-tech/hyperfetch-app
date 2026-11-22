@@ -12,6 +12,7 @@ import DownloadKit
 public struct ChunkVisualizer: View {
     public let task: DownloadTaskModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewState private var isBreakdownExpanded: Bool = false
 
     public init(task: DownloadTaskModel) {
         self.task = task
@@ -156,10 +157,50 @@ public struct ChunkVisualizer: View {
     private func chunkHeatBlock(_ chunk: Chunk) -> some View {
         let isDone = chunk.status == .completed || (chunk.expectedLength > 0 && chunk.bytesDownloaded >= chunk.expectedLength)
         let isActive = (chunk.status == .downloading)
+        let isFailed: Bool = {
+            if case .failed = chunk.status { return true }
+            return false
+        }()
+
+        let fillColor: Color = {
+            if isFailed {
+                return Theme.critical
+            } else if isDone {
+                return Theme.success
+            } else if isActive {
+                return Theme.accent
+            } else {
+                return Theme.cardBackground
+            }
+        }()
+
+        let strokeColor: Color = {
+            if isFailed {
+                return Theme.critical.opacity(0.5)
+            } else if isDone {
+                return Theme.success.opacity(0.5)
+            } else if isActive {
+                return Theme.accent.opacity(0.5)
+            } else {
+                return Theme.cardBorder
+            }
+        }()
+
+        let textColor: Color = {
+            if isFailed {
+                return Color.white
+            } else if isDone {
+                return Color(hex: 0x0b2812)
+            } else if isActive {
+                return Color.white
+            } else {
+                return Theme.textTertiary
+            }
+        }()
 
         return ZStack {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isDone ? Theme.success : (isActive ? Theme.accent : Theme.cardBackground))
+                .fill(fillColor)
                 .frame(height: 34)
 
             if isActive && !reduceMotion {
@@ -181,21 +222,30 @@ public struct ChunkVisualizer: View {
 
             Text("#\(chunk.index + 1)")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(isDone ? Color(hex: 0x0b2812) : (isActive ? Color.white : Theme.textTertiary))
+                .foregroundStyle(textColor)
         }
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(isDone ? Theme.success.opacity(0.5) : (isActive ? Theme.accent.opacity(0.5) : Theme.cardBorder), lineWidth: 1)
+                .stroke(strokeColor, lineWidth: 1)
         )
         .help("Segment #\(chunk.index + 1): \(chunkStatusTitle(chunk)) (\(chunkBytesDescription(chunk)))")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Segment #\(chunk.index + 1): \(chunkStatusTitle(chunk)), \(chunkBytesDescription(chunk))")
     }
 
     /// Granular thread breakdown list
     private var threadBreakdownList: some View {
-        VStack(spacing: 6) {
-            ForEach(task.chunks) { chunk in
-                chunkRowCard(chunk)
+        DisclosureGroup(isExpanded: $isBreakdownExpanded) {
+            VStack(spacing: 6) {
+                ForEach(task.chunks) { chunk in
+                    chunkRowCard(chunk)
+                }
             }
+            .padding(.top, 4)
+        } label: {
+            Text("Thread Breakdown (\(task.chunks.count))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
         }
     }
 

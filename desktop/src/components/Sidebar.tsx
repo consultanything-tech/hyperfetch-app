@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Layers,
   Download,
+  Pause,
   CheckCircle2,
   AlertCircle,
   Film,
@@ -40,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const downloadingCount = tasks.filter(
     (t) => t.status === "downloading" || t.status === "connecting"
   ).length;
+  const pausedCount = tasks.filter((t) => t.status === "paused").length;
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const failedCount = tasks.filter((t) => t.status === "failed").length;
 
@@ -80,6 +82,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Download,
       count: downloadingCount,
       color: "text-blue-500",
+    },
+    {
+      id: "paused" as SidebarFilter,
+      label: "Paused",
+      icon: Pause,
+      count: pausedCount,
+      color: "text-amber-500",
     },
     {
       id: "completed" as SidebarFilter,
@@ -165,7 +174,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
             HyperFetch
             <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-              v1.0.13
+              v1.2.2.5
             </span>
           </div>
           <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -203,15 +212,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                     <span>{item.label}</span>
                   </div>
-                  <span
-                    className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
-                      isSelected
-                        ? "bg-blue-700/60 text-white"
-                        : "bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
-                    }`}
-                  >
-                    {item.count}
-                  </span>
+                  {item.count > 0 && (
+                    <span
+                      className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+                        isSelected
+                          ? "bg-blue-700/60 text-white"
+                          : "bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -245,15 +256,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                     <span>{item.label}</span>
                   </div>
-                  <span
-                    className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
-                      isSelected
-                        ? "bg-blue-700/60 text-white"
-                        : "bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
-                    }`}
-                  >
-                    {item.count}
-                  </span>
+                  {item.count > 0 && (
+                    <span
+                      className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+                        isSelected
+                          ? "bg-blue-700/60 text-white"
+                          : "bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  )}
                 </button>
               );
             })}

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  CheckSquare,
   DownloadCloud,
   Pause,
   Play,
@@ -66,6 +67,8 @@ export function App() {
       } else if (activeFilter === "downloading") {
         matchesCategory =
           task.status === "downloading" || task.status === "connecting";
+      } else if (activeFilter === "paused") {
+        matchesCategory = task.status === "paused";
       } else if (activeFilter === "completed") {
         matchesCategory = task.status === "completed";
       } else if (activeFilter === "failed") {
@@ -407,16 +410,27 @@ export function App() {
         {/* Bulk Action Bar (visible when items selected) */}
         {selectedTaskIds.size > 0 && (
           <div className="px-5 py-2 bg-blue-50/90 dark:bg-blue-950/40 border-b border-blue-500/20 flex items-center justify-between text-xs animate-in slide-in-from-top-2 duration-150 select-none">
-            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium">
-              <span>{selectedTaskIds.size} item(s) selected</span>
+            <div className="flex items-center gap-2.5">
               <button
                 onClick={handleSelectAll}
-                className="underline hover:text-blue-900 dark:hover:text-blue-100 cursor-pointer ml-1"
+                className="px-2.5 py-1 rounded-md bg-blue-500/15 hover:bg-blue-500/25 text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-500/30"
+                title={
+                  selectedTaskIds.size === filteredTasks.length
+                    ? "Deselect All (Esc)"
+                    : "Select All (⌘A / Ctrl+A)"
+                }
               >
-                {selectedTaskIds.size === filteredTasks.length
-                  ? "Deselect All"
-                  : "Select All"}
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>
+                  {selectedTaskIds.size === filteredTasks.length
+                    ? "Deselect All"
+                    : "Select All"}
+                </span>
               </button>
+              <span className="text-zinc-400 dark:text-zinc-500 text-xs">•</span>
+              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                {selectedTaskIds.size} of {filteredTasks.length} selected
+              </span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -556,6 +570,7 @@ export function App() {
           onCopyUrl={handleCopyUrl}
           onCopyChecksum={handleCopyChecksum}
           onQueueMove={handleQueueMove}
+          onSelectAll={handleSelectAll}
         />
       )}
 

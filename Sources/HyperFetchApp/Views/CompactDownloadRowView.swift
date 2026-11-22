@@ -141,6 +141,7 @@ public struct CompactDownloadRowView: View {
         }
         .frame(width: 24, height: 24)
         .help(style.label)
+        .accessibilityHidden(true)
     }
 
     private var filenameView: some View {
@@ -190,7 +191,7 @@ public struct CompactDownloadRowView: View {
         }
         .frame(width: 70, height: 4)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Progress")
+        .accessibilityLabel("Progress for \(task.filename)")
         .accessibilityValue("\(Int(task.progress * 100)) percent")
     }
 
@@ -249,6 +250,14 @@ public struct CompactDownloadRowView: View {
                     Text("\(Int(task.progress * 100))%")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(Theme.accent)
+                    if let remaining = remainingTimeString {
+                        Text("•")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.textTertiary)
+                        Text(remaining)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
                 }
             case .probing:
                 Text("Probing...")
@@ -280,6 +289,22 @@ public struct CompactDownloadRowView: View {
         }
         .lineLimit(1)
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var remainingTimeString: String? {
+        guard task.bytesPerSecond > 0, task.totalBytes > task.downloadedBytes else { return nil }
+        let remainingBytes = task.totalBytes - task.downloadedBytes
+        let seconds = Double(remainingBytes) / task.bytesPerSecond
+        if seconds < 60 {
+            return "\(max(1, Int(seconds)))s left"
+        } else if seconds < 3600 {
+            let mins = Int(seconds / 60)
+            return "\(mins)m left"
+        } else {
+            let hours = Int(seconds / 3600)
+            let mins = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            return "\(hours)h \(mins)m left"
+        }
     }
 
     private var compactPrimaryActionHelpText: String {

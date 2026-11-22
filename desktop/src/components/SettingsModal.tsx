@@ -75,7 +75,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setUpdateStatus(`HyperFetch v${res.current_version} is up to date.`);
       }
     } catch {
-      setUpdateStatus("HyperFetch v1.0.13 is up to date.");
+      setUpdateStatus("HyperFetch v1.2.2.5 is up to date.");
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -290,7 +290,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       HyperFetch Desktop
                     </h4>
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Version 1.2.2.4
+                      Version 1.2.2.5
                     </p>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">

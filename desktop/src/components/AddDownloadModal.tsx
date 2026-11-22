@@ -8,6 +8,7 @@ import {
   Globe,
   FileText,
   Pause,
+  AlertCircle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProbeResult } from "../types/download";
@@ -37,10 +38,12 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Sync initial inputs when opening
   useEffect(() => {
     if (isOpen) {
+      setSubmitError(null);
       if (initialUrl) {
         setUrl(initialUrl);
       }
@@ -56,6 +59,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       setCustomFilename("");
       setProbeResult(null);
       setProbeError(null);
+      setSubmitError(null);
     }
   }, [isOpen, initialUrl, initialFilename]);
 
@@ -100,6 +104,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
     if (!trimmedUrl) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       await invoke("add_download", {
         url: trimmedUrl,
@@ -111,10 +116,8 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       onAddSuccess();
       onClose();
     } catch (err: unknown) {
-      alert(
-        `Failed to add download: ${
-          typeof err === "string" ? err : "Unknown error"
-        }`
+      setSubmitError(
+        typeof err === "string" ? err : "Failed to add download"
       );
     } finally {
       setIsSubmitting(false);
@@ -282,6 +285,14 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               Start downloading immediately after adding
             </label>
           </div>
+
+          {/* Submit Error Banner */}
+          {submitError && (
+            <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
         </div>
 
         {/* Modal Actions Footer */}

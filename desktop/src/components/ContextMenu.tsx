@@ -12,6 +12,7 @@ import {
   ArrowDownToLine,
   FileCode,
   ListOrdered,
+  CheckSquare,
 } from "lucide-react";
 import type { DownloadTask, QueueAction } from "../types/download";
 
@@ -34,6 +35,7 @@ interface ContextMenuProps {
   onCopyUrl: (url: string) => void;
   onCopyChecksum: (checksum?: string | null) => void;
   onQueueMove: (id: string, action: QueueAction) => void;
+  onSelectAll?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -50,6 +52,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onCopyUrl,
   onCopyChecksum,
   onQueueMove,
+  onSelectAll,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -91,7 +94,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
   // Adjust position to stay inside viewport
   const menuWidth = 220;
-  const menuHeight = 310;
+  const menuHeight = 350;
   const adjustedX = Math.min(position.x, window.innerWidth - menuWidth - 10);
   const adjustedY = Math.min(position.y, window.innerHeight - menuHeight - 10);
 
@@ -172,6 +175,22 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       </button>
 
       <div className="my-1 border-t border-zinc-100 dark:border-zinc-800/80" />
+
+      {onSelectAll && (
+        <button
+          onClick={() => {
+            onSelectAll();
+            onClose();
+          }}
+          className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 text-left transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
+            <span>Select All</span>
+          </div>
+          <span className="text-[10px] text-zinc-400 font-mono">⌘A</span>
+        </button>
+      )}
 
       {/* Copy Download Link */}
       <button

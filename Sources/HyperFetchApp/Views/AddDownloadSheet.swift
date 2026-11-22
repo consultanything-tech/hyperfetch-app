@@ -695,8 +695,18 @@ public struct AddDownloadSheet: View {
     }
 
     private func autoPopulateFromClipboard() {
-        if urlString.isEmpty, let clipURL = appState.getValidURLFromClipboard() {
-            urlString = clipURL.absoluteString
+        guard urlString.isEmpty else { return }
+        if let clipURL = appState.getValidURLFromClipboard() {
+            let trimmed = clipURL.absoluteString.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = trimmed.lowercased()
+            if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+                urlString = trimmed
+            }
+        } else if let string = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            let lower = string.lowercased()
+            if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+                urlString = string
+            }
         }
     }
 

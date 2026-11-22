@@ -250,6 +250,7 @@ public struct MainWindow: View {
                 }
             }
             .help("Bandwidth Throttling / Speed Limiter")
+            .accessibilityValue(appState.speedLimitPreset.rawValue)
 
             // Sort Menu
             Menu {
@@ -282,56 +283,6 @@ public struct MainWindow: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
             .help("Switch View Style (Comfortable / Compact)")
-
-            // Batch Actions for Selected Items
-            if !appState.selectedTaskIDs.isEmpty {
-                Menu {
-                    Button("Pause Selected (\(appState.selectedTasks.count))") {
-                        DispatchQueue.main.async {
-                            appState.pauseSelected()
-                        }
-                    }
-                    .disabled(!appState.hasActiveSelectedTasks)
-
-                    Button("Resume Selected (\(appState.selectedTasks.count))") {
-                        DispatchQueue.main.async {
-                            appState.resumeSelected()
-                        }
-                    }
-                    .disabled(!appState.hasResumableSelectedTasks)
-
-                    Divider()
-
-                    Button("Show in Finder") {
-                        DispatchQueue.main.async {
-                            appState.revealSelectedInFinder()
-                        }
-                    }
-
-                    Button("Remove Selected from List", role: .destructive) {
-                        DispatchQueue.main.async {
-                            appState.removeSelected(deleteFile: false)
-                        }
-                    }
-
-                    Button("Delete Selected Files from Disk...", role: .destructive) {
-                        DispatchQueue.main.async {
-                            appState.promptDeleteSelected()
-                        }
-                    }
-
-                    Divider()
-
-                    Button("Deselect All") {
-                        DispatchQueue.main.async {
-                            appState.deselectAll()
-                        }
-                    }
-                } label: {
-                    Label("Selected (\(appState.selectedTasks.count))", systemImage: "checklist")
-                }
-                .help("Batch Actions for \(appState.selectedTasks.count) Selected Downloads")
-            }
 
             // Appearance Mode Menu
             Menu {
@@ -438,6 +389,22 @@ public struct MainWindow: View {
                         .help("Resume")
                     }
 
+                    if case .failed = task.status {
+                        Button {
+                            appState.restartTask(id: task.id)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Restart Download")
+                    }
+
                     Button {
                         appState.openInFinder(task: task)
                     } label: {
@@ -453,6 +420,20 @@ public struct MainWindow: View {
                     .help("Show in Finder")
 
                     if task.status == .completed {
+                        Button {
+                            appState.quickLookFile(task: task)
+                        } label: {
+                            Image(systemName: "eye")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.tagBackground, in: RoundedRectangle(cornerRadius: 5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("Quick Look")
+
                         Button {
                             appState.openFile(task: task)
                         } label: {
@@ -505,16 +486,12 @@ public struct MainWindow: View {
                             .padding(.vertical, 2)
                             .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
 
-                        Text(task.supportsRange ? "HTTP/2" : "HTTP/1.1")
+                        Text(task.supportsRange ? "Multi-Stream" : "Single Stream")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.success)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Theme.success.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-
-                        Text("TLS 1.3")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(Theme.textTertiary)
                     }
                 }
             }
@@ -572,10 +549,22 @@ public struct MainWindow: View {
                 }
 
                 metadataRow(label: "Save Path:") {
-                    Text(task.destinationURL.path)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(Theme.textPrimary)
+                    HStack(spacing: 5) {
+                        Text(task.destinationURL.path)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(Theme.textPrimary)
+
+                        Button {
+                            appState.openInFinder(task: task)
+                        } label: {
+                            Image(systemName: "folder")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .buttonStyle(.tactile)
+                        .help("Show in Finder")
+                    }
                 }
 
                 metadataRow(label: "File Size:") {
@@ -601,14 +590,14 @@ public struct MainWindow: View {
                 }
 
                 metadataRow(label: "Date Added:") {
-                    Text(task.createdAt, style: .date)
+                    Text(task.createdAt.formatted(.dateTime.month().day().hour().minute()))
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textSecondary)
                 }
 
                 if let completedAt = task.completedAt {
                     metadataRow(label: "Completed At:") {
-                        Text(completedAt, style: .date)
+                        Text(completedAt.formatted(.dateTime.month().day().hour().minute()))
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.textSecondary)
                     }

@@ -298,6 +298,7 @@ public struct SidebarView: View {
                     .animation(.easeInOut(duration: 0.3), value: normalized)
             }
         }
+        .help("Max speed recorded: \(AppState.formatSpeed(appState.speedHistory.max() ?? 0))")
     }
 
     private var bandwidthStatusTitle: String {
@@ -373,12 +374,14 @@ private struct SidebarNavRow: View {
             Spacer()
 
             // Monospaced count pill badge in a capsule
-            Text(badgeText)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(badgeForeground)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 1.5)
-                .background(badgeBackground, in: Capsule())
+            if badgeText != "0" {
+                Text(badgeText)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(badgeForeground)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 1.5)
+                    .background(badgeBackground, in: Capsule())
+            }
         }
         .padding(.vertical, 2)
     }

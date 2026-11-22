@@ -111,6 +111,7 @@ export interface ProbeResult {
 export type SidebarFilter =
   | "all"
   | "downloading"
+  | "paused"
   | "completed"
   | "failed"
   | DownloadCategory;

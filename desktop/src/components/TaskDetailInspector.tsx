@@ -79,7 +79,7 @@ export const TaskDetailInspector: React.FC<TaskDetailInspectorProps> = ({
             No Task Selected
           </div>
           <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed max-w-[200px]">
-            Click any download item in the list to inspect telemetry and
+            Select any download item in the list to inspect telemetry and
             connection chunks.
           </p>
         </div>
