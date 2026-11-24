@@ -16,11 +16,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const transfersCountBadge = document.getElementById('transfersCountBadge');
   const transfersList = document.getElementById('transfersList');
   const footerStatusText = document.getElementById('footerStatusText');
+  const handoffStatus = document.getElementById('handoffStatus');
 
   let connectedPort = null;
   let pollTimeoutId = null;
   let consecutiveErrors = 0;
   let currentBridgeToken = '';
+  let connectionCheck = 0;
 
   // Load saved preferences
   chrome.storage.local.get([
@@ -30,7 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
     'excludedDomains',
     'bridgeToken'
   ], (res) => {
-    if (chrome.runtime.lastError) return;
+    if (chrome.runtime.lastError) {
+      setOffline();
+      return;
+    }
     if (res) {
       if (res.enabled !== undefined && interceptToggle) {
         interceptToggle.checked = res.enabled;
@@ -55,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentBridgeToken = res.bridgeToken || '';
       }
     }
+    checkConnection();
   });
 
   // Handle toggle change
@@ -88,13 +94,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (excludedDomainsInput) {
     const saveDomains = () => {
       const raw = excludedDomainsInput.value || '';
-      const domains = raw
+      const domains = [...new Set(raw
         .split(/[\n,]+/)
         .map(d => d.trim().toLowerCase())
-        .filter(Boolean);
+        .filter(Boolean))];
+      const hostname = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+      const invalid = domains.some(domain => !hostname.test(domain));
+      excludedDomainsInput.setCustomValidity(invalid ? 'Enter hostnames without a URL scheme, path, or wildcard.' : '');
+      if (invalid) {
+        excludedDomainsInput.reportValidity();
+        return;
+      }
       chrome.storage.local.set({ excludedDomains: domains });
     };
-    excludedDomainsInput.addEventListener('input', saveDomains);
     excludedDomainsInput.addEventListener('change', saveDomains);
   }
 
@@ -103,15 +115,41 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveToken = () => {
       const token = (bridgeTokenInput.value || '').trim();
       currentBridgeToken = token;
-      chrome.storage.local.set({ bridgeToken: token });
+      chrome.storage.local.set({ bridgeToken: token }, () => {
+        if (chrome.runtime.lastError) {
+          if (footerStatusText) footerStatusText.textContent = 'Could not save the connection token.';
+          return;
+        }
+        checkConnection();
+      });
     };
-    bridgeTokenInput.addEventListener('input', saveToken);
     bridgeTokenInput.addEventListener('change', saveToken);
   }
 
   // Open App Button
-  openAppBtn?.addEventListener('click', () => {
-    window.location.href = 'hyperfetch://open';
+  openAppBtn?.addEventListener('click', async () => {
+    if (connectedPort) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${connectedPort}/show`, {
+          method: 'POST',
+          headers: {
+            'X-HyperFetch-Client': 'extension',
+            'X-HyperFetch-Token': currentBridgeToken || ''
+          },
+          signal: AbortSignal.timeout(1200)
+        });
+        if (response.ok) return;
+      } catch (e) {
+        // An older desktop may not expose the show action.
+      }
+    }
+    chrome.runtime.sendMessage({ action: 'launchApp' }, (launched) => {
+      if (chrome.runtime.lastError || !launched) {
+        window.location.href = 'hyperfetch://open';
+      } else {
+        setTimeout(checkConnection, 600);
+      }
+    });
   });
 
   // Retry Connection Button
@@ -119,43 +157,39 @@ document.addEventListener('DOMContentLoaded', () => {
     checkConnection();
   });
 
-  // Initial connection check
-  checkConnection();
+  function showHandoff(handoff) {
+    if (!handoffStatus) return;
+    if (!handoff || Date.now() - handoff.timestamp > 5 * 60 * 1000) {
+      handoffStatus.textContent = '';
+      return;
+    }
+    handoffStatus.textContent = handoff.outcome === 'accepted'
+      ? 'Last download sent to HyperFetch.'
+      : 'Last download continued in your browser.';
+  }
 
-  async function checkConnection() {
+  chrome.storage.session?.get('lastHandoff').then(({ lastHandoff }) => showHandoff(lastHandoff)).catch(() => {});
+  function handleStorageChange(changes, area) {
+    if (area === 'session' && changes.lastHandoff) showHandoff(changes.lastHandoff.newValue);
+  }
+  chrome.storage.onChanged.addListener(handleStorageChange);
+
+  function checkConnection() {
+    const check = ++connectionCheck;
+    connectedPort = null;
+    stopTransfersPolling();
     if (statusBadge) statusBadge.className = 'status-badge';
     if (statusText) statusText.textContent = 'Connecting...';
+    renderTransfers([], 'Checking the desktop connection…');
 
     chrome.runtime.sendMessage({ action: 'checkStatus' }, (response) => {
+      if (check !== connectionCheck) return;
       if (chrome.runtime.lastError || !response || !response.connected) {
-        // Fallback direct probe from popup context
-        probeDirectly();
+        setOffline(response?.rejected === true);
       } else {
         setConnected(response.port);
       }
     });
-  }
-
-  async function probeDirectly() {
-    const ports = [31415, 31416];
-    for (const port of ports) {
-      try {
-        const headers = {
-          'X-HyperFetch-Client': 'extension',
-          'X-HyperFetch-Token': currentBridgeToken || ''
-        };
-        const resp = await fetch(`http://127.0.0.1:${port}/status`, {
-          method: 'GET',
-          cache: 'no-store',
-          headers: headers
-        });
-        if (resp.ok) {
-          setConnected(port);
-          return;
-        }
-      } catch (e) {}
-    }
-    setOffline();
   }
 
   function setConnected(port) {
@@ -169,12 +203,15 @@ document.addEventListener('DOMContentLoaded', () => {
     startTransfersPolling();
   }
 
-  function setOffline() {
+  function setOffline(rejected = false) {
     connectedPort = null;
     if (statusBadge) statusBadge.className = 'status-badge status-offline';
-    if (statusText) statusText.textContent = 'HyperFetch Offline';
+    if (statusText) statusText.textContent = rejected ? 'Connection rejected' : 'App unreachable';
+    if (footerStatusText) footerStatusText.textContent = rejected
+      ? 'Check the connection token in Advanced settings.'
+      : 'Open HyperFetch, then recheck the connection.';
     stopTransfersPolling();
-    renderTransfers([]);
+    renderTransfers([], 'Downloads unavailable');
   }
 
   function startTransfersPolling() {
@@ -198,26 +235,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function pollTransfers() {
     if (!connectedPort) return;
+    const check = connectionCheck;
+    const port = connectedPort;
     try {
       const headers = {
         'X-HyperFetch-Client': 'extension',
         'X-HyperFetch-Token': currentBridgeToken || ''
       };
       let transfers = null;
-      const resp = await fetch(`http://127.0.0.1:${connectedPort}/transfers`, {
+      const resp = await fetch(`http://127.0.0.1:${port}/transfers`, {
         method: 'GET',
         cache: 'no-store',
-        headers: headers
+        headers: headers,
+        signal: AbortSignal.timeout(2500)
       });
       if (resp.ok) {
         const data = await resp.json();
         transfers = data.transfers || [];
       } else if (resp.status === 403 || resp.status === 404) {
         // Fallback to /queue if /transfers failed
-        const qResp = await fetch(`http://127.0.0.1:${connectedPort}/queue`, {
+        const qResp = await fetch(`http://127.0.0.1:${port}/queue`, {
           method: 'GET',
           cache: 'no-store',
-          headers: headers
+          headers: headers,
+          signal: AbortSignal.timeout(2500)
         });
         if (qResp.ok) {
           const qData = await qResp.json();
@@ -229,6 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(`Transfers fetch returned status ${resp.status}`);
       }
 
+      if (check !== connectionCheck) return;
       if (transfers !== null) {
         consecutiveErrors = 0;
         renderTransfers(transfers);
@@ -254,6 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduleNextPoll(nextInterval);
       }
     } catch (e) {
+      if (check !== connectionCheck) return;
+      renderTransfers([], 'Could not refresh downloads. Retrying…');
       consecutiveErrors++;
       if (consecutiveErrors >= 3) {
         // Back off to 10,000ms after 3 consecutive failures
@@ -264,19 +308,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function renderTransfers(transfers) {
+  function renderTransfers(transfers, emptyMessage = 'No active downloads') {
     if (transfersCountBadge) {
       transfersCountBadge.textContent = String(transfers.length);
     }
     if (!transfersList) return;
 
     if (!transfers || transfers.length === 0) {
-      transfersList.innerHTML = '<div class="transfers-empty">No active downloads</div>';
+      const message = document.createElement('div');
+      message.className = 'transfers-empty';
+      message.textContent = emptyMessage;
+      transfersList.replaceChildren(message);
       return;
     }
 
     transfersList.innerHTML = transfers.map(t => {
-      const rawStatus = (t.status || 'queued').toLowerCase();
+      const reportedStatus = String(t.status || '').toLowerCase();
+      const rawStatus = /^[a-z]+$/.test(reportedStatus) ? reportedStatus : 'queued';
       const statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
       const progressPercent = Math.min(100, Math.max(0, Math.round((t.progress || 0) * 100)));
       const speed = formatSpeed(t.speed);
@@ -294,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="transfer-filename" title="${escapeHtml(t.filename || 'download')}">${escapeHtml(t.filename || 'download')}</span>
             <span class="status-pill status-${rawStatus}">${statusLabel}</span>
           </div>
-          <div class="transfer-progress-track">
+          <div class="transfer-progress-track" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">
             <div class="transfer-progress-fill status-fill-${rawStatus}" style="width: ${progressPercent}%;"></div>
           </div>
           <div class="transfer-meta">

@@ -17,7 +17,7 @@
           <span class="subtitle">Download Interceptor</span>
         </div>
       </div>
-      <div id="statusBadge" class="status-badge status-offline">
+      <div id="statusBadge" class="status-badge status-offline" role="status">
         <span class="status-dot"></span>
         <span id="statusText">Checking...</span>
       </div>
@@ -29,7 +29,7 @@
       <div class="card toggle-card">
         <div class="toggle-info">
           <label for="interceptToggle" class="card-title">Auto-Intercept Downloads</label>
-          <p class="card-description">Redirect browser downloads to HyperFetch for multi-chunk speed acceleration.</p>
+          <p class="card-description">Send eligible downloads to HyperFetch. If the app cannot accept them, they continue in your browser.</p>
         </div>
         <label class="switch">
           <input type="checkbox" id="interceptToggle" checked>
@@ -44,15 +44,15 @@
           <label class="radio-option">
             <input type="radio" name="interceptScope" value="filtered" checked id="scopeFiltered">
             <div class="radio-details">
-              <span class="radio-label">Media & Archives (Recommended)</span>
-              <span class="radio-hint">.zip, .dmg, .pkg, .iso, .mp4, .pdf, and 18+ types</span>
+              <span class="radio-label">Common files and large downloads</span>
+              <span class="radio-hint">Includes archives, documents, media, and files over 1 MB.</span>
             </div>
           </label>
           <label class="radio-option">
             <input type="radio" name="interceptScope" value="all" id="scopeAll">
             <div class="radio-details">
-              <span class="radio-label">All Downloads</span>
-              <span class="radio-hint">Intercept every file downloaded in this browser</span>
+              <span class="radio-label">All eligible downloads</span>
+              <span class="radio-hint">Applies to direct web downloads. Exclusions and size limits still apply.</span>
             </div>
           </label>
         </div>
@@ -80,7 +80,7 @@
               <option value="52428800">50 MB</option>
               <option value="104857600">100 MB</option>
             </select>
-            <span class="field-hint">Files smaller than this limit bypass HyperFetch.</span>
+            <span class="field-hint">Files smaller than this limit stay in the browser. Files of unknown size can still be captured.</span>
           </div>
 
           <div class="form-field">
@@ -90,9 +90,9 @@
           </div>
 
           <div class="form-field">
-            <label for="bridgeTokenInput" class="field-label">Bridge API Token</label>
-            <input type="password" id="bridgeTokenInput" class="form-input" placeholder="Optional API token" aria-label="Bridge authorization token">
-            <span class="field-hint">Shared secret for bridge authentication (CWE-346).</span>
+            <label for="bridgeTokenInput" class="field-label">Desktop connection token</label>
+            <input type="password" id="bridgeTokenInput" class="form-input" placeholder="Only if required by the app">
+            <span class="field-hint">Enter the token configured in HyperFetch. The connection is checked when you leave this field.</span>
           </div>
         </div>
       </details>
@@ -104,7 +104,7 @@
             <span class="card-title">Active Downloads</span>
             <span id="transfersCountBadge" class="transfers-count-badge">0</span>
           </div>
-          <span class="transfers-subtitle">Live bridge telemetry</span>
+          <span id="handoffStatus" class="transfers-subtitle" role="status"></span>
         </div>
         <div id="transfersList" class="transfers-list">
           <div class="transfers-empty">No active downloads</div>

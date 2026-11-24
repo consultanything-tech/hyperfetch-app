@@ -54,21 +54,25 @@ let settings = {
   bridgeToken: ''
 };
 
-// Initialize settings from chrome.storage
-chrome.storage.local.get(['enabled', 'interceptAll', 'excludedDomains', 'minFileSize', 'bridgeToken'], (res) => {
-  const err = chrome.runtime.lastError;
-  if (err) {
-    console.warn('[HyperFetch] Error reading storage settings:', err);
-    return;
-  }
-  if (res) {
-    if (res.enabled !== undefined) settings.enabled = res.enabled;
-    if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
-    if (res.excludedDomains !== undefined) settings.excludedDomains = Array.isArray(res.excludedDomains) ? res.excludedDomains : [];
-    if (res.minFileSize !== undefined) settings.minFileSize = Number(res.minFileSize) || 0;
-    if (res.bridgeToken !== undefined) settings.bridgeToken = res.bridgeToken;
-  }
-  updateBadge();
+// A download event can wake a stopped worker before storage has returned the user's settings.
+const settingsReady = new Promise(resolve => {
+  chrome.storage.local.get(['enabled', 'interceptAll', 'excludedDomains', 'minFileSize', 'bridgeToken'], (res) => {
+    const err = chrome.runtime.lastError;
+    if (err) {
+      console.warn('[HyperFetch] Error reading storage settings:', err);
+      resolve(false);
+      return;
+    }
+    if (res) {
+      if (res.enabled !== undefined) settings.enabled = res.enabled;
+      if (res.interceptAll !== undefined) settings.interceptAll = res.interceptAll;
+      if (res.excludedDomains !== undefined) settings.excludedDomains = Array.isArray(res.excludedDomains) ? res.excludedDomains : [];
+      if (res.minFileSize !== undefined) settings.minFileSize = Number(res.minFileSize) || 0;
+      if (res.bridgeToken !== undefined) settings.bridgeToken = res.bridgeToken;
+    }
+    updateBadge();
+    resolve(true);
+  });
 });
 
 chrome.storage.onChanged.addListener((changes) => {
@@ -143,6 +147,21 @@ function cancelBrowserDownload(downloadId) {
 }
 
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+  const rawUrl = (downloadItem.url || '').trim();
+  const targetUrl = (downloadItem.finalUrl || '').trim() || rawUrl;
+  // Keep object URLs on the browser's immediate path before they can be revoked.
+  if (!isNetworkHttpUrl(rawUrl) || !isNetworkHttpUrl(targetUrl)) {
+    suggest();
+    return;
+  }
+  settingsReady.then(loaded => {
+    if (loaded) handleDownload(downloadItem, rawUrl, targetUrl, suggest);
+    else suggest();
+  });
+  return true;
+});
+
+function handleDownload(downloadItem, rawUrl, targetUrl, suggest) {
   let suggested = false;
   const safeSuggest = (opts) => {
     if (suggested) return;
@@ -165,34 +184,20 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     return;
   }
 
-  const rawUrl = (downloadItem.url || '').trim();
-  const finalUrl = (downloadItem.finalUrl || '').trim();
-  const targetUrl = finalUrl || rawUrl;
-
-  // Never intercept non-network HTTP/HTTPS URLs (such as blob:, data:, chrome:, etc.).
-  // Immediately safeSuggest() allows in-memory blobs (e.g. ChatGPT Data Analysis exports)
-  // to complete natively before client-side object URL revocation occurs.
-  if (!isNetworkHttpUrl(rawUrl) || !isNetworkHttpUrl(targetUrl)) {
-    safeSuggest();
-    return;
-  }
-
   if (processedDownloadIds.has(downloadItem.id)) {
     safeSuggest();
     return;
   }
 
   // Domain exclusion check
-  const itemHost = getHostname(downloadItem.url) || getHostname(targetUrl);
-  if (matchesExcludedDomain(itemHost, settings.excludedDomains)) {
-    console.log(`[HyperFetch] Host '${itemHost}' is in excluded domains list, skipping interception:`, targetUrl);
+  const hosts = [getHostname(rawUrl), getHostname(targetUrl)];
+  if (hosts.some(host => matchesExcludedDomain(host, settings.excludedDomains))) {
     safeSuggest();
     return;
   }
 
   // Minimum file size check
   if (settings.minFileSize > 0 && downloadItem.fileSize > 0 && downloadItem.fileSize < settings.minFileSize) {
-    console.log(`[HyperFetch] Download item size (${downloadItem.fileSize} B) is smaller than minFileSize (${settings.minFileSize} B), skipping interception:`, targetUrl);
     safeSuggest();
     return;
   }
@@ -258,8 +263,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         url: targetUrl,
         filename: filename || fallbackName,
         referrer: downloadItem.referrer || '',
-        headers: headers,
-        autoStart: true
+        headers: headers
       };
 
       const success = await forwardDownloadToHyperFetch(payload);
@@ -267,20 +271,20 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         // HyperFetch accepted download: call safeSuggest and cancel/erase native browser task
         safeSuggest();
         cancelBrowserDownload(downloadItem.id);
+        recordHandoff('accepted');
       } else {
-        console.warn('[HyperFetch] Native app unreachable or rejected, resuming browser download:', payload.url);
+        recordHandoff('browser');
         showErrorBadge();
         // Resolve filename so the browser's original in-flight download continues cleanly
         safeSuggest({ filename: filename || fallbackName });
       }
     } catch (err) {
-      console.error('[HyperFetch] Error during async interception:', err);
+      recordHandoff('browser');
       safeSuggest({ filename: filename || fallbackName });
     }
   })();
 
-  return true; // Keep suggest callback active for async determination
-});
+}
 
 async function getMergedCookies(targetUrl) {
   return getCookiesForUrl(targetUrl);
@@ -342,20 +346,19 @@ async function tryPostDownload(port, payload) {
       'X-HyperFetch-Client': 'extension',
       'X-HyperFetch-Token': settings.bridgeToken || ''
     };
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
     const response = await fetch(`http://127.0.0.1:${port}/add`, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(payload),
-      signal: controller.signal
+      signal: AbortSignal.timeout(1200)
     });
-    clearTimeout(timeoutId);
 
     if (response.ok) {
-      console.log(`[HyperFetch] Successfully forwarded download to port ${port}:`, payload.filename || payload.url);
-      showSuccessNotification(payload.filename || payload.url);
-      return true;
+      const result = await response.json();
+      if (result.status === 'ok') {
+        showSuccessNotification();
+        return true;
+      }
     }
   } catch (err) {
     // Port unreachable or refused
@@ -369,21 +372,24 @@ async function checkPortStatus(port) {
       'X-HyperFetch-Client': 'extension',
       'X-HyperFetch-Token': settings.bridgeToken || ''
     };
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 400);
     const resp = await fetch(`http://127.0.0.1:${port}/status`, {
       method: 'GET',
       headers: headers,
-      signal: controller.signal
+      cache: 'no-store',
+      signal: AbortSignal.timeout(600)
     });
-    clearTimeout(timeoutId);
-    return resp.ok;
+    if (resp.status === 401 || resp.status === 403) return { rejected: true };
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.app === 'HyperFetch') return { connected: true, port, version: data.version };
+    }
+    return { connected: false };
   } catch (e) {
-    return false;
+    return { connected: false };
   }
 }
 
-function tryLaunchViaNativeMessaging() {
+function tryLaunchViaNativeMessaging(action = 'launch') {
   return new Promise((resolve) => {
     if (!chrome.runtime.sendNativeMessage) {
       console.warn('[HyperFetch] chrome.runtime.sendNativeMessage not available');
@@ -391,14 +397,14 @@ function tryLaunchViaNativeMessaging() {
       return;
     }
     try {
-      chrome.runtime.sendNativeMessage('com.hyperfetch.native', { action: 'launch' }, (response) => {
+      chrome.runtime.sendNativeMessage('com.hyperfetch.native', { action }, (response) => {
         const err = chrome.runtime.lastError;
         if (err) {
           console.warn('[HyperFetch] Native messaging launch failed:', err.message);
           resolve(false);
         } else {
           console.log('[HyperFetch] Native messaging launch succeeded:', response);
-          resolve(true);
+          resolve(response?.launched === true);
         }
       });
     } catch (err) {
@@ -448,15 +454,9 @@ function showLaunchingBadge() {
 }
 
 async function forwardDownloadToHyperFetch(payload) {
-  const ports = [PRIMARY_PORT, FALLBACK_PORT];
-
-  // 1. Try immediate post on available ports
-  for (const port of ports) {
-    const success = await tryPostDownload(port, payload);
-    if (success) {
-      return true;
-    }
-  }
+  const initial = await checkHyperFetchStatus();
+  if (initial.connected) return tryPostDownload(initial.port, payload);
+  if (initial.rejected) return false;
 
   // 2. Desktop app unreachable: attempt auto-launch
   console.log('[HyperFetch] Desktop app not responding. Attempting auto-start...');
@@ -468,30 +468,23 @@ async function forwardDownloadToHyperFetch(payload) {
     await tryLaunchViaProtocol();
   }
 
-  // Poll http://127.0.0.1:31415/status (and 31416) every 200ms for up to 3500ms (17 attempts)
-  const maxAttempts = 17;
-  const pollIntervalMs = 200;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-
-    for (const port of ports) {
-      const isOnline = await checkPortStatus(port);
-      if (isOnline) {
-        console.log(`[HyperFetch] Desktop app online on port ${port} after ${attempt + 1} checks. Posting download...`);
-        const posted = await tryPostDownload(port, payload);
-        if (posted) {
-          return true;
-        }
-      }
-    }
+  const deadline = Date.now() + 3500;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const status = await checkHyperFetchStatus();
+    if (status.connected) return tryPostDownload(status.port, payload);
+    if (status.rejected) return false;
   }
 
   console.error('[HyperFetch] Timed out waiting for HyperFetch to launch (3.5s elapsed).');
   return false;
 }
 
-function showSuccessNotification(targetName) {
+function recordHandoff(outcome) {
+  chrome.storage.session?.set({ lastHandoff: { outcome, timestamp: Date.now() } }).catch(() => {});
+}
+
+function showSuccessNotification() {
   try {
     chrome.action.setBadgeText({ text: '✓' }, () => {
       const _ = chrome.runtime.lastError;
@@ -508,32 +501,23 @@ function showSuccessNotification(targetName) {
 // Handle runtime messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'checkStatus') {
-    checkHyperFetchStatus().then(sendResponse).catch(() => {
+    settingsReady.then(checkHyperFetchStatus).then(sendResponse).catch(() => {
       sendResponse({ connected: false });
     });
     return true; // async
   }
+  if (request.action === 'launchApp') {
+    tryLaunchViaNativeMessaging('open').then(sendResponse);
+    return true;
+  }
 });
 
 async function checkHyperFetchStatus() {
-  const ports = [PRIMARY_PORT, FALLBACK_PORT];
-  for (const port of ports) {
-    try {
-      const headers = {
-        'X-HyperFetch-Client': 'extension',
-        'X-HyperFetch-Token': settings.bridgeToken || ''
-      };
-      const resp = await fetch(`http://127.0.0.1:${port}/status`, {
-        method: 'GET',
-        headers: headers
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        return { connected: true, port: port, version: data.version || '1.0.0' };
-      }
-    } catch (e) {}
-  }
-  return { connected: false };
+  const results = await Promise.all([PRIMARY_PORT, FALLBACK_PORT].map(checkPortStatus));
+  return results.find(result => result.connected) || {
+    connected: false,
+    rejected: results.some(result => result.rejected)
+  };
 }
 
 function showErrorBadge() {

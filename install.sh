@@ -1,94 +1,144 @@
 #!/usr/bin/env bash
-# HyperFetch macOS 1-Line Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/main/install.sh | bash
-
+# HyperFetch macOS installer. Run without sudo.
 set -euo pipefail
 
-# Colors & Formatting
-BOLD="\033[1m"
-GREEN="\033[32m"
-CYAN="\033[36m"
-YELLOW="\033[33m"
-RED="\033[31m"
-RESET="\033[0m"
-
-echo -e "\n${CYAN}${BOLD}⚡ HyperFetch for macOS — Native High-Speed Download Manager${RESET}"
-echo -e "${CYAN}================================================================${RESET}\n"
-
-# Verify macOS
-if [[ "$(uname)" != "Darwin" ]]; then
-    echo -e "${RED}✖ Error: HyperFetch is a native macOS application and only runs on macOS Sonoma (14.0) or later.${RESET}"
+fail() {
+    echo "HyperFetch: $*" >&2
     exit 1
-fi
+}
+
+verify_app() {
+    codesign --verify --deep --strict "$1" && codesign --verify --strict "-R=$REQUIREMENT" "$1"
+}
+
+[[ "$(uname -s)" == Darwin ]] || fail "This installer requires macOS 14 or newer."
+macos_major=$(sw_vers -productVersion | cut -d. -f1)
+[[ "$macos_major" =~ ^[0-9]+$ && "$macos_major" -ge 14 ]] || fail "This installer requires macOS 14 or newer."
 
 REPO="consultanything-tech/hyperfetch-app"
-FALLBACK_TAG="v1.0.13"
-
-echo -e "${CYAN}→${RESET} Resolving latest release..."
-
-# Attempt to query GitHub API for the latest release tag, fallback to $FALLBACK_TAG
-LATEST_TAG=$(curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
-
-if [[ -z "${LATEST_TAG}" ]]; then
-    LATEST_TAG="${FALLBACK_TAG}"
-fi
-
-DMG_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/HyperFetch.dmg"
-echo -e "  Target release: ${GREEN}${BOLD}${LATEST_TAG}${RESET}"
-echo -e "${CYAN}→${RESET} Downloading HyperFetch.dmg..."
-
-TMP_DIR=$(mktemp -d -t hyperfetch-install-XXXXXX)
-DMG_PATH="${TMP_DIR}/HyperFetch.dmg"
-MOUNT_DIR=""
+TARGET_APP="/Applications/HyperFetch.app"
+APP_ID="com.hyperfetch.HyperFetch"
+REQUIREMENT='identifier "com.hyperfetch.HyperFetch"'
+TMP_DIR=$(mktemp -d -t hyperfetch-install)
+MOUNT_DIR="$TMP_DIR/mount"
+READINESS_MARKER="$TMP_DIR/hyperfetch_update_ready"
+STAGING_DIR=""
+mounted=false
+installing=false
+installed=false
+was_running=false
 
 cleanup() {
-    if [[ -n "${MOUNT_DIR}" ]] && [[ -d "${MOUNT_DIR}" ]]; then
-        hdiutil detach "${MOUNT_DIR}" -quiet -force 2>/dev/null || true
+    local status=$?
+    trap - EXIT
+    if $installing; then
+        if $installed; then
+            mv "$TARGET_APP" "$STAGING_DIR/Failed.app" || status=1
+        fi
+        if [[ -e "$STAGING_DIR/Previous.app" ]]; then
+            if [[ ! -e "$TARGET_APP" ]] && mv "$STAGING_DIR/Previous.app" "$TARGET_APP"; then
+                echo "Restored the previous HyperFetch installation." >&2
+                if $was_running; then
+                    open "$TARGET_APP" || true
+                fi
+            else
+                echo "The previous installation was kept at $STAGING_DIR/Previous.app." >&2
+                STAGING_DIR=""
+                status=1
+            fi
+        fi
     fi
-    rm -rf "${TMP_DIR}"
+    if ! $mounted || hdiutil detach "$MOUNT_DIR" -quiet; then
+        rm -rf "$TMP_DIR"
+    else
+        echo "Could not detach the installer image at $MOUNT_DIR." >&2
+    fi
+    if [[ -n "$STAGING_DIR" ]]; then
+        rm -rf "$STAGING_DIR"
+    fi
+    exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-# Download with progress bar
-if command -v curl &>/dev/null; then
-    curl -fL --progress-bar "${DMG_URL}" -o "${DMG_PATH}"
-else
-    echo -e "${RED}✖ Error: curl is required to download HyperFetch.${RESET}"
-    exit 1
+echo "Checking the latest HyperFetch release..."
+manifest="$TMP_DIR/release.json"
+curl --fail --silent --show-error --location --max-time 30 \
+    "https://api.github.com/repos/$REPO/releases/latest" -o "$manifest" ||
+    fail "Could not check GitHub for the latest release. Visit https://github.com/$REPO/releases."
+
+tag=$(/usr/bin/plutil -extract tag_name raw -o - "$manifest") ||
+    fail "GitHub did not return a release version."
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || fail "Unexpected release tag: $tag."
+
+digest=""
+index=0
+while name=$(/usr/bin/plutil -extract "assets.$index.name" raw -o - "$manifest" 2>/dev/null); do
+    if [[ "$name" == HyperFetch.dmg ]]; then
+        digest=$(/usr/bin/plutil -extract "assets.$index.digest" raw -o - "$manifest" 2>/dev/null || true)
+        break
+    fi
+    index=$((index + 1))
+done
+[[ "$digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]] || fail "The latest release does not provide a checksum for HyperFetch.dmg."
+
+echo "Downloading HyperFetch $tag..."
+image="$TMP_DIR/HyperFetch.dmg"
+curl --fail --location --progress-bar --max-time 300 \
+    "https://github.com/$REPO/releases/download/$tag/HyperFetch.dmg" -o "$image"
+actual=$(/usr/bin/shasum -a 256 "$image" | awk '{print $1}')
+expected=$(printf '%s' "${digest#sha256:}" | tr 'A-F' 'a-f')
+[[ "$actual" == "$expected" ]] || fail "The download checksum did not match."
+
+mkdir "$MOUNT_DIR"
+hdiutil attach "$image" -nobrowse -readonly -mountpoint "$MOUNT_DIR" -quiet
+mounted=true
+source_app="$MOUNT_DIR/HyperFetch.app"
+[[ -d "$source_app" && ! -L "$source_app" ]] || fail "The disk image does not contain HyperFetch.app."
+verify_app "$source_app" ||
+    fail "The downloaded app did not pass code integrity and bundle identity checks."
+version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$source_app/Contents/Info.plist")
+[[ "$version" == "${tag#v}" ]] || fail "The app version does not match the release."
+processor=$(uname -m)
+binary_description=$(/usr/bin/file -b "$source_app/Contents/MacOS/HyperFetch")
+printf '%s\n' "$binary_description" | /usr/bin/grep -Eq "Mach-O 64-bit executable $processor([^[:alnum:]_]|$)" ||
+    fail "This release does not support this Mac's processor."
+[[ ! -L "$TARGET_APP" ]] || fail "The current app path is a symbolic link. Install the DMG manually."
+if [[ -e "$TARGET_APP" ]]; then
+    existing_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$TARGET_APP/Contents/Info.plist" 2>/dev/null || true)
+    [[ "$existing_id" == "$APP_ID" ]] || fail "The existing item is not a HyperFetch app. Choose another install location manually."
 fi
 
-echo -e "${CYAN}→${RESET} Mounting disk image..."
-MOUNT_OUTPUT=$(hdiutil attach "${DMG_PATH}" -nobrowse -readonly)
-MOUNT_DIR=$(echo "${MOUNT_OUTPUT}" | grep -E '/Volumes/' | awk -F'\t' '{print $NF}' | head -n 1)
+STAGING_DIR=$(mktemp -d "/Applications/.hyperfetch-install.XXXXXX") ||
+    fail "Applications is not writable. Install the DMG manually."
+/usr/bin/ditto "$source_app" "$STAGING_DIR/HyperFetch.app"
+verify_app "$STAGING_DIR/HyperFetch.app"
 
-if [[ -z "${MOUNT_DIR}" ]] || [[ ! -d "${MOUNT_DIR}" ]]; then
-    MOUNT_DIR="/Volumes/HyperFetch"
+if /usr/bin/pgrep -x HyperFetch >/dev/null; then
+    was_running=true
+    /usr/bin/osascript -e "tell application id \"$APP_ID\" to quit" >/dev/null ||
+        fail "Quit HyperFetch before installing the update."
+    for ((attempt = 0; attempt < 50; attempt++)); do
+        /usr/bin/pgrep -x HyperFetch >/dev/null || break
+        sleep 0.1
+    done
+    ! /usr/bin/pgrep -x HyperFetch >/dev/null || fail "Quit HyperFetch before installing the update."
 fi
 
-if [[ ! -d "${MOUNT_DIR}/HyperFetch.app" ]]; then
-    echo -e "${RED}✖ Error: Could not locate HyperFetch.app in mounted disk image.${RESET}"
-    exit 1
+installing=true
+if [[ -e "$TARGET_APP" ]]; then
+    mv "$TARGET_APP" "$STAGING_DIR/Previous.app"
 fi
-
-TARGET_APP="/Applications/HyperFetch.app"
-
-# Check if application already exists
-if [[ -d "${TARGET_APP}" ]]; then
-    echo -e "${YELLOW}! Updating existing HyperFetch installation in /Applications...${RESET}"
-    osascript -e 'quit app "HyperFetch"' 2>/dev/null || true
-    sleep 0.5
-    rm -rf "${TARGET_APP}"
-fi
-
-echo -e "${CYAN}→${RESET} Installing to /Applications/HyperFetch.app..."
-cp -R "${MOUNT_DIR}/HyperFetch.app" /Applications/
-
-# Remove quarantine attribute to avoid macOS Gatekeeper warning for direct GitHub downloads
-xattr -dr com.apple.quarantine "${TARGET_APP}" 2>/dev/null || true
-
-echo -e "\n${GREEN}${BOLD}✔ HyperFetch ${LATEST_TAG} installed successfully!${RESET}"
-echo -e "${CYAN}→${RESET} Launching HyperFetch..."
-open -a HyperFetch || open "${TARGET_APP}"
-
-echo -e "\n${BOLD}Thank you for installing HyperFetch!${RESET}"
-echo -e "Documentation & Chrome Extension: ${CYAN}https://consultanything-tech.github.io/hyperfetch-app/${RESET}\n"
+mv "$STAGING_DIR/HyperFetch.app" "$TARGET_APP"
+installed=true
+verify_app "$TARGET_APP"
+open "$TARGET_APP" --args --hyperfetch-update-readiness-file "$READINESS_MARKER" ||
+    fail "macOS could not open the new installation."
+for ((attempt = 0; attempt < 100; attempt++)); do
+    [[ ! -s "$READINESS_MARKER" ]] || break
+    sleep 0.1
+done
+[[ -s "$READINESS_MARKER" ]] || fail "The updated app did not finish starting."
+installing=false
+echo "Installed HyperFetch $tag in Applications."
