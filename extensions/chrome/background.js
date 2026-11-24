@@ -266,12 +266,12 @@ function handleDownload(downloadItem, rawUrl, targetUrl, suggest) {
         headers: headers
       };
 
-      const success = await forwardDownloadToHyperFetch(payload);
-      if (success) {
+      const outcome = await forwardDownloadToHyperFetch(payload);
+      if (outcome) {
         // HyperFetch accepted download: call safeSuggest and cancel/erase native browser task
         safeSuggest();
         cancelBrowserDownload(downloadItem.id);
-        recordHandoff('accepted');
+        recordHandoff(outcome);
       } else {
         recordHandoff('browser');
         showErrorBadge();
@@ -357,7 +357,9 @@ async function tryPostDownload(port, payload) {
       const result = await response.json();
       if (result.status === 'ok') {
         showSuccessNotification();
-        return true;
+        if (result.task_status === 'pending') return 'waiting';
+        if (result.task_status === 'paused') return 'paused';
+        return 'accepted';
       }
     }
   } catch (err) {

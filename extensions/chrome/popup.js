@@ -163,9 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
       handoffStatus.textContent = '';
       return;
     }
-    handoffStatus.textContent = handoff.outcome === 'accepted'
-      ? 'Last download sent to HyperFetch.'
-      : 'Last download continued in your browser.';
+    const messages = {
+      accepted: 'Last download sent to HyperFetch.',
+      waiting: 'Last download added to HyperFetch and waiting for a slot.',
+      paused: 'Last download added to HyperFetch as paused.',
+      browser: 'Last download continued in your browser.'
+    };
+    handoffStatus.textContent = messages[handoff.outcome] || '';
   }
 
   chrome.storage.session?.get('lastHandoff').then(({ lastHandoff }) => showHandoff(lastHandoff)).catch(() => {});
@@ -325,7 +329,9 @@ document.addEventListener('DOMContentLoaded', () => {
     transfersList.innerHTML = transfers.map(t => {
       const reportedStatus = String(t.status || '').toLowerCase();
       const rawStatus = /^[a-z]+$/.test(reportedStatus) ? reportedStatus : 'queued';
-      const statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+      const statusLabel = rawStatus === 'queued' || rawStatus === 'pending'
+        ? 'Waiting for a slot'
+        : rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
       const progressPercent = Math.min(100, Math.max(0, Math.round((t.progress || 0) * 100)));
       const speed = formatSpeed(t.speed);
       const eta = formatEta(t.eta);
