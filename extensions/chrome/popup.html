@@ -11,10 +11,9 @@
     <!-- Header -->
     <header class="header">
       <div class="brand">
-        <img src="icons/icon48.png" alt="HyperFetch Logo" class="brand-logo">
+        <img src="icons/icon48.png" alt="" class="brand-logo">
         <div class="brand-text">
           <h1>HyperFetch</h1>
-          <span class="subtitle">Download Interceptor</span>
         </div>
       </div>
       <div id="statusBadge" class="status-badge status-offline" role="status">
@@ -25,11 +24,26 @@
 
     <!-- Main Card -->
     <main class="content">
-      <!-- Intercept Toggle Card -->
+      <div id="handoffStatus" class="handoff-status" role="status"></div>
+
+      <!-- Active downloads Section -->
+      <div class="card transfers-card" id="transfersSection">
+        <div class="transfers-header">
+          <div class="transfers-title-row">
+            <span class="card-title">Active downloads</span>
+            <span id="transfersCountBadge" class="transfers-count-badge">0</span>
+          </div>
+        </div>
+        <div id="transfersList" class="transfers-list">
+          <div class="transfers-empty">No active downloads</div>
+        </div>
+      </div>
+
+      <!-- Capture toggle -->
       <div class="card toggle-card">
         <div class="toggle-info">
-          <label for="interceptToggle" class="card-title">Auto-Intercept Downloads</label>
-          <p class="card-description">Send eligible downloads to HyperFetch. If the app cannot accept them, they continue in your browser.</p>
+          <label for="interceptToggle" class="card-title">Capture browser downloads</label>
+          <p class="card-description">Downloads stay in the browser when the app cannot accept them.</p>
         </div>
         <label class="switch">
           <input type="checkbox" id="interceptToggle" checked>
@@ -37,41 +51,39 @@
         </label>
       </div>
 
-      <!-- Scope Filter Card -->
-      <div class="card filter-card">
-        <div class="card-title">Interception Scope</div>
-        <div class="radio-group">
-          <label class="radio-option">
-            <input type="radio" name="interceptScope" value="filtered" checked id="scopeFiltered">
-            <div class="radio-details">
-              <span class="radio-label">Common files and large downloads</span>
-              <span class="radio-hint">Includes archives, documents, media, and files over 1 MB.</span>
-            </div>
-          </label>
-          <label class="radio-option">
-            <input type="radio" name="interceptScope" value="all" id="scopeAll">
-            <div class="radio-details">
-              <span class="radio-label">All eligible downloads</span>
-              <span class="radio-hint">Applies to direct web downloads. Exclusions and size limits still apply.</span>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <!-- Advanced Filters Accordion Card -->
+      <!-- Capture settings -->
       <details class="card advanced-card" id="advancedCard">
         <summary class="advanced-summary">
           <div class="advanced-header">
-            <span class="card-title">Advanced Filters</span>
-            <span class="accordion-hint">Size threshold, exclusions, token</span>
+            <span class="card-title">Capture settings</span>
           </div>
           <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </summary>
         <div class="advanced-body">
+          <fieldset class="scope-settings">
+            <legend class="field-label">Capture scope</legend>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="interceptScope" value="filtered" checked id="scopeFiltered">
+                <div class="radio-details">
+                  <span class="radio-label">Common files and large downloads</span>
+                  <span class="radio-hint">Includes archives, documents, media, and files over 1 MB.</span>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="interceptScope" value="all" id="scopeAll">
+                <div class="radio-details">
+                  <span class="radio-label">All eligible downloads</span>
+                  <span class="radio-hint">Applies to direct web downloads. Exclusions and size limits still apply.</span>
+                </div>
+              </label>
+            </div>
+          </fieldset>
+
           <div class="form-field">
-            <label for="minSizeSelect" class="field-label">Minimum File Size</label>
+            <label for="minSizeSelect" class="field-label">Minimum file size</label>
             <select id="minSizeSelect" class="form-select" aria-label="Minimum file size to intercept">
               <option value="0">Any Size</option>
               <option value="1048576">1 MB</option>
@@ -84,7 +96,7 @@
           </div>
 
           <div class="form-field">
-            <label for="excludedDomainsInput" class="field-label">Excluded Domains</label>
+            <label for="excludedDomainsInput" class="field-label">Excluded domains</label>
             <textarea id="excludedDomainsInput" class="form-textarea" rows="2" placeholder="e.g. docs.google.com, github.com" aria-label="Excluded hostnames and domains"></textarea>
             <span class="field-hint">Comma or newline separated list of domains to bypass.</span>
           </div>
@@ -97,23 +109,9 @@
         </div>
       </details>
 
-      <!-- Active Downloads Section -->
-      <div class="card transfers-card" id="transfersSection">
-        <div class="transfers-header">
-          <div class="transfers-title-row">
-            <span class="card-title">Active Downloads</span>
-            <span id="transfersCountBadge" class="transfers-count-badge">0</span>
-          </div>
-          <span id="handoffStatus" class="transfers-subtitle" role="status"></span>
-        </div>
-        <div id="transfersList" class="transfers-list">
-          <div class="transfers-empty">No active downloads</div>
-        </div>
-      </div>
-
       <!-- Actions -->
       <div class="actions">
-        <button id="openAppBtn" class="btn btn-secondary" aria-label="Open HyperFetch desktop app">
+        <button id="openAppBtn" class="btn btn-primary" aria-label="Open HyperFetch desktop app">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
             <polyline points="15 3 21 3 21 9"></polyline>
@@ -121,7 +119,7 @@
           </svg>
           Open HyperFetch
         </button>
-        <button id="retryBtn" class="btn btn-ghost" title="Re-check connection" aria-label="Re-check bridge connection">
+        <button id="retryBtn" class="btn btn-ghost" title="Check connection" aria-label="Check connection">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
