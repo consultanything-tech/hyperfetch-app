@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HyperFetch — High-Speed Native Download Manager for Windows &amp; macOS</title>
-  <meta name="description" content="The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, parallel probing, ETag integrity verification, scheduled quiet hours, and zero telemetry.">
+  <meta name="description" content="HyperFetch is a download manager for Windows and macOS with parallel downloads, a compact queue, resumable transfers, and optional Chromium download capture.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
 
   <!-- Tailwind CSS CDN -->
@@ -159,9 +159,11 @@
 <body class="bg-spaceDark text-slate-100 min-h-screen relative antialiased selection:bg-appleBlue selection:text-white">
 
   <!-- Ambient background glow elements -->
-  <div class="hero-glow top-0 left-1/2 -translate-x-1/2"></div>
-  <div class="hero-glow-secondary top-[650px] right-5"></div>
-  <div class="hero-glow bottom-[400px] left-10"></div>
+  <div aria-hidden="true" class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="hero-glow top-0 left-1/2 -translate-x-1/2"></div>
+    <div class="hero-glow-secondary top-[650px] right-5"></div>
+    <div class="hero-glow bottom-[400px] left-10"></div>
+  </div>
 
   <!-- FIXED NAVBAR -->
   <nav class="fixed top-0 left-0 right-0 z-50 glass-nav">
@@ -182,7 +184,7 @@
           <span class="w-2 h-2 rounded-full bg-successGreen animate-pulse"></span>
           Live Demo
         </a>
-        <a href="#screenshot" class="hover:text-white transition-colors">Preview</a>
+        <a href="#screenshot" class="hover:text-white transition-colors">What’s New</a>
         <a href="#comparison" class="hover:text-white transition-colors">Comparison</a>
         <a href="#extension" class="hover:text-white transition-colors">Extension Guide</a>
         <a href="https://github.com/consultanything-tech/hyperfetch-app" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors flex items-center gap-1">
@@ -197,7 +199,7 @@
           <span>☕</span>
           <span>Support<span class="hidden sm:inline"> on Ko-fi</span></span>
         </a>
-        <button id="mobileMenuBtn" aria-label="Open navigation menu" class="lg:hidden text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors focus:outline-none">
+        <button id="mobileMenuBtn" aria-label="Navigation menu" aria-controls="mobileMenu" aria-expanded="false" class="lg:hidden text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors focus:outline-none">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
       </div>
@@ -207,7 +209,7 @@
     <div id="mobileMenu" class="hidden lg:hidden px-4 pt-2 pb-4 space-y-2 bg-[#12161F]/95 border-b border-white/10 backdrop-blur-xl">
       <a href="#features" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Features</a>
       <a href="#demo" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Live Demo</a>
-      <a href="#screenshot" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Preview</a>
+      <a href="#screenshot" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">What’s New</a>
       <a href="#comparison" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Comparison</a>
       <a href="#extension" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">Extension Guide</a>
       <a href="https://github.com/consultanything-tech/hyperfetch-app" target="_blank" class="block px-3 py-2 rounded-md text-base text-slate-300 hover:text-white hover:bg-white/5">GitHub Repository</a>
@@ -229,13 +231,13 @@
 
     <!-- Main Headline -->
     <h1 class="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.08] max-w-4xl mx-auto mb-6">
-      Hyper-Speed Downloads.<br>
-      <span class="gradient-accent">Pure Native Speed for Windows &amp; Mac.</span>
+      Manage your downloads.<br>
+      <span class="gradient-accent">On Windows and Mac.</span>
     </h1>
 
     <!-- Subtitle -->
     <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto font-normal leading-relaxed mb-10">
-      The best lightweight, high-speed native download manager for Windows &amp; macOS. Accelerated multi-chunk HTTP Range streaming, direct sparse I/O, parallel probing, ETag integrity verification, scheduled quiet hours, and zero telemetry.
+      Download files in parallel, pause and resume transfers, and find what you need in a compact queue. Send eligible browser downloads to HyperFetch with the optional Chromium extension.
     </p>
 
     <!-- Dual CTA Buttons -->
@@ -258,6 +260,10 @@
 
     <p class="mx-auto mb-6 max-w-xl text-xs text-slate-400">
       Older Windows builds require a one-time manual update. Run the Windows installer from this page.
+    </p>
+    <p class="mx-auto mb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+      <a href="#screenshot" class="text-cyberCyan hover:underline">What’s new in 1.4.0</a>
+      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch-Windows-x64.msi" class="text-slate-300 hover:underline">Windows (.msi)</a>
     </p>
 
     <!-- Terminal Install Snippet -->
@@ -283,13 +289,47 @@
     </div>
   </section>
 
+  <section id="screenshot" class="scroll-mt-16 py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10" aria-labelledby="release-preview-title">
+    <div class="text-center mb-8">
+      <h2 id="release-preview-title" class="text-3xl sm:text-4xl font-extrabold tracking-tight">What’s new in HyperFetch 1.4.0</h2>
+    </div>
+
+    <figure class="max-w-5xl mx-auto">
+      <img src="assets/app_screenshot.png" alt="HyperFetch Compact view with status filters, transfer progress, and icon buttons on each row" width="1440" height="860" loading="lazy" class="w-full h-auto rounded-2xl border border-white/15 shadow-2xl">
+      <figcaption class="mt-3 text-center text-sm text-slate-400">Windows Compact view preview with sample downloads</figcaption>
+    </figure>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-5xl mx-auto mt-8">
+      <div class="glass-card rounded-xl p-5">
+        <h3 class="font-semibold text-white">More room in Compact view</h3>
+        <p class="mt-1 text-sm text-slate-300">Use row icons to pause, resume, or open files. Switch to Comfortable view for larger cards.</p>
+      </div>
+      <div class="glass-card rounded-xl p-5">
+        <h3 class="font-semibold text-white">Animated sidebar filters</h3>
+        <p class="mt-1 text-sm text-slate-300">Rows slide in and out as you switch between filters such as Paused and Completed. The app follows your system’s Reduce Motion setting.</p>
+      </div>
+      <div class="glass-card rounded-xl p-5">
+        <h3 class="font-semibold text-white">Search on demand on Mac</h3>
+        <p class="mt-1 text-sm text-slate-300">Click the magnifying glass beside the Details Inspector or press <kbd>⌘F</kbd> to search your downloads.</p>
+      </div>
+      <div class="glass-card rounded-xl p-5">
+        <h3 class="font-semibold text-white">Start now or add paused</h3>
+        <p class="mt-1 text-sm text-slate-300">Choose when to start a new transfer and review its save destination before adding it.</p>
+      </div>
+    </div>
+
+    <p class="mt-6 text-center text-sm">
+      <a href="https://github.com/consultanything-tech/hyperfetch-app/releases/tag/v1.4.0" class="text-cyberCyan hover:underline">Read the release notes and checksums</a>
+    </p>
+  </section>
+
   <!-- INTERACTIVE LIVE DEMO (IN-BROWSER SIMULATOR) -->
   <section id="demo" class="py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
     <div class="text-center mb-12">
       <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Simulated Interface</h2>
       <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Interactive Range Stream Simulator</p>
       <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
-        Experience HyperFetch’s real-time 8-chunk parallel streaming engine right inside your browser. Toggle pause/resume to watch the I/O state react instantly.
+        Try pause and resume on a simulated eight-part download. The demo uses sample transfers in your browser.
       </p>
     </div>
 
@@ -850,27 +890,6 @@
     </div>
   </section>
 
-  <!-- APP SCREENSHOT PREVIEW -->
-  <section id="screenshot" class="py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center relative z-10">
-    <div class="mb-12">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Native Desktop Experience</h2>
-      <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Engineered for Windows 11 &amp; macOS Sonoma</p>
-      <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
-        Designed from the ground up for native performance across Windows and macOS. Crisp typography, vibrant sidebars, Windows taskbar progress, macOS Dock badging, and dark mode perfection.
-      </p>
-    </div>
-
-    <div class="relative max-w-5xl mx-auto group">
-      <!-- Glow effect behind screenshot -->
-      <div class="absolute -inset-1 bg-gradient-to-r from-appleBlue via-cyberCyan to-purple-600 rounded-2xl blur-xl opacity-30 group-hover:opacity-50 transition duration-700"></div>
-
-      <!-- Screenshot Container -->
-      <div class="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/60">
-        <img src="assets/app_screenshot.png" alt="HyperFetch macOS Native App Screenshot" class="w-full h-auto object-cover rounded-2xl transform transition-transform duration-500">
-      </div>
-    </div>
-  </section>
-
   <!-- 6-CARD FEATURE GRID -->
   <section id="features" class="py-16 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative z-10">
     <div class="text-center mb-16">
@@ -1074,7 +1093,7 @@
       <h2 class="text-xs font-bold uppercase tracking-widest text-cyberCyan mb-2">Seamless Auto-Capture</h2>
       <p class="text-3xl sm:text-4xl font-extrabold tracking-tight">Browser Companion Guide</p>
       <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
-        HyperFetch includes native companions for Chromium browsers (Chrome, Edge, Brave, Arc) and Safari.
+        Install the Chromium extension manually, or use macOS Services with Safari. The Chromium popup shows active downloads, handoff status, and capture settings.
       </p>
     </div>
 
@@ -1111,16 +1130,16 @@
             <div>
               <p class="font-medium text-white">Load Unpacked Extension</p>
               <p class="text-slate-400 text-xs mt-0.5">
-                Click <strong class="text-white">Load unpacked</strong> and select the <code class="text-cyberCyan font-mono">extensions/chrome</code> folder from the repository.
+                Download and unzip the extension ZIP below. Click <strong class="text-white">Load unpacked</strong> and select the extracted <code class="text-cyberCyan font-mono">extensions/chrome</code> folder.
               </p>
             </div>
           </li>
           <li class="flex items-start gap-3">
             <span class="w-6 h-6 rounded-full bg-white/10 text-white font-mono text-xs flex items-center justify-center shrink-0 mt-0.5">4</span>
             <div>
-              <p class="font-medium text-white">Instant Interception &amp; Smart Filtering</p>
+              <p class="font-medium text-white">Choose what to capture</p>
               <p class="text-slate-400 text-xs mt-0.5">
-                Any triggered download is automatically forwarded to HyperFetch’s local listener on port <code class="text-cyberCyan font-mono">31415</code> with real-time duplicate URL protection and task refocusing. Built-in Smart Image Filtering automatically ignores inline tracking pixels, ads, and icons under configurable size thresholds. Hold <kbd class="px-1 py-0.5 rounded bg-white/10 text-[10px]">Alt</kbd> while clicking to bypass.
+                Open the popup and enable <strong class="text-white">Capture browser downloads</strong>. Use <strong class="text-white">Capture settings</strong> to choose eligible files and exclusions. If HyperFetch cannot accept a download, it continues in your browser.
               </p>
             </div>
           </li>
@@ -1234,7 +1253,14 @@
     const mobileMenu = document.getElementById('mobileMenu');
     if (mobileMenuBtn && mobileMenu) {
       mobileMenuBtn.addEventListener('click', () => {
-        mobileMenu.classList.toggle('hidden');
+        const isHidden = mobileMenu.classList.toggle('hidden');
+        mobileMenuBtn.setAttribute('aria-expanded', String(!isHidden));
+      });
+      mobileMenu.addEventListener('click', (event) => {
+        if (event.target.closest('a[href^="#"]')) {
+          mobileMenu.classList.add('hidden');
+          mobileMenuBtn.setAttribute('aria-expanded', 'false');
+        }
       });
     }
 

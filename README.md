@@ -41,6 +41,7 @@ curl -sSL https://raw.githubusercontent.com/consultanything-tech/hyperfetch-app/
 | Package | Format | Compatibility | Link |
 | :--- | :--- | :--- | :--- |
 | **HyperFetch Windows Installer** | `.exe` | Windows 10/11 (64-bit) | [**Download HyperFetch-Windows-x64-Setup.exe**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch-Windows-x64-Setup.exe) |
+| **HyperFetch Windows MSI** | `.msi` | Windows 10/11 (64-bit) | [**Download HyperFetch-Windows-x64.msi**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch-Windows-x64.msi) |
 | **HyperFetch Disk Image** | `.dmg` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.dmg**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch.dmg) |
 | **HyperFetch Portable Archive** | `.zip` | macOS 14.0+ (Apple Silicon & Intel) | [**Download HyperFetch.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch.zip) |
 | **HyperFetch Chrome Extension** | `.zip` | Chromium Browsers (Chrome, Edge, Brave, Arc) | [**Download HyperFetch_Chrome_Extension.zip**](https://github.com/consultanything-tech/hyperfetch-app/releases/download/v1.4.0/HyperFetch_Chrome_Extension.zip) |
@@ -51,11 +52,18 @@ Older Windows builds need a one-time manual upgrade to switch to the public upda
 
 ---
 
-## 📸 Preview
+## What’s new in 1.4.0
+
+- Compact view puts icon actions on each download row. Comfortable view keeps the larger cards.
+- Rows slide in and out when you switch sidebar filters. HyperFetch follows the system’s Reduce Motion setting.
+- On Mac, click the magnifying glass beside the Details Inspector or press **⌘F** to search.
+- When adding a download, choose **Start now** or **Add paused** and review the save destination.
+- The Chromium popup shows active downloads, handoff status, and capture settings.
 
 <p align="center">
-  <img src="assets/app_screenshot.png" alt="HyperFetch Screenshot" width="840" style="border-radius: 12px; box-shadow: 0 16px 36px rgba(0,0,0,0.4);" />
+  <img src="assets/app_screenshot.png" alt="HyperFetch Compact view with status filters, transfer progress, and icon actions" width="840" />
 </p>
+<p align="center">Windows Compact view preview with sample downloads</p>
 
 ---
 
@@ -75,7 +83,7 @@ Older Windows builds need a one-time manual upgrade to switch to the public upda
 
 ## 🧩 Chrome & Chromium Extension Setup
 
-The companion extension intercepts browser downloads and seamlessly passes them to HyperFetch with full cookie, user-agent, and referer preservation.
+The companion extension sends eligible browser downloads to HyperFetch. If HyperFetch cannot accept a download, the browser continues it.
 
 ### Supported Browsers
 Works on **Google Chrome**, **Microsoft Edge**, **Brave**, **Arc**, and **Vivaldi**.
@@ -90,8 +98,7 @@ Works on **Google Chrome**, **Microsoft Edge**, **Brave**, **Arc**, and **Vivald
 4. Enable **Developer mode** via the toggle switch in the upper-right corner.
 5. Click **Load unpacked** in the top-left toolbar.
 6. Select the extracted `extensions/chrome` directory (or from this repo).
-7. Done! Any initiated download will be routed into HyperFetch automatically.
-   > **Pro Tip**: Hold the `Alt` (or `Option ⌥`) key while clicking a download link to temporarily bypass HyperFetch and use the browser's default download mechanism.
+7. Open the popup and turn on **Capture browser downloads**. Use **Capture settings** to set the capture scope and exclusions.
 
 ---
 
